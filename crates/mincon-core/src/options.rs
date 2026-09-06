@@ -126,14 +126,12 @@ pub enum RegularizationMode {
     /// Wächter–Biegler Algorithm IC: require inertia `(n, m, 0)` from the
     /// factorization, raising `delta_w` until it holds.
     Inertia,
-    /// Chiang–Zavala: no inertia query; accept `delta_w` when the computed
-    /// direction passes a curvature test. Works with any linear solver,
-    /// including iterative ones, and empirically needs 56–69% fewer
-    /// regularizations.
+    /// Reserved for a Chiang–Zavala curvature-based loop. Currently uses the
+    /// certified-inertia path; the standalone curvature helper is not wired
+    /// into the solver's acceptance/retry loop.
     InertiaFree,
-    /// Use the inertia when the factorization reports it reliably (all pivots
-    /// bounded away from zero, so Sylvester's law applies), and fall back to
-    /// the curvature test otherwise. Strictly more information than either.
+    /// Currently requires certified inertia, like `Inertia`. A curvature
+    /// fallback remains planned and must be independently qualified.
     #[default]
     Hybrid,
 }

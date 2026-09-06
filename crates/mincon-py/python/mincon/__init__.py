@@ -20,7 +20,8 @@ Conventions, spelled out because this is where silent errors live:
 * ``{"type": "ineq"}`` means ``fun(x) >= 0``. That is SciPy's convention. It is
   the **opposite** of MATLAB's ``fmincon``, where nonlinear inequalities are
   written ``c(x) <= 0``. Porting from MATLAB means negating them.
-* ``res.success`` is ``True`` only for a certified local optimum. A solve that
+* ``res.success`` is ``True`` only when first-order and feasibility tolerances
+  are satisfied; this is not a second-order minimum certificate. A solve that
   stopped at a usable but uncertified point has ``res.success == False`` and
   ``res.usable == True``. Check ``res.usable`` before discarding an answer, and
   never treat ``success`` as "the numbers are fine" without also checking

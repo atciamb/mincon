@@ -333,7 +333,7 @@ fn minimize(
                 }
                 lb[i] = pair[0].unwrap_or(-INF_BOUND);
                 ub[i] = pair[1].unwrap_or(INF_BOUND);
-                if lb[i] > ub[i] {
+                if lb[i].is_nan() || ub[i].is_nan() || lb[i] > ub[i] {
                     return Err(PyValueError::new_err(format!(
                         "variable {i} has lower bound {} above upper bound {}",
                         lb[i], ub[i]
@@ -343,6 +343,12 @@ fn minimize(
         }
     }
 
+    if x0v.iter().any(|v| !v.is_finite()) {
+        return Err(PyValueError::new_err("x0 must contain finite values"));
+    }
+    // Python needs a constraint-size probe before constructing Nlp. Honor the
+    // same physical box as the Rust setup and all subsequent evaluations.
+    let probe: Vec<f64> = (0..n).map(|i| x0v[i].clamp(lb[i], ub[i])).collect();
     // --- constraints ---
     let mut blocks: Vec<(Py<PyAny>, bool, usize)> = Vec::new();
     let mut cl: Vec<f64> = Vec::new();
@@ -368,7 +374,7 @@ fn minimize(
                     .get_item("fun")?
                     .ok_or_else(|| PyValueError::new_err("constraint is missing 'fun'"))?
                     .unbind();
-                let len = block_length(py, &f, &x0v)?;
+                let len = block_length(py, &f, &probe)?;
                 let is_eq = match ty.as_str() {
                     "eq" => true,
                     "ineq" => false,

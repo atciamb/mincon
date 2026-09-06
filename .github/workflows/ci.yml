@@ -37,6 +37,9 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
+      - name: Independent regression verdict tests
+        run: cargo test -p mincon-ip --example run_testset
+
       # The regression table is the real gate. It fails the build on any
       # false report of success, which is the one unforgivable bug
       # (docs/11_PITFALLS.md 1.1).
@@ -54,8 +57,8 @@ jobs:
           total=$(echo "$rate" | cut -d' ' -f2)
           echo "pass rate: $pass/$total"
           # Ratchet. Raise this as milestones land; never lower it.
-          if [ "$pass" -lt 52 ]; then
-            echo "::error::regression: $pass/$total, expected at least 52"
+          if [ "$pass" -lt 54 ]; then
+            echo "::error::regression: $pass/$total, expected at least 54"
             exit 1
           fi
 
@@ -128,6 +131,9 @@ jobs:
           assert not bad.passed
           print("python smoke test OK")
           EOF
+
+      - name: Python regression tests against the installed wheel
+        run: python -m pytest crates/mincon-py/tests -q
 
   # Tier 2: runs on pull requests, minutes not hours.
   benchmark:

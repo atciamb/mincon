@@ -27,20 +27,16 @@
 //! Fletcher–Leyffer filter line search with the switching condition,
 //! second-order corrections, fraction-to-boundary, bound-multiplier resets,
 //! the scaled `E_mu` termination test, gradient-based scaling, and damped BFGS.
+//! Soft and reduced-elastic feasibility restoration are implemented; see
+//! `docs/12_RESTORATION_IMPLEMENTATION.md` for the variant and its evidence.
 //!
 //! Not implemented, in descending order of importance — each is a milestone in
 //! `docs/10_ROADMAP.md` with its own acceptance gate:
 //!
-//! 1. **Feasibility restoration.** Currently a line-search failure ends the
-//!    solve with [`ExitFlag::NumericalFailure`] instead of minimizing
-//!    infeasibility and re-entering. This is *the* single biggest robustness
-//!    gap; on the CUTEst set it is worth roughly 10 percentage points of
-//!    success rate, and no benchmark against `fmincon` is meaningful until it
-//!    exists.
-//! 2. **Limited-memory BFGS.** Dense BFGS caps usable `n` at a couple of
+//! 1. **Limited-memory BFGS.** Dense BFGS caps usable `n` at a couple of
 //!    thousand.
-//! 3. **Adaptive barrier update.** Only `Monotone` is wired up.
-//! 4. **The watchdog.**
+//! 2. **Adaptive barrier update.** Only `Monotone` is wired up.
+//! 3. **The watchdog and qualified inertia-free fallback.**
 
 use std::time::Instant;
 
@@ -61,6 +57,8 @@ use mincon_linalg::Ordering;
 use crate::bfgs::DenseBfgs;
 use crate::filter::{Acceptance, Filter, FilterParams};
 use crate::kkt::{transpose_with_map, CorrectionParams, KktFailure, KktSystem, ValueMap};
+
+mod restoration;
 
 /// Barrier-loop constants (Wächter–Biegler Section 2.2).
 #[derive(Debug, Clone, Copy)]
@@ -168,6 +166,7 @@ struct Solver<'a, P: Nlp + ?Sized> {
 }
 
 /// Everything evaluated at a point.
+#[derive(Clone)]
 struct Point {
     v: Vec<f64>,
     f: f64,
@@ -209,6 +208,9 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         // Relax bounds so the strict interior is never empty.
         let relax = opts.bound_relax_factor;
         for j in 0..nv {
+            if opts.honor_bounds && v_l[j] != v_u[j] {
+                continue;
+            }
             if has_l[j] {
                 v_l[j] -= relax * v_l[j].abs().max(1.0);
             }
@@ -337,6 +339,9 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
     }
 
     fn evaluate(&self, v: &[f64], mu: f64) -> Result<Point, EvalError> {
+        let mut bounded = v.to_vec();
+        self.project_variables(&mut bounded);
+        let v = bounded.as_slice();
         let x = &v[..self.n];
         let f = self.f_at(x)?;
         let mut c = vec![0.0; self.m];
@@ -371,6 +376,15 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
     }
 
     // ---- setup ----
+
+    fn project_variables(&self, v: &mut [f64]) {
+        if self.opts.honor_bounds {
+            let (xl, xu) = self.eval.nlp().x_bounds();
+            for j in 0..self.n {
+                v[j] = v[j].clamp(xl[j], xu[j]);
+            }
+        }
+    }
 
     fn compute_scaling(&mut self, x: &[f64]) -> Result<(), SolveError> {
         if !matches!(self.opts.scaling, ScalingMode::GradientBased) {
@@ -411,6 +425,16 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             }
         }
         let scaled_f = (self.d_f - 1.0).abs() > 1e-12;
+        for i in 0..self.m {
+            if let Some(k) = self.slack_of[i] {
+                if self.has_l[k] {
+                    self.v_l[k] *= self.d_c[i];
+                }
+                if self.has_u[k] {
+                    self.v_u[k] *= self.d_c[i];
+                }
+            }
+        }
         let scaled_c = self.d_c.iter().any(|d| (d - 1.0).abs() > 1e-12);
         if scaled_f || scaled_c {
             let cmin = self.d_c.iter().copied().fold(f64::INFINITY, f64::min);
@@ -440,6 +464,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                 k2,
             );
         }
+        self.project_variables(&mut v);
         if self.m > 0 {
             let mut c = vec![0.0; self.m];
             self.c_at(&v[..self.n], &mut c)
@@ -547,8 +572,8 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         let (n, m, nv) = (self.n, self.m, self.nv);
         let max_iter = self.opts.effective_max_iterations(n);
 
-        let x0_owned = self.eval.nlp().x0().to_vec();
-        self.compute_scaling(&x0_owned)?;
+        let initial_unscaled = self.initial_point()?;
+        self.compute_scaling(&initial_unscaled[..n])?;
         let mut v = self.initial_point()?;
 
         let mut mu = self.opts.mu_init;
@@ -590,6 +615,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         let mut exit = ExitFlag::MaxReached;
         let mut acceptable_streak = 0usize;
         let mut iterations = 0usize;
+        let mut restoration_work = 0usize;
         let mut last_delta_w = 0.0;
         let mut last_delta_c = 0.0;
         let mut last_soc = 0usize;
@@ -597,14 +623,14 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         let mut last_step_norm = 0.0;
 
         for iter in 0..=max_iter {
-            iterations = iter;
+            iterations = iter + restoration_work;
 
             // --- termination ---
             let (e0, e_mu, compl) = self.optimality(&point, &grad_f, &lambda, &z_l, &z_u, mu);
             let violation = self.user_violation(&point.v, &point.c);
             if self.opts.record_trace {
                 trace.push(IterationRecord {
-                    iter,
+                    iter: iterations,
                     f_count: mincon_core::EvalCounters::get(&self.eval.counters().f),
                     f: point.f / self.d_f,
                     constraint_violation: violation,
@@ -622,6 +648,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             if e0 <= self.opts.tol.optimality
                 && violation <= self.opts.tol.feasibility
                 && compl <= self.opts.tol.complementarity
+                && self.stationarity_inf(&grad_f, &lambda, &z_l, &z_u) <= self.opts.tol.optimality
             {
                 exit = ExitFlag::Optimal;
                 break;
@@ -704,7 +731,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                     break;
                 }
             }
-            if iter == max_iter {
+            if iterations >= max_iter {
                 exit = ExitFlag::MaxReached;
                 break;
             }
@@ -748,13 +775,55 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             ) {
                 Ok(o) => o,
                 Err(KktFailure::RegularizationExhausted { .. }) => {
-                    self.notes.push(
-                        "Inertia correction could not make the KKT matrix suitable. Feasibility \
-                         restoration is not implemented yet, so the solve stops here."
-                            .into(),
+                    let saved_jac = self.jac_values.clone();
+                    let saved_jac_t = self.jac_t_values.clone();
+                    let recovered = self.restore(
+                        &point,
+                        &grad_f,
+                        &lambda,
+                        &z_l,
+                        &z_u,
+                        mu,
+                        &mut filter,
+                        max_iter.saturating_sub(iterations + 1),
+                        iterations,
+                        &mut trace,
+                        false,
                     );
-                    exit = ExitFlag::NumericalFailure;
-                    break;
+                    match recovered {
+                        Ok(r) => {
+                            restoration_work += r.steps;
+                            iterations += r.steps;
+                            point = r.point;
+                            grad_f = r.grad;
+                            lambda = r.lambda;
+                            z_l = r.zl;
+                            z_u = r.zu;
+                            v.copy_from_slice(&point.v);
+                            prev_x.copy_from_slice(&v[..n]);
+                            if let Some(flag) = r.exit {
+                                exit = flag;
+                                break;
+                            }
+                            if let Hess::Bfgs(b) = &mut self.hess {
+                                b.reset(1.0);
+                            }
+                            last_step_norm = f64::INFINITY;
+                            continue;
+                        }
+                        Err(e) => {
+                            self.jac_values = saved_jac;
+                            self.jac_t_values = saved_jac_t;
+                            exit = if matches!(e, EvalError::UserAbort) {
+                                ExitFlag::StoppedByUser
+                            } else {
+                                ExitFlag::NumericalFailure
+                            };
+                            self.notes
+                                .push(format!("Restoration evaluation failed: {e}"));
+                            break;
+                        }
+                    }
                 }
                 Err(KktFailure::Linear(e)) => return Err(SolveError::LinearAlgebra(e.to_string())),
             };
@@ -859,15 +928,56 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             }
 
             let Some((new_point, acceptance, alpha_taken, soc)) = accepted else {
-                // Restoration would go here.
                 if self.eval.uses_central_differences() {
-                    self.notes.push(
-                        "Line search failed and feasibility restoration is not implemented yet. \
-                         This is the largest known gap; see docs/10_ROADMAP.md milestone M4."
-                            .into(),
+                    let saved_jac = self.jac_values.clone();
+                    let saved_jac_t = self.jac_t_values.clone();
+                    let recovered = self.restore(
+                        &point,
+                        &grad_f,
+                        &lambda,
+                        &z_l,
+                        &z_u,
+                        mu,
+                        &mut filter,
+                        max_iter.saturating_sub(iterations + 1),
+                        iterations,
+                        &mut trace,
+                        true,
                     );
-                    exit = ExitFlag::NumericalFailure;
-                    break;
+                    match recovered {
+                        Ok(r) => {
+                            restoration_work += r.steps;
+                            iterations += r.steps;
+                            point = r.point;
+                            grad_f = r.grad;
+                            lambda = r.lambda;
+                            z_l = r.zl;
+                            z_u = r.zu;
+                            v.copy_from_slice(&point.v);
+                            prev_x.copy_from_slice(&v[..n]);
+                            if let Some(flag) = r.exit {
+                                exit = flag;
+                                break;
+                            }
+                            if let Hess::Bfgs(b) = &mut self.hess {
+                                b.reset(1.0);
+                            }
+                            last_step_norm = f64::INFINITY;
+                            continue;
+                        }
+                        Err(e) => {
+                            self.jac_values = saved_jac;
+                            self.jac_t_values = saved_jac_t;
+                            exit = if matches!(e, EvalError::UserAbort) {
+                                ExitFlag::StoppedByUser
+                            } else {
+                                ExitFlag::NumericalFailure
+                            };
+                            self.notes
+                                .push(format!("Restoration evaluation failed: {e}"));
+                            break;
+                        }
+                    }
                 }
                 // Before giving up, sharpen the derivatives: a failing line
                 // search is most often finite-difference noise, not geometry.
@@ -882,14 +992,18 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                 for g in &mut grad_f {
                     *g *= self.d_f;
                 }
+                self.refresh_jacobian(&point.v[..n], &point.c)
+                    .map_err(|e| SolveError::Internal(format!("Jacobian after escalation: {e}")))?;
                 continue;
             };
 
             last_alpha = alpha_taken;
             last_soc = soc;
-            last_step_norm = d_v
+            last_step_norm = point
+                .v
                 .iter()
-                .fold(0.0_f64, |a, d| a.max((alpha_taken * d).abs()));
+                .zip(&new_point.v)
+                .fold(0.0_f64, |a, (old, new)| a.max((new - old).abs()));
 
             if acceptance == Acceptance::SufficientDecrease {
                 filter.augment(point.theta, point.phi);
@@ -946,7 +1060,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             point = new_point;
         }
 
-        Ok(self.finish(exit, iterations, point, lambda, z_l, z_u, trace))
+        Ok(self.finish(exit, iterations, point, &grad_f, lambda, z_l, z_u, trace))
     }
 
     #[allow(clippy::too_many_arguments)] // the SOC needs the whole line-search state
@@ -1100,12 +1214,28 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         (e0, e_mu, compl0)
     }
 
+    fn stationarity_inf(&self, grad: &[f64], lambda: &[f64], zl: &[f64], zu: &[f64]) -> f64 {
+        let mut al = vec![0.0; self.nv];
+        self.a_times(lambda, &mut al);
+        let mut norm = 0.0_f64;
+        for j in 0..self.nv {
+            let r = if j < self.n { grad[j] } else { 0.0 };
+            let r = r + al[j] - zl[j] + zu[j];
+            if !r.is_finite() {
+                return f64::INFINITY;
+            }
+            norm = norm.max(r.abs());
+        }
+        norm
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn finish(
         self,
         exit: ExitFlag,
         iterations: usize,
         point: Point,
+        grad_f: &[f64],
         lambda: Vec<f64>,
         z_l: Vec<f64>,
         z_u: Vec<f64>,
@@ -1113,17 +1243,10 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
     ) -> SolveReport {
         let n = self.n;
         let counters = self.eval.counters();
-        let (e0, _, compl) = self.optimality(&point, &vec![0.0; n], &lambda, &z_l, &z_u, 0.0);
-        let _ = e0;
-
-        // Recompute the honest optimality with the real gradient.
-        let mut grad_f = vec![0.0; n];
+        // The accepted point already has a valid gradient and Jacobian.
+        // Reporting must not call the model again after an abort or budget exit.
         let f_unscaled = point.f / self.d_f;
-        let _ = self.eval.grad(&point.v[..n], f_unscaled, &mut grad_f);
-        for g in &mut grad_f {
-            *g *= self.d_f;
-        }
-        let (optimality, _, _) = self.optimality(&point, &grad_f, &lambda, &z_l, &z_u, 0.0);
+        let (optimality, _, compl) = self.optimality(&point, grad_f, &lambda, &z_l, &z_u, 0.0);
         let violation = self.user_violation(&point.v, &point.c);
 
         // Unscale the multipliers back into the user's problem.

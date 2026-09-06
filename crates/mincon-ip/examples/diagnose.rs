@@ -54,9 +54,9 @@ fn main() {
     println!("\nlocal search over a 0.05 neighbourhood: {improved} improvements found");
     if improved > 0 {
         println!("  best nearby feasible: f = {best:.10e} at {best_x:?}");
-        println!("  => NOT a local minimum; this is a solver bug.");
+        println!("  => a lower sampled feasible point exists; investigate convergence and basins.");
     } else {
-        println!("  => no feasible improvement nearby; this IS a local minimum.");
+        println!("  => no improvement in these samples; this does not certify a local minimum.");
     }
 
     println!("\nlast 8 iterations:");

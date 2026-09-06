@@ -406,7 +406,7 @@ pub fn all() -> Vec<TestProblem> {
         |x| (x[0] - 2.0).powi(2) + x[1] * x[1],
         |x, c| c[0] = (1.0 - x[0]).powi(3) - x[1],
         Some(1.0),
-        Expect::LocalMinimum,
+        Expect::DegenerateOptimum,
         "DEGENERATE: the Mangasarian-Fromovitz constraint qualification fails at x* = (1, 0), so \
          the KKT conditions do not hold there and no first-order method can certify optimality. \
          The correct behaviour is to reach x* and report a step-size or acceptable-point exit, \

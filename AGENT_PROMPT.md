@@ -28,9 +28,12 @@ prior session built and verified:
   accuracy with no derivatives;
 * a 54-problem regression set and a CUTEst benchmark harness.
 
-**Measured state: 122 unit tests pass; 52 of 54 regression problems pass; zero
-false reports of success.** Your job is to take it from there to beating
-`fmincon`.
+**Scaffold baseline:** 120 unit tests plus 2 doctests; 52/54 development fixtures.
+**Current continuation:** soft/reduced-elastic restoration and prerequisites
+pass 54/54 independently checked expected outcomes. Read
+`docs/12_RESTORATION_IMPLEMENTATION.md` and `bench/results/restoration/README.md`
+for current tests, measurements and limitations. M1 remains partial because
+the CUTEst gate has not run. No comparative fmincon claim is established.
 
 This is achievable. It is not achievable by being clever in one place; it is
 achievable by grinding through a specific list of known gaps without breaking
@@ -82,9 +85,9 @@ plug-and-play success on constrained problems.
 
 Take the topmost unfinished milestone in `docs/10_ROADMAP.md` unless you have a
 written reason not to. They are ordered by expected value. Right now that is
-**M1, feasibility restoration** — the single biggest robustness gap, worth
-roughly ten percentage points on CUTEst, and the thing standing between the
-current 52/54 and 54/54.
+**M1 qualification** — restoration is implemented and the local 54/54 gate
+passes. Its larger benchmark improvement remains a hypothesis. Do not retry
+S2MPJ acquisition without renewed authorization; it was declined this session.
 
 ### The loop
 

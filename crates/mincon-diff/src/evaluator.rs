@@ -31,6 +31,69 @@ pub struct Evaluator<'a, P: Nlp + ?Sized> {
     setup_notes: Vec<String>,
 }
 
+// Count individual callbacks, including probes that fail before an entire
+// finite-difference batch can return its evaluation count.
+struct CountedModel<'a, P: Nlp + ?Sized> {
+    nlp: &'a P,
+    counters: &'a EvalCounters,
+    model_time: &'a std::sync::Mutex<Duration>,
+}
+impl<P: Nlp + ?Sized> CountedModel<'_, P> {
+    fn timed<T>(&self, f: impl FnOnce() -> T) -> T {
+        let start = Instant::now();
+        let out = f();
+        if let Ok(mut t) = self.model_time.lock() {
+            *t += start.elapsed();
+        }
+        out
+    }
+    fn checked<T>(&self, result: Result<T, EvalError>) -> Result<T, EvalError> {
+        if result.is_err() {
+            EvalCounters::bump(&self.counters.failed);
+        }
+        result
+    }
+}
+impl<P: Nlp + ?Sized> Nlp for CountedModel<'_, P> {
+    fn dims(&self) -> mincon_core::NlpDims {
+        self.nlp.dims()
+    }
+    fn x_bounds(&self) -> (&[f64], &[f64]) {
+        self.nlp.x_bounds()
+    }
+    fn c_bounds(&self) -> (&[f64], &[f64]) {
+        self.nlp.c_bounds()
+    }
+    fn x0(&self) -> &[f64] {
+        self.nlp.x0()
+    }
+    fn capabilities(&self) -> mincon_core::Capabilities {
+        self.nlp.capabilities()
+    }
+    fn objective(&self, x: &[f64]) -> Result<f64, EvalError> {
+        EvalCounters::bump(&self.counters.f);
+        let result = self.timed(|| self.nlp.objective(x)).and_then(|v| {
+            if v.is_finite() {
+                Ok(v)
+            } else {
+                Err(EvalError::NonFinite(None))
+            }
+        });
+        self.checked(result)
+    }
+    fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+        EvalCounters::bump(&self.counters.c);
+        let result = self.timed(|| self.nlp.constraints(x, out)).and_then(|()| {
+            if out.iter().all(|v| v.is_finite()) {
+                Ok(())
+            } else {
+                Err(EvalError::NonFinite(None))
+            }
+        });
+        self.checked(result)
+    }
+}
+
 impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
     /// Build an evaluator, detecting sparsity if the options ask for it and the
     /// model has not declared any.
@@ -38,6 +101,13 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
         let dims = nlp.dims();
         let caps = nlp.capabilities();
         let mut notes = Vec::new();
+        let counters = EvalCounters::default();
+        let model_time = std::sync::Mutex::new(Duration::ZERO);
+        let counted = CountedModel {
+            nlp,
+            counters: &counters,
+            model_time: &model_time,
+        };
 
         let (jac_pattern, origin) = match nlp.jacobian_structure() {
             Some(p) => (p.clone(), "declared by the model"),
@@ -47,7 +117,7 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
                 "no constraints",
             ),
             None if opts.detect_sparsity && !caps.jacobian => {
-                match detect_jacobian_sparsity(nlp, &DetectConfig::default()) {
+                match detect_jacobian_sparsity(&counted, &DetectConfig::default()) {
                     Detected::Pattern {
                         pattern,
                         evaluations,
@@ -96,8 +166,8 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
             fd,
             jac_pattern,
             jac_pattern_origin: origin,
-            counters: EvalCounters::default(),
-            model_time: std::sync::Mutex::new(Duration::ZERO),
+            counters,
+            model_time,
             setup_notes: notes,
         }
     }
@@ -134,6 +204,29 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
     #[must_use]
     pub fn uses_central_differences(&self) -> bool {
         self.fd.use_central()
+    }
+
+    fn counted(&self) -> CountedModel<'_, P> {
+        CountedModel {
+            nlp: self.nlp,
+            counters: &self.counters,
+            model_time: &self.model_time,
+        }
+    }
+
+    fn checked_derivative(
+        &self,
+        result: Result<(), EvalError>,
+        out: &[f64],
+    ) -> Result<(), EvalError> {
+        let result = result.and_then(|()| {
+            if out.iter().all(|v| v.is_finite()) {
+                Ok(())
+            } else {
+                Err(EvalError::NonFinite(None))
+            }
+        });
+        self.counted().checked(result)
     }
 
     fn timed<T>(&self, f: impl FnOnce() -> T) -> T {
@@ -197,16 +290,9 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
         if self.nlp.capabilities().gradient {
             EvalCounters::bump(&self.counters.g);
             let r = self.timed(|| self.nlp.gradient(x, out));
-            return match r {
-                Ok(()) if out.iter().all(|v| v.is_finite()) => Ok(()),
-                Ok(()) => Err(EvalError::NonFinite(None)),
-                Err(e) => Err(e),
-            };
+            return self.checked_derivative(r, out);
         }
-        let used = self.timed(|| self.fd.gradient(self.nlp, x, f0, out))?;
-        self.counters
-            .f
-            .fetch_add(used, std::sync::atomic::Ordering::Relaxed);
+        self.fd.gradient(&self.counted(), x, f0, out)?;
         Ok(())
     }
 
@@ -221,16 +307,9 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
         if self.nlp.capabilities().jacobian {
             EvalCounters::bump(&self.counters.j);
             let r = self.timed(|| self.nlp.jacobian(x, out));
-            return match r {
-                Ok(()) if out.iter().all(|v| v.is_finite()) => Ok(()),
-                Ok(()) => Err(EvalError::NonFinite(None)),
-                Err(e) => Err(e),
-            };
+            return self.checked_derivative(r, out);
         }
-        let used = self.timed(|| self.fd.jacobian(self.nlp, x, c0, out))?;
-        self.counters
-            .c
-            .fetch_add(used, std::sync::atomic::Ordering::Relaxed);
+        self.fd.jacobian(&self.counted(), x, c0, out)?;
         Ok(())
     }
 
@@ -252,6 +331,71 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
         out: &mut [f64],
     ) -> Result<(), EvalError> {
         EvalCounters::bump(&self.counters.h);
-        self.timed(|| self.nlp.hessian_lagrangian(x, sigma, lambda, out))
+        let result = self.timed(|| self.nlp.hessian_lagrangian(x, sigma, lambda, out));
+        self.checked_derivative(result, out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    struct Calls {
+        f: AtomicU64,
+        c: AtomicU64,
+    }
+    impl Nlp for Calls {
+        fn dims(&self) -> mincon_core::NlpDims {
+            mincon_core::NlpDims { n: 1, m: 1 }
+        }
+        fn x_bounds(&self) -> (&[f64], &[f64]) {
+            (&[-1.0], &[1.0])
+        }
+        fn c_bounds(&self) -> (&[f64], &[f64]) {
+            (&[0.0], &[0.0])
+        }
+        fn x0(&self) -> &[f64] {
+            &[0.0]
+        }
+        fn capabilities(&self) -> mincon_core::Capabilities {
+            Default::default()
+        }
+        fn objective(&self, _: &[f64]) -> Result<f64, EvalError> {
+            self.f.fetch_add(1, Ordering::Relaxed);
+            Err(EvalError::NonFinite(None))
+        }
+        fn constraints(&self, x: &[f64], c: &mut [f64]) -> Result<(), EvalError> {
+            self.c.fetch_add(1, Ordering::Relaxed);
+            c[0] = x[0];
+            Ok(())
+        }
+    }
+    #[test]
+    fn counters_include_sparsity_probes_and_failed_fd_batches() {
+        let p = Calls {
+            f: AtomicU64::new(0),
+            c: AtomicU64::new(0),
+        };
+        let e = Evaluator::new(&p, &Options::default());
+        assert!(p.c.load(Ordering::Relaxed) > 0);
+        assert_eq!(
+            EvalCounters::get(&e.counters.c),
+            p.c.load(Ordering::Relaxed)
+        );
+        assert!(e.grad(&[0.0], 0.0, &mut [0.0]).is_err());
+        assert!(p.f.load(Ordering::Relaxed) > 1);
+        assert_eq!(
+            EvalCounters::get(&e.counters.f),
+            p.f.load(Ordering::Relaxed)
+        );
+        assert_eq!(
+            EvalCounters::get(&e.counters.failed),
+            p.f.load(Ordering::Relaxed)
+        );
+        e.jac(&[0.0], &[0.0], &mut [0.0]).unwrap();
+        assert_eq!(
+            EvalCounters::get(&e.counters.c),
+            p.c.load(Ordering::Relaxed)
+        );
     }
 }

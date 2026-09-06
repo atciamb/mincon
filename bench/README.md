@@ -111,7 +111,14 @@ against KNITRO-IP at 74.6% and SNOPT at 72.1%. It is a small set on a
 different machine, so it is a target, not a scoreboard. The scoreboard is the
 CUTEst run produced here.
 
-## Measured today
+## Current restoration increment
+
+The development gate passes **54/54 expected outcomes**, with returned
+objective and feasibility independently evaluated. This is not a strict
+convergence rate. See [raw baseline/current tables and limitations](results/restoration/README.md).
+The CUTEst gate has not run; the figures below are scaffold history.
+
+## Historical scaffold measurements
 
 From `cargo run --release -p mincon-ip --example run_testset`:
 
@@ -139,6 +146,5 @@ gradient and Jacobian. It is a precise statement of where the work is:
    rather than time, but on one core it is a real 3x and the early-exit path
    matters.
 
-Until those land, `mincon` should be expected to win on robustness and
-wall-clock-per-iteration and to lose on evaluation count against SLSQP for
-small dense problems. Say so; do not hide it.
+These small historical samples do not establish a general robustness or
+wall-clock advantage. Re-run matched benchmarks before making either claim.

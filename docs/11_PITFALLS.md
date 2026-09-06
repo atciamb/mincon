@@ -41,7 +41,9 @@ z        = z_tilde / d_f
 A user who sees a different objective than their own function returns will not
 trust anything else the solver says.
 
-*Guard:* needs a dedicated multiplier test. **Write one.**
+*Guard:* `scaled_nonzero_constraint_bound_and_multiplier_match_analytic_solution`
+checks `min 1e6*(x-2)^2` subject to `1000*x<=1000`: `x=1`, `lambda=2000`.
+Finite nonzero slack bounds must be scaled along with constraint values.
 
 ### 1.4 Distance-1 coloring of a Hessian
 
@@ -74,6 +76,12 @@ one.
 ---
 
 ## Category 2: works on paper, fails on real models
+
+Restoration-specific guards are in `mincon-ip/src/solver/restoration.rs` and
+`mincon-ip/tests/restoration.rs`: eliminated elastic KKT equations, rejected
+objective/derivative trials, user abort, shared budgets, and truthful HS13 and
+inconsistent-affine exits. RCM can put a zero dual diagonal first; an identity
+Hessian with a full-rank equality must not require a perturbed Newton system.
 
 ### 2.1 Stepping outside the bounds
 

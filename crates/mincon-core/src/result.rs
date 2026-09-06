@@ -31,9 +31,9 @@ pub enum ExitFlag {
     Infeasible = -2,
     /// Objective appears unbounded below. `fmincon` -3.
     Unbounded = -3,
-    /// Converged to a point that is a local minimum of infeasibility but not
-    /// feasible — the restoration phase succeeded at its own problem and the
-    /// original constraints are locally inconsistent.
+    /// Restoration reached stationary positive constraint violation. This is
+    /// a first-order local diagnostic, not a proof of infeasibility or a
+    /// second-order minimum certificate.
     LocallyInfeasible = -4,
     /// The solver failed for a numerical reason and said so honestly.
     NumericalFailure = -5,
@@ -65,7 +65,7 @@ impl ExitFlag {
     pub fn message(self) -> &'static str {
         match self {
             ExitFlag::Optimal => {
-                "Local minimum found. First-order optimality and constraints satisfied."
+                "First-order optimality and constraint tolerances satisfied."
             }
             ExitFlag::StepTolerance => {
                 "Local minimum possible. Step size below tolerance; constraints satisfied."
@@ -81,7 +81,7 @@ impl ExitFlag {
             ExitFlag::Infeasible => "No feasible point found.",
             ExitFlag::Unbounded => "Objective appears unbounded below.",
             ExitFlag::LocallyInfeasible => {
-                "Converged to a local minimum of constraint violation; problem is locally infeasible."
+                "Restoration reached stationary positive constraint violation; feasibility is unresolved beyond this local diagnostic."
             }
             ExitFlag::NumericalFailure => "Numerical difficulties; solve abandoned.",
         }
@@ -152,8 +152,9 @@ pub struct Solution {
     /// is positive at an active upper bound `c_i <= c_U` and negative at an
     /// active lower bound. This is the IPOPT/AMPL convention.
     ///
-    /// Note this is the **opposite sign** to `fmincon`'s `lambda.ineqnonlin`,
-    /// which is non-negative for `c(x) <= 0`. The compatibility façade flips it.
+    /// This matches `fmincon` for upper inequalities `c(x) <= 0`. Python's
+    /// SciPy-style inequalities `c(x) >= 0` are lower bounds and have negative
+    /// multipliers in this convention.
     pub lambda: Vec<f64>,
     /// Multipliers for the lower variable bounds, non-negative.
     pub z_l: Vec<f64>,

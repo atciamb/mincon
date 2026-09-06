@@ -94,7 +94,13 @@ IC-6  If delta_w > delta_w_max, enter feasibility restoration.
 | `delta_c_bar` | `1e-8` |
 | `kappa_c` | `1/4` |
 
-**"Acceptable" depends on `RegularizationMode`:**
+**Current implementation:** all three `RegularizationMode` values require
+certified inertia `(nv,m,0)`. A failed ordering retries natural KKT order,
+then positive diagonal congruence, before explicit regularization. The original
+scaffold never invoked its advertised curvature fallback. See
+[`12_RESTORATION_IMPLEMENTATION.md`](12_RESTORATION_IMPLEMENTATION.md).
+
+**Planned distinction, not yet implemented:**
 
 * `Inertia` — the factorization must certify inertia `(nv, m, 0)`.
 * `InertiaFree` — non-singular, plus the Chiang–Zavala curvature test on the
@@ -108,10 +114,9 @@ The curvature test (Chiang & Zavala 2016, eq. 3.11):
 d' (W + Sigma + delta_w I) d + max(-lambda_plus' c_hat, 0) >= alpha_d * ||d||^2
 ```
 
-with `alpha_d = 1e-12` scaled by `mu`. This is what lets the whole workspace
-avoid an inertia-revealing factorization, and therefore avoid HSL. Their
-CUTEr results show it also uses **56–69% fewer regularizations** than the
-inertia-based rule.
+with `alpha_d = 1e-12` scaled by `mu`. The standalone helper still needs a
+complete acceptance/retry loop and independent tests. Results in the cited
+paper are not measurements of mincon.
 
 ---
 
@@ -285,12 +290,12 @@ approximation.
 
 ---
 
-## 8. Feasibility restoration — the largest gap
+## 8. Feasibility restoration
 
-**Not implemented.** A line-search failure currently ends the solve with
-`NumericalFailure`. This is the single biggest robustness gap; on CUTEst it is
-worth roughly ten percentage points of success rate, and no comparison against
-`fmincon` is meaningful without it.
+**Implemented locally; CUTEst qualification pending.** Soft restoration and a
+reduced elastic phase now recover from line-search/factorization failures.
+The precise elimination, Gauss-Newton and re-entry variant is specified in
+[`12_RESTORATION_IMPLEMENTATION.md`](12_RESTORATION_IMPLEMENTATION.md).
 
 The specification (Wächter–Biegler §3.3):
 
@@ -312,9 +317,9 @@ primal-dual system with fraction-to-boundary and no line search, accepted while
 `||F_mu||_1` decreases by a factor `kappa_F = 0.999`. Cheap, and it rescues a
 large fraction of cases.
 
-Restoration is also what turns `TORTURE_INFEASIBLE` from `NumericalFailure`
-into a correct `LocallyInfeasible` report: converging to a local minimum of
-constraint violation *is* the certificate.
+`TORTURE_INFEASIBLE` now produces `LocallyInfeasible`: stationary positive
+violation at small restoration barrier parameter. This first-order local
+diagnostic neither proves global infeasibility nor certifies a local minimum.
 
 ---
 

@@ -2,7 +2,8 @@
 
 A nonlinear constrained optimizer in Rust, aimed at what MATLAB's `fmincon`
 does well — solving the problem a working scientist actually has, without being
-told how — and available with `pip install mincon`.
+told how — with Rust computations and Python wheels built using maturin.
+Public PyPI publication remains a release task; the local wheel is tested.
 
 ```
 minimize    f(x)
@@ -31,11 +32,12 @@ let p = Problem::new(2, |x| 100.0*(x[1]-x[0]*x[0]).powi(2) + (1.0-x[0]).powi(2))
 let r = minimize(&p, &Options::default())?;
 ```
 
-> **Status: early. A working baseline, not a finished product.** It solves 52
-> of 54 regression problems with zero false reports of success, and it has
-> substantial known gaps — feasibility restoration and SQP among them. It has
-> not yet been run against the full CUTEst set, so **there is no comparative
-> claim against `fmincon` here yet.** There will be one when the numbers exist.
+> **Status: early.** The development gate now passes all 54 expected outcomes
+> using independent objective/feasibility checks. This includes usable points
+> and expected failure diagnostics; it does not mean 54 certified optima.
+> Soft and reduced-elastic restoration are implemented. CUTEst qualification,
+> SQP and large sparse work remain. **No superiority claim against fmincon.**
+> [Measurements and limitations](bench/results/restoration/README.md).
 
 ---
 
@@ -70,6 +72,8 @@ Full analysis: [`docs/01_FMINCON_ANATOMY.md`](docs/01_FMINCON_ANATOMY.md).
 * **Interior point** — primal-dual, filter line search, Wächter–Biegler
   Algorithm IC inertia correction, second-order corrections,
   fraction-to-boundary, bound-multiplier resets, scaled `E_mu` termination.
+* **Feasibility restoration** — guarded soft steps, then analytically reduced
+  elastic minimization with Gauss-Newton curvature and filter re-entry.
 * **Sparse `LDL^T`** written from scratch: dynamic regularization, inertia
   certified by Sylvester's law, element-growth detection, iterative refinement.
   **No HSL, no MUMPS, no Fortran** — which is what makes the wheel possible.
@@ -78,16 +82,16 @@ Full analysis: [`docs/01_FMINCON_ANATOMY.md`](docs/01_FMINCON_ANATOMY.md).
 * **Gradient-based scaling**, on by default.
 * **Algorithm portfolio** with deterministic ranking.
 * **Python bindings** — `abi3` wheel, SciPy-compatible `minimize`.
-* **Test set** — 45 Hock–Schittkowski problems plus 10 torture problems whose
-  pass criterion is *reporting the right failure*.
+* **Test set** — 44 Hock–Schittkowski problems plus 10 torture problems with
+  independent feasibility/reference-value checks and explicit failure fixtures.
 * **Benchmark harness** — 1075 CUTEst problems via S2MPJ, Dolan–Moré
   performance profiles, Moré–Wild data profiles, and a MATLAB script to
   generate the `fmincon` baseline.
 
 ### Known gaps, in priority order
 
-1. **Feasibility restoration.** A line-search failure ends the solve. The
-   biggest robustness gap; worth roughly ten points on CUTEst.
+1. **Restoration qualification.** The local gates pass; the required CUTEst
+   improvement remains unmeasured. Inertia-free acceptance is still pending.
 2. **Automatic differentiation.** Finite differences cap achievable accuracy at
    `sqrt(eps)` and cost `n` evaluations per gradient.
 3. **AMD ordering.** `Ordering::Amd` falls back to RCM.

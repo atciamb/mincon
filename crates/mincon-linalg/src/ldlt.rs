@@ -565,9 +565,8 @@ impl Factorization {
     ///   we did not compute.
     ///
     /// An interior-point method must not treat an uncertified inertia as a
-    /// certificate. This flag is what drives
-    /// [`mincon_core::RegularizationMode::Hybrid`] down to the curvature test,
-    /// and what tells the regularization loop to raise `delta_w`.
+    /// certificate. The current KKT driver retries ordering, scaling, and
+    /// explicit regularization until this certificate is available.
     #[must_use]
     pub fn inertia_is_certified(&self) -> bool {
         self.factored && self.n_regularized == 0 && self.max_abs_l < self.growth_limit

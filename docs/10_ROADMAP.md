@@ -13,7 +13,7 @@ written down.
 | | Milestone | Gate | State |
 |---|---|---|---|
 | M0 | Working baseline | 52/54 testset, 0 lies | ✅ **done** |
-| M1 | Feasibility restoration | `TORTURE_INFEASIBLE` → `LocallyInfeasible`; CUTEst +8pp | ⬜ |
+| M1 | Feasibility restoration | local gates pass; CUTEst +8pp remains unmeasured | **partial** |
 | M2 | AD bridge + docs | JAX/PyTorch/CasADi examples; ≥10x fewer evals with `jac` | ⬜ |
 | M3 | AMD ordering | fill ratio ≥3x better than RCM on `n>1000` | ⬜ |
 | M4 | Limited-memory BFGS | `n = 10 000` solves in bounded memory | ⬜ |
@@ -50,11 +50,14 @@ written down.
 
 Spec: `docs/02_SPEC_INTERIOR_POINT.md` §8.
 
-A line-search failure currently ends the solve. Restoration minimizes
-infeasibility and re-enters, and it is also what turns "I could not converge"
-into the *certificate* "this problem is locally infeasible".
+Soft restoration and a reduced elastic Gauss-Newton phase are implemented.
+The local gates below pass, including independent fixture checks and Python
+wheel regressions. `LocallyInfeasible` is a first-order local diagnostic,
+not a certificate. See `12_RESTORATION_IMPLEMENTATION.md` and
+`../bench/results/restoration/README.md` for the variant and measurements.
+M1 stays partial: S2MPJ acquisition was declined and CUTEst has not run.
 
-Build in order:
+Implementation sequence (completed locally):
 
 1. **Algorithm R** first — plain Newton steps on the primal-dual system with
    fraction-to-boundary and no line search, accepted while `||F_mu||_1` falls

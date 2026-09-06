@@ -21,12 +21,12 @@ What is left:
 |---|---|
 | MUMPS | Fortran toolchain, awkward licence, heavy |
 | PARDISO | proprietary |
-| `faer` 0.24 (MIT) | sparse `LLT`, `LU`, `QR` — **no sparse `LDL^T` or Bunch–Kaufman**. Verified against the 0.24.4 docs. |
+| `faer` 0.24 (MIT) | Sparse LDLT and intranodal Bunch–Kaufman are exposed in its [Cholesky module](https://docs.rs/faer/latest/faer/sparse/linalg/cholesky/index.html). Qualify inertia, pivoting and performance contracts before adopting. |
 | `qdldl` via `clarabel` | Apache-2.0 and good, but it is a quasi-definite `LDL^T` with no inertia contract and no per-pivot sign expectations |
 | **Write it** | ~600 lines, no dependency, full control |
 
-So we write it. This is not the compromise it looks like: it is what makes the
-distribution story possible at all.
+The scaffold uses its own LDLT implementation. That is an existing design
+choice, not evidence that compatible Rust alternatives are unavailable.
 
 ---
 
@@ -170,5 +170,5 @@ against itself is tested against nothing.
 - Amestoy, Davis & Duff, *An approximate minimum degree ordering algorithm*, SIAM J. Matrix Anal. Appl. 17(4), 1996.
 - Davis, *Direct Methods for Sparse Linear Systems*, SIAM, 2006.
 - [QDLDL / OSQP](https://github.com/osqp/qdldl) — Apache-2.0, the reference for the up-looking kernel.
-- [faer](https://docs.rs/faer/latest/faer/) — MIT; confirmed to lack sparse `LDL^T` at 0.24.4.
+- [faer sparse Cholesky](https://docs.rs/faer/latest/faer/sparse/linalg/cholesky/index.html) — sparse LDLT and intranodal Bunch–Kaufman; a backend candidate requiring qualification.
 - [Clarabel.rs](https://github.com/oxfordcontrol/Clarabel.rs) — Apache-2.0; a good reference for dynamic regularization in practice.

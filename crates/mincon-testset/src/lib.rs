@@ -81,6 +81,9 @@ pub enum Expect {
     /// the one a local method reaches from `x0`; only feasibility and
     /// stationarity are checked.
     LocalMinimum,
+    /// Known optimum with failed constraint qualifications; require an honest
+    /// non-success usable-point status as well as objective and feasibility.
+    DegenerateOptimum,
 }
 
 impl TestProblem {
@@ -93,8 +96,14 @@ impl TestProblem {
     /// Maximum constraint violation at `x`, including variable bounds.
     #[must_use]
     pub fn violation(&self, x: &[f64]) -> f64 {
+        if x.len() != self.n || x.iter().any(|x| !x.is_finite()) {
+            return f64::INFINITY;
+        }
         let mut c = vec![0.0; self.m];
         (self.c)(x, &mut c);
+        if c.iter().any(|c| !c.is_finite()) {
+            return f64::INFINITY;
+        }
         let mut worst = 0.0_f64;
         for i in 0..self.m {
             worst = worst.max(self.cl[i] - c[i]).max(c[i] - self.cu[i]);

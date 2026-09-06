@@ -102,7 +102,7 @@ pub fn detect_jacobian_sparsity<P: Nlp + ?Sized>(nlp: &P, cfg: &DetectConfig) ->
 
     let mut evaluations = 0u64;
     let mut triplets: Vec<(usize, usize)> = Vec::new();
-    let mut base = x0.to_vec();
+    let mut base: Vec<f64> = (0..n).map(|j| clamp(x0[j], lb[j], ub[j])).collect();
     let mut probe = vec![0.0; m];
     let mut reference = vec![0.0; m];
 

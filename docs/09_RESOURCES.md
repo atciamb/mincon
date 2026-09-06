@@ -168,7 +168,7 @@ that success is decided by the harness.
 | [**Clarabel.rs**](https://github.com/oxfordcontrol/Clarabel.rs) | Apache-2.0 | A serious interior-point solver in idiomatic Rust. Read for dynamic regularization in practice, and for how to organize a Rust numerical crate. |
 | [**OSQP**](https://github.com/osqp/osqp) | Apache-2.0 | ADMM QP. The right fallback QP solver, and the paper is a model of clear exposition. |
 | [**CSparse**](https://github.com/DrTimothyAldenDavis/SuiteSparse) | LGPL / BSD by module | AMD is **BSD-3-Clause** and therefore usable. The `amd` Rust crate (v0.2.2) is a port of it. |
-| [**faer**](https://github.com/sarah-quinones/faer-rs) | MIT | Best-in-class Rust dense linear algebra. Confirmed at 0.24.4 to have **no sparse `LDL^T`**, which is why we write our own. Use it for dense paths. |
+| [**faer**](https://docs.rs/faer/latest/faer/sparse/linalg/cholesky/index.html) | MIT | Dense and sparse linear algebra, including sparse LDLT and intranodal Bunch–Kaufman. Evaluate its numerical contracts as an alternative backend. |
 | [**NLopt**](https://github.com/stevengj/nlopt) | LGPL/MIT | Breadth of algorithms; a good source of ideas, weaker on constrained methods. |
 | [**SciPy `_slsqp`**](https://github.com/scipy/scipy) | BSD-3 | Kraft's 1988 Fortran SLSQP. The thing to beat on small dense problems; currently ~5x cheaper than us in evaluations. |
 | [**CasADi**](https://github.com/casadi/casadi) | LGPL | Best-in-class AD for optimization. The model for what an AD bridge should feel like. |
@@ -187,7 +187,7 @@ in prose in the spec and implement from the description.
 
 | Crate | Version | Licence | Use |
 |---|---|---|---|
-| `faer` | 0.24.4 | MIT | dense linear algebra; **no sparse LDL^T** |
+| `faer` | 0.24.4 | MIT | dense and sparse linear algebra, including LDLT |
 | `amd` | 0.2.2 | BSD-3 | AMD ordering — **the pending `mincon-linalg` task** |
 | `clarabel` | 0.11.1 | Apache-2.0 | reference reading; possible conic backend later |
 | `nalgebra` | 0.35 | Apache-2.0 | general linear algebra; heavier than needed here |

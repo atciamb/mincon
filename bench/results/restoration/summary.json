@@ -1,0 +1,1109 @@
+{
+  "baseline_commit": "616cd5edb67ffbf8fdc5ecce7e7137d114aeca7b",
+  "scope": "development fixtures; not CUTEst or a matched competitor comparison",
+  "baseline_harness": "original scaffold verdicts; not independently rescored",
+  "current_harness": "fresh objective/feasibility; separate HS13 status check",
+  "baseline_verdicts": {
+    "PASS": 52,
+    "FAIL": 1,
+    "soft": 1
+  },
+  "current_verdicts": {
+    "PASS": 54
+  },
+  "current_statuses": {
+    "Optimal": 39,
+    "Acceptable": 6,
+    "StepTolerance": 2,
+    "NumericalFailure": 5,
+    "LocallyInfeasible": 1,
+    "Unbounded": 1
+  },
+  "baseline_total_f_evals": 6758,
+  "current_total_f_evals": 7930,
+  "accounting_caveat": "Current counts include failed FD batches; final redundant gradient removed. Baseline omits some failed probes.",
+  "baseline": [
+    {
+      "problem": "HS1",
+      "n": 2,
+      "m": 0,
+      "iterations": 19,
+      "f_evals": 74,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS2",
+      "n": 2,
+      "m": 0,
+      "iterations": 23,
+      "f_evals": 85,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS3",
+      "n": 2,
+      "m": 0,
+      "iterations": 13,
+      "f_evals": 47,
+      "reported_optimality": 5.41e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS4",
+      "n": 2,
+      "m": 0,
+      "iterations": 9,
+      "f_evals": 35,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS5",
+      "n": 2,
+      "m": 0,
+      "iterations": 8,
+      "f_evals": 32,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS38",
+      "n": 4,
+      "m": 0,
+      "iterations": 32,
+      "f_evals": 179,
+      "reported_optimality": 4.08e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS45",
+      "n": 5,
+      "m": 0,
+      "iterations": 19,
+      "f_evals": 132,
+      "reported_optimality": 2.13e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS110",
+      "n": 10,
+      "m": 0,
+      "iterations": 27,
+      "f_evals": 580,
+      "reported_optimality": 1.06e-07,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS6",
+      "n": 2,
+      "m": 1,
+      "iterations": 10,
+      "f_evals": 43,
+      "reported_optimality": 8.13e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS7",
+      "n": 2,
+      "m": 1,
+      "iterations": 25,
+      "f_evals": 96,
+      "reported_optimality": 6.42e-08,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS8",
+      "n": 2,
+      "m": 2,
+      "iterations": 6,
+      "f_evals": 26,
+      "reported_optimality": 9.33e-13,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS9",
+      "n": 2,
+      "m": 1,
+      "iterations": 6,
+      "f_evals": 26,
+      "reported_optimality": 1.7e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS26",
+      "n": 3,
+      "m": 1,
+      "iterations": 28,
+      "f_evals": 155,
+      "reported_optimality": 6.09e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS27",
+      "n": 3,
+      "m": 1,
+      "iterations": 31,
+      "f_evals": 145,
+      "reported_optimality": 1.19e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS28",
+      "n": 3,
+      "m": 1,
+      "iterations": 9,
+      "f_evals": 51,
+      "reported_optimality": 8.17e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS39",
+      "n": 4,
+      "m": 2,
+      "iterations": 26,
+      "f_evals": 162,
+      "reported_optimality": 1.5e-08,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS40",
+      "n": 4,
+      "m": 3,
+      "iterations": 8,
+      "f_evals": 54,
+      "reported_optimality": 6.78e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS42",
+      "n": 4,
+      "m": 2,
+      "iterations": 24,
+      "f_evals": 169,
+      "reported_optimality": 2.51e-07,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS10",
+      "n": 2,
+      "m": 1,
+      "iterations": 26,
+      "f_evals": 91,
+      "reported_optimality": 2.33e-08,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS11",
+      "n": 2,
+      "m": 1,
+      "iterations": 16,
+      "f_evals": 155,
+      "reported_optimality": 1.24e-07,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS12",
+      "n": 2,
+      "m": 1,
+      "iterations": 21,
+      "f_evals": 134,
+      "reported_optimality": 7.33e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS13",
+      "n": 2,
+      "m": 1,
+      "iterations": 70,
+      "f_evals": 308,
+      "reported_optimality": 2.29,
+      "status": null,
+      "verdict": "FAIL"
+    },
+    {
+      "problem": "HS14",
+      "n": 2,
+      "m": 2,
+      "iterations": 10,
+      "f_evals": 38,
+      "reported_optimality": 1e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS15",
+      "n": 2,
+      "m": 2,
+      "iterations": 14,
+      "f_evals": 52,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS16",
+      "n": 2,
+      "m": 2,
+      "iterations": 18,
+      "f_evals": 62,
+      "reported_optimality": 9.44e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS18",
+      "n": 2,
+      "m": 2,
+      "iterations": 24,
+      "f_evals": 100,
+      "reported_optimality": 7.54e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS21",
+      "n": 2,
+      "m": 1,
+      "iterations": 14,
+      "f_evals": 50,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS22",
+      "n": 2,
+      "m": 2,
+      "iterations": 8,
+      "f_evals": 32,
+      "reported_optimality": 3.44e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS23",
+      "n": 2,
+      "m": 5,
+      "iterations": 15,
+      "f_evals": 55,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS24",
+      "n": 2,
+      "m": 3,
+      "iterations": 12,
+      "f_evals": 45,
+      "reported_optimality": 8.6e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS29",
+      "n": 3,
+      "m": 1,
+      "iterations": 26,
+      "f_evals": 210,
+      "reported_optimality": 1.51e-07,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS30",
+      "n": 3,
+      "m": 1,
+      "iterations": 22,
+      "f_evals": 109,
+      "reported_optimality": 2.91e-08,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS31",
+      "n": 3,
+      "m": 1,
+      "iterations": 27,
+      "f_evals": 237,
+      "reported_optimality": 9.34e-06,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS32",
+      "n": 3,
+      "m": 2,
+      "iterations": 15,
+      "f_evals": 71,
+      "reported_optimality": 9.59e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS33",
+      "n": 3,
+      "m": 2,
+      "iterations": 16,
+      "f_evals": 75,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS34",
+      "n": 3,
+      "m": 2,
+      "iterations": 13,
+      "f_evals": 63,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS35",
+      "n": 3,
+      "m": 1,
+      "iterations": 22,
+      "f_evals": 194,
+      "reported_optimality": 1.77e-08,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS36",
+      "n": 3,
+      "m": 1,
+      "iterations": 11,
+      "f_evals": 55,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS37",
+      "n": 3,
+      "m": 2,
+      "iterations": 15,
+      "f_evals": 73,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS41",
+      "n": 4,
+      "m": 1,
+      "iterations": 22,
+      "f_evals": 131,
+      "reported_optimality": 2.68e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS43",
+      "n": 4,
+      "m": 3,
+      "iterations": 46,
+      "f_evals": 383,
+      "reported_optimality": 3.48e-06,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS44",
+      "n": 4,
+      "m": 6,
+      "iterations": 20,
+      "f_evals": 115,
+      "reported_optimality": 1e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS71",
+      "n": 4,
+      "m": 2,
+      "iterations": 22,
+      "f_evals": 219,
+      "reported_optimality": 8.28e-06,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS100",
+      "n": 7,
+      "m": 4,
+      "iterations": 76,
+      "f_evals": 1104,
+      "reported_optimality": 4.52e-06,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_SCALING",
+      "n": 2,
+      "m": 1,
+      "iterations": 1,
+      "f_evals": 59,
+      "reported_optimality": 0.0,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_DOMAIN",
+      "n": 2,
+      "m": 1,
+      "iterations": 9,
+      "f_evals": 35,
+      "reported_optimality": 6.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_NAN_POCKET",
+      "n": 2,
+      "m": 0,
+      "iterations": 7,
+      "f_evals": 29,
+      "reported_optimality": 2.51e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_INFEASIBLE",
+      "n": 2,
+      "m": 2,
+      "iterations": 2,
+      "f_evals": 59,
+      "reported_optimality": 2.0,
+      "status": null,
+      "verdict": "soft"
+    },
+    {
+      "problem": "TORTURE_UNBOUNDED",
+      "n": 2,
+      "m": 1,
+      "iterations": 16,
+      "f_evals": 56,
+      "reported_optimality": 1.0,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_DEGENERATE",
+      "n": 2,
+      "m": 2,
+      "iterations": 8,
+      "f_evals": 32,
+      "reported_optimality": 3.04e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_REDUNDANT",
+      "n": 2,
+      "m": 20,
+      "iterations": 8,
+      "f_evals": 32,
+      "reported_optimality": 2.65e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_PINNED",
+      "n": 2,
+      "m": 0,
+      "iterations": 9,
+      "f_evals": 35,
+      "reported_optimality": 7.22e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_FLAT",
+      "n": 2,
+      "m": 0,
+      "iterations": 31,
+      "f_evals": 106,
+      "reported_optimality": 7.75e-09,
+      "status": null,
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_NOISY",
+      "n": 2,
+      "m": 1,
+      "iterations": 13,
+      "f_evals": 63,
+      "reported_optimality": 1e-09,
+      "status": null,
+      "verdict": "PASS"
+    }
+  ],
+  "current": [
+    {
+      "problem": "HS1",
+      "n": 2,
+      "m": 0,
+      "iterations": 19,
+      "f_evals": 72,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS2",
+      "n": 2,
+      "m": 0,
+      "iterations": 19,
+      "f_evals": 69,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS3",
+      "n": 2,
+      "m": 0,
+      "iterations": 13,
+      "f_evals": 45,
+      "reported_optimality": 5.41e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS4",
+      "n": 2,
+      "m": 0,
+      "iterations": 9,
+      "f_evals": 33,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS5",
+      "n": 2,
+      "m": 0,
+      "iterations": 21,
+      "f_evals": 111,
+      "reported_optimality": 1.97e-08,
+      "status": "Acceptable",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS38",
+      "n": 4,
+      "m": 0,
+      "iterations": 32,
+      "f_evals": 175,
+      "reported_optimality": 4.08e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS45",
+      "n": 5,
+      "m": 0,
+      "iterations": 17,
+      "f_evals": 115,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS110",
+      "n": 10,
+      "m": 0,
+      "iterations": 25,
+      "f_evals": 548,
+      "reported_optimality": 4.62e-07,
+      "status": "StepTolerance",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS6",
+      "n": 2,
+      "m": 1,
+      "iterations": 10,
+      "f_evals": 41,
+      "reported_optimality": 8.13e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS7",
+      "n": 2,
+      "m": 1,
+      "iterations": 25,
+      "f_evals": 91,
+      "reported_optimality": 3.21e-08,
+      "status": "Acceptable",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS8",
+      "n": 2,
+      "m": 2,
+      "iterations": 6,
+      "f_evals": 24,
+      "reported_optimality": 9.33e-13,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS9",
+      "n": 2,
+      "m": 1,
+      "iterations": 6,
+      "f_evals": 24,
+      "reported_optimality": 2.08e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS26",
+      "n": 3,
+      "m": 1,
+      "iterations": 28,
+      "f_evals": 151,
+      "reported_optimality": 6.09e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS27",
+      "n": 3,
+      "m": 1,
+      "iterations": 31,
+      "f_evals": 142,
+      "reported_optimality": 1.19e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS28",
+      "n": 3,
+      "m": 1,
+      "iterations": 9,
+      "f_evals": 48,
+      "reported_optimality": 8.17e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS39",
+      "n": 4,
+      "m": 2,
+      "iterations": 26,
+      "f_evals": 158,
+      "reported_optimality": 1.5e-08,
+      "status": "Acceptable",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS40",
+      "n": 4,
+      "m": 3,
+      "iterations": 7,
+      "f_evals": 45,
+      "reported_optimality": 2.41e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS42",
+      "n": 4,
+      "m": 2,
+      "iterations": 43,
+      "f_evals": 490,
+      "reported_optimality": 1.91e-06,
+      "status": "StepTolerance",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS10",
+      "n": 2,
+      "m": 1,
+      "iterations": 24,
+      "f_evals": 98,
+      "reported_optimality": 7.45e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS11",
+      "n": 2,
+      "m": 1,
+      "iterations": 31,
+      "f_evals": 201,
+      "reported_optimality": 2.14e-07,
+      "status": "NumericalFailure",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS12",
+      "n": 2,
+      "m": 1,
+      "iterations": 20,
+      "f_evals": 92,
+      "reported_optimality": 2.48e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS13",
+      "n": 2,
+      "m": 1,
+      "iterations": 123,
+      "f_evals": 773,
+      "reported_optimality": 2.12e-10,
+      "status": "Acceptable",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS14",
+      "n": 2,
+      "m": 2,
+      "iterations": 12,
+      "f_evals": 42,
+      "reported_optimality": 1e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS15",
+      "n": 2,
+      "m": 2,
+      "iterations": 13,
+      "f_evals": 47,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS16",
+      "n": 2,
+      "m": 2,
+      "iterations": 17,
+      "f_evals": 57,
+      "reported_optimality": 6.86e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS18",
+      "n": 2,
+      "m": 2,
+      "iterations": 22,
+      "f_evals": 81,
+      "reported_optimality": 2.72e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS21",
+      "n": 2,
+      "m": 1,
+      "iterations": 11,
+      "f_evals": 39,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS22",
+      "n": 2,
+      "m": 2,
+      "iterations": 8,
+      "f_evals": 30,
+      "reported_optimality": 3.44e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS23",
+      "n": 2,
+      "m": 5,
+      "iterations": 14,
+      "f_evals": 50,
+      "reported_optimality": 2.85e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS24",
+      "n": 2,
+      "m": 3,
+      "iterations": 14,
+      "f_evals": 49,
+      "reported_optimality": 4.27e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS29",
+      "n": 3,
+      "m": 1,
+      "iterations": 17,
+      "f_evals": 79,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS30",
+      "n": 3,
+      "m": 1,
+      "iterations": 22,
+      "f_evals": 131,
+      "reported_optimality": 2.98e-08,
+      "status": "Acceptable",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS31",
+      "n": 3,
+      "m": 1,
+      "iterations": 163,
+      "f_evals": 1181,
+      "reported_optimality": 2.22e-08,
+      "status": "NumericalFailure",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS32",
+      "n": 3,
+      "m": 2,
+      "iterations": 16,
+      "f_evals": 72,
+      "reported_optimality": 8.94e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS33",
+      "n": 3,
+      "m": 2,
+      "iterations": 23,
+      "f_evals": 173,
+      "reported_optimality": 2.51e-09,
+      "status": "NumericalFailure",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS34",
+      "n": 3,
+      "m": 2,
+      "iterations": 16,
+      "f_evals": 77,
+      "reported_optimality": 1e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS35",
+      "n": 3,
+      "m": 1,
+      "iterations": 18,
+      "f_evals": 164,
+      "reported_optimality": 3.77e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS36",
+      "n": 3,
+      "m": 1,
+      "iterations": 11,
+      "f_evals": 58,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS37",
+      "n": 3,
+      "m": 2,
+      "iterations": 23,
+      "f_evals": 217,
+      "reported_optimality": 2.12e-06,
+      "status": "NumericalFailure",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS41",
+      "n": 4,
+      "m": 1,
+      "iterations": 20,
+      "f_evals": 110,
+      "reported_optimality": 9.84e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS43",
+      "n": 4,
+      "m": 3,
+      "iterations": 29,
+      "f_evals": 276,
+      "reported_optimality": 2.51e-09,
+      "status": "NumericalFailure",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS44",
+      "n": 4,
+      "m": 6,
+      "iterations": 18,
+      "f_evals": 101,
+      "reported_optimality": 7.45e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS71",
+      "n": 4,
+      "m": 2,
+      "iterations": 30,
+      "f_evals": 238,
+      "reported_optimality": 9.57e-08,
+      "status": "Acceptable",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "HS100",
+      "n": 7,
+      "m": 4,
+      "iterations": 52,
+      "f_evals": 679,
+      "reported_optimality": 9.3e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_SCALING",
+      "n": 2,
+      "m": 1,
+      "iterations": 1,
+      "f_evals": 9,
+      "reported_optimality": 2.58e-26,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_DOMAIN",
+      "n": 2,
+      "m": 1,
+      "iterations": 9,
+      "f_evals": 33,
+      "reported_optimality": 6.67e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_NAN_POCKET",
+      "n": 2,
+      "m": 0,
+      "iterations": 7,
+      "f_evals": 27,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_INFEASIBLE",
+      "n": 2,
+      "m": 2,
+      "iterations": 10,
+      "f_evals": 76,
+      "reported_optimality": 1.0,
+      "status": "LocallyInfeasible",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_UNBOUNDED",
+      "n": 2,
+      "m": 1,
+      "iterations": 16,
+      "f_evals": 54,
+      "reported_optimality": 1.0,
+      "status": "Unbounded",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_DEGENERATE",
+      "n": 2,
+      "m": 2,
+      "iterations": 8,
+      "f_evals": 30,
+      "reported_optimality": 3.03e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_REDUNDANT",
+      "n": 2,
+      "m": 20,
+      "iterations": 10,
+      "f_evals": 36,
+      "reported_optimality": 2.51e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_PINNED",
+      "n": 2,
+      "m": 0,
+      "iterations": 0,
+      "f_evals": 2,
+      "reported_optimality": 3e-10,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_FLAT",
+      "n": 2,
+      "m": 0,
+      "iterations": 31,
+      "f_evals": 104,
+      "reported_optimality": 7.75e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    },
+    {
+      "problem": "TORTURE_NOISY",
+      "n": 2,
+      "m": 1,
+      "iterations": 17,
+      "f_evals": 62,
+      "reported_optimality": 1e-09,
+      "status": "Optimal",
+      "verdict": "PASS"
+    }
+  ]
+}

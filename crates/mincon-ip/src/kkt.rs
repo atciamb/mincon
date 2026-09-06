@@ -21,10 +21,10 @@
 //! # Regularization
 //!
 //! [`KktSystem::factor_with_correction`] implements Wächter–Biegler's
-//! Algorithm IC over `delta_w` and `delta_c`, with the Chiang–Zavala
-//! inertia-free curvature test standing in whenever the factorization declines
-//! to certify its inertia (see [`mincon_linalg::Factorization::inertia_is_certified`]).
-//! That combination is what lets the whole workspace avoid an HSL dependency.
+//! Algorithm IC over `delta_w` and `delta_c`. All modes currently require
+//! certified inertia; the separate curvature-test helper is not a complete
+//! inertia-free algorithm. Ordering and congruence retries precede numerical
+//! regularization; see `docs/12_RESTORATION_IMPLEMENTATION.md`.
 
 use std::sync::Arc;
 
@@ -175,6 +175,7 @@ pub struct KktSystem {
     pub m: usize,
     matrix: Csc,
     factor: Factorization,
+    natural_order: bool,
     signs: Vec<i8>,
 
     /// Position of the `(j, j)` diagonal for each primal variable.
@@ -193,6 +194,9 @@ pub struct KktSystem {
     sol: Vec<f64>,
 
     last_delta_w: f64,
+    dual_diagonal: Vec<f64>,
+    scaled_matrix: Csc,
+    scales: Vec<f64>,
 }
 
 impl KktSystem {
@@ -299,11 +303,13 @@ impl KktSystem {
             *s = -1;
         }
 
+        let scaled_matrix = matrix.clone();
         Ok(Self {
             nv,
             m,
             matrix,
             factor,
+            natural_order: ordering == Ordering::Natural,
             signs,
             diag_v,
             diag_c,
@@ -317,6 +323,9 @@ impl KktSystem {
             rhs: vec![0.0; dim],
             sol: vec![0.0; dim],
             last_delta_w: 0.0,
+            dual_diagonal: vec![0.0; m],
+            scaled_matrix,
+            scales: vec![1.0; dim],
         })
     }
 
@@ -355,8 +364,8 @@ impl KktSystem {
         for (j, &p) in self.diag_v.iter().enumerate() {
             vals[p] += sigma[j] + delta_w;
         }
-        for &p in &self.diag_c {
-            vals[p] = -delta_c;
+        for (i, &p) in self.diag_c.iter().enumerate() {
+            vals[p] = -self.dual_diagonal[i] - delta_c;
         }
     }
 
@@ -371,8 +380,8 @@ impl KktSystem {
                 vals[p] += shift;
             }
         }
-        for &p in &self.diag_c {
-            vals[p] = -delta_c;
+        for (i, &p) in self.diag_c.iter().enumerate() {
+            vals[p] = -self.dual_diagonal[i] - delta_c;
         }
     }
 
@@ -385,8 +394,8 @@ impl KktSystem {
     /// Factor the currently assembled matrix, raising `delta_w` until the step
     /// it produces is usable.
     ///
-    /// `rhs` is consumed to produce `sol`; both are length `nv + m`. `mu`
-    /// scales the dual regularization and the curvature threshold.
+    /// `mu` scales the dual regularization. Solve with the accepted factors
+    /// through [`KktSystem::solve`] or [`KktSystem::solve_scratch`].
     ///
     /// # Errors
     /// [`KktFailure::RegularizationExhausted`] when no `delta_w` works, which
@@ -400,17 +409,61 @@ impl KktSystem {
         mode: RegularizationMode,
         params: &CorrectionParams,
     ) -> Result<FactorOutcome, KktFailure> {
+        self.dual_diagonal.fill(0.0);
+        self.factor_inner(hess_upper_values, jac_t_values, sigma, mu, mode, params)
+    }
+
+    /// Factor an elastic-restoration system with positive Schur diagonal `t`.
+    /// The lower-right block is `-diag(t)` before numerical regularization.
+    /// Requires certified inertia; reuses the original symbolic structure.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn factor_restoration(
+        &mut self,
+        hess: &[f64],
+        jac_t: &[f64],
+        sigma: &[f64],
+        t: &[f64],
+        mu: f64,
+        params: &CorrectionParams,
+    ) -> Result<FactorOutcome, KktFailure> {
+        if t.len() != self.m || t.iter().any(|x| !x.is_finite() || *x <= 0.0) {
+            return Err(KktFailure::RegularizationExhausted { delta_w: 0.0 });
+        }
+        self.dual_diagonal.copy_from_slice(t);
+        self.factor_inner(hess, jac_t, sigma, mu, RegularizationMode::Inertia, params)
+    }
+
+    fn factor_inner(
+        &mut self,
+        hess_upper_values: &[f64],
+        jac_t_values: &[f64],
+        sigma: &[f64],
+        mu: f64,
+        mode: RegularizationMode,
+        params: &CorrectionParams,
+    ) -> Result<FactorOutcome, KktFailure> {
         let (nv, m) = (self.nv, self.m);
         let mut delta_w = 0.0;
         let mut delta_c = 0.0;
         let mut applied = 0.0;
         self.assemble(hess_upper_values, jac_t_values, sigma, 0.0, 0.0);
+        self.scales.fill(1.0);
+        let mut equilibrate = false;
 
         let reg = RegularizationParams::default();
         let mut first_perturbation = true;
 
         for attempt in 1..=params.max_attempts {
-            let result = self.factor.factor(self.matrix.values(), &self.signs, &reg);
+            if equilibrate {
+                self.equilibrate();
+            } else {
+                self.scaled_matrix
+                    .values_mut()
+                    .copy_from_slice(self.matrix.values());
+            }
+            let result = self
+                .factor
+                .factor(self.scaled_matrix.values(), &self.signs, &reg);
             let mut acceptable = false;
             let mut inertia = Inertia::default();
             let mut certified = false;
@@ -422,14 +475,13 @@ impl KktSystem {
                     let singular = inert.zero > 0;
                     acceptable = match mode {
                         RegularizationMode::Inertia => certified && inert.is_kkt_correct(nv, m),
-                        RegularizationMode::InertiaFree => !singular,
-                        RegularizationMode::Hybrid => {
-                            if certified {
-                                inert.is_kkt_correct(nv, m)
-                            } else {
-                                !singular
-                            }
+                        RegularizationMode::InertiaFree => {
+                            certified && !singular && inert.is_kkt_correct(nv, m)
                         }
+                        // The caller previously never ran the advertised
+                        // curvature fallback. Do not accept modified pivots
+                        // as evidence about the original matrix.
+                        RegularizationMode::Hybrid => certified && inert.is_kkt_correct(nv, m),
                     };
                 }
                 Err(LdltError::ZeroPivot(_) | LdltError::NonFinite(_)) => {}
@@ -437,9 +489,7 @@ impl KktSystem {
             }
 
             if acceptable {
-                // In inertia-free / uncertified mode the inertia is not a
-                // certificate, so the caller must run the curvature test on the
-                // computed direction. That happens in `solve_and_verify`.
+                // All current modes conservatively require a certificate.
                 self.last_delta_w = delta_w;
                 return Ok(FactorOutcome {
                     delta_w,
@@ -450,9 +500,27 @@ impl KktSystem {
                 });
             }
 
+            // RCM may eliminate a zero dual diagonal before any primal row.
+            // Retry a primal-first order before perturbing a full-rank system.
+            if !self.natural_order {
+                let symbolic = Symbolic::analyse(self.matrix.pattern(), Ordering::Natural)
+                    .map_err(KktFailure::Linear)?;
+                self.factor = Factorization::new(Arc::new(symbolic));
+                self.natural_order = true;
+                continue;
+            }
+            // Try changing units before changing the Newton equations.
+            if !equilibrate {
+                equilibrate = true;
+                continue;
+            }
+
             // Algorithm IC steps 2-5.
             let previous = applied;
-            if inertia.zero > 0 || !matches!(mode, RegularizationMode::Inertia) && delta_w > 0.0 {
+            if inertia.zero > 0
+                || self.factor.regularized_pivots() > 0
+                || !matches!(mode, RegularizationMode::Inertia) && delta_w > 0.0
+            {
                 delta_c = params.delta_c_bar * mu.max(f64::MIN_POSITIVE).powf(params.kappa_c);
             }
             delta_w = if delta_w == 0.0 {
@@ -482,7 +550,57 @@ impl KktSystem {
     /// # Errors
     /// A linear-algebra failure.
     pub fn solve(&mut self, rhs: &[f64], sol: &mut [f64], steps: usize) -> Result<f64, LdltError> {
-        self.factor.solve_refined(&self.matrix, rhs, sol, steps)
+        let scaled_rhs: Vec<_> = rhs.iter().zip(&self.scales).map(|(b, s)| b * s).collect();
+        self.factor
+            .solve_refined(&self.scaled_matrix, &scaled_rhs, sol, steps)?;
+        for (x, s) in sol.iter_mut().zip(&self.scales) {
+            *x *= s;
+        }
+        let mut residual = rhs.to_vec();
+        self.matrix.gemv_symmetric_upper(-1.0, sol, &mut residual);
+        Ok(residual.iter().fold(0.0_f64, |a, r| a.max(r.abs())))
+    }
+
+    /// Positive diagonal congruence, with separate primal/dual block units.
+    fn equilibrate(&mut self) {
+        let p = self.matrix.pattern();
+        let values = self.matrix.values();
+        let mut rowmax = vec![0.0_f64; self.nv];
+        for col in 0..self.dim() {
+            for pos in p.col_ptr()[col]..p.col_ptr()[col + 1] {
+                let row = p.row_idx()[pos];
+                let v = values[pos].abs();
+                if row < self.nv {
+                    rowmax[row] = rowmax[row].max(v);
+                }
+                if col < self.nv {
+                    rowmax[col] = rowmax[col].max(v);
+                }
+            }
+        }
+        for (j, r) in rowmax.iter().enumerate() {
+            let diag = values[self.diag_v[j]].abs();
+            let norm = if diag > 0.0 { diag } else { *r };
+            self.scales[j] = if norm > 0.0 { 1.0 / norm.sqrt() } else { 1.0 };
+        }
+        for col in self.nv..self.dim() {
+            let mut norm = 0.0_f64;
+            for pos in p.col_ptr()[col]..p.col_ptr()[col + 1] {
+                let row = p.row_idx()[pos];
+                norm = norm.max(if row == col {
+                    values[pos].abs().sqrt()
+                } else {
+                    values[pos].abs() * self.scales[row]
+                });
+            }
+            self.scales[col] = if norm > 0.0 { 1.0 / norm } else { 1.0 };
+        }
+        for col in 0..self.dim() {
+            for pos in p.col_ptr()[col]..p.col_ptr()[col + 1] {
+                self.scaled_matrix.values_mut()[pos] =
+                    values[pos] * self.scales[p.row_idx()[pos]] * self.scales[col];
+            }
+        }
     }
 
     /// Chiang–Zavala curvature test on a computed direction.
@@ -571,9 +689,7 @@ impl KktSystem {
     pub fn solve_scratch(&mut self, steps: usize) -> Result<f64, LdltError> {
         let rhs = std::mem::take(&mut self.rhs);
         let mut sol = std::mem::take(&mut self.sol);
-        let out = self
-            .factor
-            .solve_refined(&self.matrix, &rhs, &mut sol, steps);
+        let out = self.solve(&rhs, &mut sol, steps);
         self.rhs = rhs;
         self.sol = sol;
         out
@@ -583,6 +699,31 @@ impl KktSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn full_rank_equality_does_not_need_a_perturbed_newton_system() {
+        let h = Sparsity::from_triplets(2, 2, &[(0, 0), (0, 1), (1, 1)]).unwrap();
+        let a = Sparsity::from_triplets(2, 1, &[(0, 0), (1, 0)]).unwrap();
+        let mut k = KktSystem::new(2, 2, 1, &h, &a, &[None], Ordering::Rcm).unwrap();
+        let outcome = k
+            .factor_with_correction(
+                &[1.0, 0.0, 1.0],
+                &[1.0, 1.0],
+                &[0.0, 0.0],
+                0.1,
+                RegularizationMode::Hybrid,
+                &CorrectionParams::default(),
+            )
+            .unwrap();
+        assert!(outcome.certified);
+        assert_eq!(outcome.delta_w, 0.0);
+        assert_eq!(outcome.delta_c, 0.0);
+        let mut x = [0.0; 3];
+        k.solve(&[4.0, 5.0, 3.0], &mut x, 2).unwrap();
+        for (actual, expected) in x.iter().zip([1.0, 2.0, 3.0]) {
+            assert!((actual - expected).abs() < 1e-12);
+        }
+    }
     use mincon_core::Sparsity;
 
     #[test]
@@ -684,6 +825,84 @@ mod tests {
         assert_eq!(dense[0][2], 3.0, "jacobian entry");
         assert_eq!(dense[1][2], -1.0, "slack coefficient");
         assert_eq!(dense[2][2], -1e-8, "dual regularization");
+    }
+
+    #[test]
+    fn dynamically_repaired_dual_pivot_triggers_explicit_dual_regularization() {
+        let h = Sparsity::from_triplets(2, 2, &[(0, 0), (1, 1)]).unwrap();
+        let jt = Sparsity::dense(2, 2);
+        let mut k = KktSystem::new(2, 2, 2, &h, &jt, &[None, None], Ordering::Natural).unwrap();
+        // Duplicate Jacobian columns make the original saddle matrix singular.
+        // Adding a positive primal shift alone cannot remove that null vector.
+        let o = k
+            .factor_with_correction(
+                &[1.0, 1.0],
+                &[1.0, 1.0, 1.0, 1.0],
+                &[0.0, 0.0],
+                0.1,
+                RegularizationMode::Inertia,
+                &CorrectionParams::default(),
+            )
+            .unwrap();
+        assert!(o.delta_c > 0.0 && o.certified && o.inertia.is_kkt_correct(2, 2));
+    }
+
+    #[test]
+    fn elastic_schur_diagonal_matches_a_hand_solved_system_and_resets() {
+        let h = Sparsity::from_triplets(2, 2, &[(0, 0), (1, 1)]).unwrap();
+        let jt = Sparsity::dense(2, 1);
+        let mut k = KktSystem::new(2, 2, 1, &h, &jt, &[None], Ordering::Natural).unwrap();
+        k.factor_restoration(
+            &[2.0, 3.0],
+            &[1.0, 2.0],
+            &[0.0, 0.0],
+            &[4.0],
+            0.1,
+            &CorrectionParams::default(),
+        )
+        .unwrap();
+        let mut x = vec![0.0; 3];
+        k.solve(&[2.5, -5.0, -5.0], &mut x, 2).unwrap();
+        for (got, want) in x.iter().zip([1.0, -2.0, 0.5]) {
+            assert!((got - want).abs() < 1e-12);
+        }
+        k.factor_with_correction(
+            &[2.0, 3.0],
+            &[1.0, 2.0],
+            &[0.0, 0.0],
+            0.1,
+            RegularizationMode::Inertia,
+            &CorrectionParams::default(),
+        )
+        .unwrap();
+        assert_eq!(k.matrix().to_dense()[2][2], 0.0);
+    }
+
+    #[test]
+    fn mixed_units_kkt_preserves_the_unregularized_newton_solution() {
+        let h = Sparsity::from_triplets(2, 2, &[(0, 0), (1, 1)]).unwrap();
+        let jt = Sparsity::dense(2, 1);
+        let mut k = KktSystem::new(2, 2, 1, &h, &jt, &[None], Ordering::Natural).unwrap();
+        let o = k
+            .factor_with_correction(
+                &[1e20, 1e-20],
+                &[1e-10, 1e-10],
+                &[0.0, 0.0],
+                0.1,
+                RegularizationMode::Inertia,
+                &CorrectionParams::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            o.delta_w, 0.0,
+            "a unit conversion must not change curvature"
+        );
+        assert_eq!(o.delta_c, 0.0);
+        let mut x = vec![0.0; 3];
+        k.solve(&[1e10, 5e-10, 2.0], &mut x, 2).unwrap();
+        for (got, want) in x.iter().zip([1e-10, 2e10, 3.0]) {
+            assert!((got - want).abs() / want.abs() < 1e-10, "{x:?}");
+        }
     }
 
     #[test]

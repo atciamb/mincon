@@ -82,16 +82,17 @@ s_d = max(s_max, (||lambda||_1 + ||z||_1) / (m + n_bounds)) / s_max
 s_c = max(s_max, ||z||_1 / n_bounds) / s_max          with s_max = 100
 ```
 
-The scaling factors are not cosmetic. On a problem whose multipliers are `1e6`,
-an absolute gradient tolerance can never be met and the solver reports failure
-at a perfectly good solution. `TORTURE_DEGENERATE` and `HS13` are in the test
-set precisely because they drive the multipliers up.
+Multiplier scaling improves numerical interpretation but can conceal failed
+stationarity when multipliers diverge, as HS13 demonstrates. Strict `Optimal`
+also requires the dual residual **before** division by `s_d` to meet the
+optimality tolerance, in the fixed scaled problem. This is conservative on
+badly conditioned models; acceptable and step-tolerance exits remain separate.
 
 ### Two tiers, reported separately
 
 | Tier | Condition | Flag |
 |---|---|---|
-| Converged | `E_0 <= 1e-8`, violation `<= 1e-6`, complementarity `<= 1e-6` | `Optimal` |
+| Converged | `E_0 <= 1e-8`, pre-`s_d` dual residual `<= 1e-8`, violation `<= 1e-6`, complementarity `<= 1e-6` | `Optimal` |
 | Acceptable | relaxed (`1e-6` / `1e-4`) for 15 consecutive iterations | `Acceptable` |
 
 A solver that only knows how to succeed or fail reports failure on problems
@@ -116,9 +117,9 @@ Quietly loosening tolerances is how benchmark tables get gamed.
   iterations, so the absolute test never fires and the user gets `MaxReached`,
   which tells them nothing. The relative test fires in 16 iterations. This is
   a heuristic and the note attached to the result says so.
-* **`Infeasible` / `LocallyInfeasible`** — requires feasibility restoration,
-  which is not implemented. Until then `TORTURE_INFEASIBLE` correctly refuses
-  to claim success but reports `NumericalFailure` instead of the right thing.
+* **`LocallyInfeasible`** — the reduced elastic phase reached stationary
+  positive violation at small barrier parameter. It is a local diagnostic,
+  not an infeasibility proof. See `12_RESTORATION_IMPLEMENTATION.md`.
 
 ### Default tolerances, and why they differ from `fmincon`
 
