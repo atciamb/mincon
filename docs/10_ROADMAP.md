@@ -57,6 +57,15 @@ not a certificate. See `12_RESTORATION_IMPLEMENTATION.md` and
 `../bench/results/restoration/README.md` for the variant and measurements.
 M1 stays partial: S2MPJ acquisition was declined and CUTEst has not run.
 
+September 6 continuation: the finite-difference retreat divisor and central
+bound handling defects are corrected; analytical regression oracles and the
+rebuilt Python wheel pass. This prerequisite was taken before further tuning
+because incorrect derivatives invalidate solver diagnostics while the CUTEst
+qualification gate is unavailable. See `../bench/results/fd-retreat/README.md`.
+Its 54/54 fixture result includes only 38 strict Optimal returns. Investigate
+the missing convergence test inside soft restoration next; do not hide this
+distinction by counting accurate-point failure returns as strict convergence.
+
 Implementation sequence (completed locally):
 
 1. **Algorithm R** first — plain Newton steps on the primal-dual system with

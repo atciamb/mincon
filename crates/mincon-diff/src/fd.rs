@@ -96,16 +96,32 @@ pub fn forward_step(x: f64, typical: f64, rel: f64, lb: f64, ub: f64, respect: b
         if h > 0.0 && h > room_up {
             // Prefer flipping direction over shrinking: a full-size step in the
             // other direction is more accurate than a tiny one toward the bound.
-            h = if room_dn >= h { -h } else { -room_dn.min(h) };
+            h = if room_dn >= h {
+                -h
+            } else if room_dn >= room_up {
+                -room_dn
+            } else {
+                room_up
+            };
         } else if h < 0.0 && (-h) > room_dn {
-            h = if room_up >= -h { -h } else { room_up.min(-h) };
+            h = if room_up >= -h {
+                -h
+            } else if room_up >= room_dn {
+                room_up
+            } else {
+                -room_dn
+            };
         }
         if !h.is_finite() {
             h = 0.0;
         }
     }
     // Recompute the step that will actually be taken after rounding.
-    let x_plus = x + h;
+    let x_plus = if respect {
+        (x + h).clamp(lb, ub)
+    } else {
+        x + h
+    };
     Step {
         x_plus,
         h: x_plus - x,
@@ -232,26 +248,30 @@ impl FiniteDifferences {
         let parallel = self.config.parallel && nlp.capabilities().parallel_safe;
 
         let one = |j: usize| -> Result<(f64, u64), EvalError> {
+            if respect && lb[j] == ub[j] {
+                return Ok((0.0, 0));
+            }
             let mut xp = x.to_vec();
             let mut evals = 0u64;
             if central {
                 if let Some(h) = central_step(x[j], self.typical[j], rel, lb[j], ub[j], respect) {
-                    xp[j] = x[j] + h;
                     let fp =
-                        eval_with_retreat(|v| nlp.objective(v), &mut xp, j, x[j], h, &mut evals)?;
-                    xp[j] = x[j] - h;
+                        eval_with_retreat(|v| nlp.objective(v), &mut xp, j, x[j], h, &mut evals);
+                    if matches!(fp, Err(EvalError::UserAbort)) {
+                        return Err(EvalError::UserAbort);
+                    }
                     let fm =
-                        eval_with_retreat(|v| nlp.objective(v), &mut xp, j, x[j], -h, &mut evals)?;
-                    return Ok(((fp - fm) / (2.0 * h), evals));
+                        eval_with_retreat(|v| nlp.objective(v), &mut xp, j, x[j], -h, &mut evals);
+                    if matches!(fm, Err(EvalError::UserAbort)) {
+                        return Err(EvalError::UserAbort);
+                    }
+                    return Ok((difference(f0, fp.ok(), fm.ok(), j)?, evals));
                 }
             }
             let step = forward_step(x[j], self.typical[j], rel, lb[j], ub[j], respect);
-            if step.h == 0.0 {
-                return Ok((0.0, 0));
-            }
             xp[j] = step.x_plus;
             let fp = eval_with_retreat(|v| nlp.objective(v), &mut xp, j, x[j], step.h, &mut evals)?;
-            Ok(((fp - f0) / step.h, evals))
+            Ok((difference(f0, Some(fp), None, j)?, evals))
         };
 
         if parallel {
@@ -303,35 +323,77 @@ impl FiniteDifferences {
             None => (0..self.n).map(|j| vec![j]).collect(),
         };
 
-        let eval_group = |group: &[usize]| -> Result<(Vec<f64>, Vec<f64>, u64), EvalError> {
+        let eval_group = |group: &[usize]| -> Result<GroupDerivative, EvalError> {
             let mut xp = x.to_vec();
-            let mut h = vec![0.0; self.n];
+            let mut h = Vec::with_capacity(group.len());
+            let mut hneg = Vec::with_capacity(group.len());
             for &j in group {
-                let step = forward_step(x[j], self.typical[j], rel, lb[j], ub[j], respect);
-                h[j] = step.h;
-                xp[j] = step.x_plus;
+                if respect && lb[j] == ub[j] {
+                    h.push(0.0);
+                    hneg.push(0.0);
+                } else if let Some(hj) = central
+                    .then(|| central_step(x[j], self.typical[j], rel, lb[j], ub[j], respect))
+                    .flatten()
+                {
+                    h.push(hj);
+                    hneg.push(-hj);
+                } else {
+                    let step = forward_step(x[j], self.typical[j], rel, lb[j], ub[j], respect);
+                    if step.h == 0.0 || !step.h.is_finite() {
+                        return Err(EvalError::NonFinite(Some(j)));
+                    }
+                    h.push(step.h);
+                    hneg.push(0.0);
+                }
             }
             let mut evals = 0u64;
             let mut cp = vec![0.0; self.m];
-            let mut cm = Vec::new();
-            eval_constraints_with_retreat(nlp, &mut xp, x, &mut h, group, &mut cp, &mut evals)?;
-            if central {
-                let mut xm = x.to_vec();
-                for &j in group {
-                    xm[j] = x[j] - h[j];
-                }
-                let mut buf = vec![0.0; self.m];
-                let mut hneg: Vec<f64> = h.iter().map(|v| -v).collect();
-                eval_constraints_with_retreat(
-                    nlp, &mut xm, x, &mut hneg, group, &mut buf, &mut evals,
-                )?;
-                cm = buf;
+            let mut cm = vec![0.0; self.m];
+            let plus =
+                eval_constraints_with_retreat(nlp, &mut xp, x, &mut h, group, &mut cp, &mut evals);
+            if matches!(plus, Err(EvalError::UserAbort)) {
+                return Err(EvalError::UserAbort);
             }
-            Ok((cp, cm, evals))
+            // Reset all coordinates: one-sided columns must stay at the base
+            // point while central columns in the same color probe the other side.
+            xp.copy_from_slice(x);
+            let minus = eval_constraints_with_retreat(
+                nlp, &mut xp, x, &mut hneg, group, &mut cm, &mut evals,
+            );
+            if matches!(minus, Err(EvalError::UserAbort)) {
+                return Err(EvalError::UserAbort);
+            }
+            let mut entries = Vec::new();
+            for (k, &j) in group.iter().enumerate() {
+                let write = |i: usize| -> Result<f64, EvalError> {
+                    if respect && lb[j] == ub[j] {
+                        return Ok(0.0);
+                    }
+                    difference(
+                        c0[i],
+                        (plus.is_ok() && h[k] != 0.0).then_some((cp[i], h[k])),
+                        (minus.is_ok() && hneg[k] != 0.0).then_some((cm[i], hneg[k])),
+                        j,
+                    )
+                };
+                match &self.pattern {
+                    Some(p) => {
+                        for pos in p.col_ptr()[j]..p.col_ptr()[j + 1] {
+                            entries.push((pos, write(p.row_idx()[pos])?));
+                        }
+                    }
+                    None => {
+                        for i in 0..self.m {
+                            entries.push((j * self.m + i, write(i)?));
+                        }
+                    }
+                }
+            }
+            Ok(GroupDerivative { entries, evals })
         };
 
         let parallel = self.config.parallel && nlp.capabilities().parallel_safe;
-        let per_group: Vec<(Vec<f64>, Vec<f64>, u64)> = if parallel {
+        let per_group: Vec<GroupDerivative> = if parallel {
             groups
                 .par_iter()
                 .map(|g| eval_group(g))
@@ -344,36 +406,45 @@ impl FiniteDifferences {
         };
 
         let mut total = 0u64;
-        for (gi, group) in groups.iter().enumerate() {
-            let (cp, cm, evals) = &per_group[gi];
-            total += evals;
-            for &j in group {
-                let step = forward_step(x[j], self.typical[j], rel, lb[j], ub[j], respect);
-                let hj = step.h;
-                let write = |i: usize| -> f64 {
-                    if hj == 0.0 {
-                        0.0
-                    } else if central && !cm.is_empty() {
-                        (cp[i] - cm[i]) / (2.0 * hj)
-                    } else {
-                        (cp[i] - c0[i]) / hj
-                    }
-                };
-                match &self.pattern {
-                    Some(p) => {
-                        for pos in p.col_ptr()[j]..p.col_ptr()[j + 1] {
-                            out[pos] = write(p.row_idx()[pos]);
-                        }
-                    }
-                    None => {
-                        for i in 0..self.m {
-                            out[j * self.m + i] = write(i);
-                        }
-                    }
-                }
+        for result in per_group {
+            total += result.evals;
+            for (pos, value) in result.entries {
+                out[pos] = value;
             }
         }
         Ok(total)
+    }
+}
+
+struct GroupDerivative {
+    entries: Vec<(usize, f64)>,
+    evals: u64,
+}
+
+/// Derivative of the interpolating quadratic at zero for unequal signed
+/// displacements. A surviving single probe gives a first-order fallback.
+fn difference(
+    base: f64,
+    plus: Option<(f64, f64)>,
+    minus: Option<(f64, f64)>,
+    j: usize,
+) -> Result<f64, EvalError> {
+    let value = match (plus, minus) {
+        (Some((fa, a)), Some((fb, b))) if a == -b => (fa - fb) / (a - b),
+        (Some((fa, a)), Some((fb, b))) => {
+            let sa = (fa - base) / a;
+            let sb = (fb - base) / b;
+            // Keep the direct secant as the leading term. When a and -b
+            // differ only by rounding, the correction is correspondingly small.
+            (fa - fb) / (a - b) - ((a + b) / (a - b)) * (sa - sb)
+        }
+        (Some((f, h)), None) | (None, Some((f, h))) => (f - base) / h,
+        (None, None) => return Err(EvalError::NonFinite(Some(j))),
+    };
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(EvalError::NonFinite(Some(j)))
     }
 }
 
@@ -386,25 +457,28 @@ fn eval_with_retreat<F>(
     x_base: f64,
     mut h: f64,
     evals: &mut u64,
-) -> Result<f64, EvalError>
+) -> Result<(f64, f64), EvalError>
 where
     F: Fn(&[f64]) -> Result<f64, EvalError>,
 {
     const MAX_RETREAT: usize = 8;
-    for attempt in 0..=MAX_RETREAT {
+    for _ in 0..=MAX_RETREAT {
         xp[j] = x_base + h;
+        let actual = xp[j] - x_base;
+        if actual == 0.0 || !actual.is_finite() || !xp[j].is_finite() {
+            break;
+        }
         *evals += 1;
         match f(xp) {
             Ok(v) if v.is_finite() => {
                 xp[j] = x_base;
-                return Ok(v);
+                return Ok((v, actual));
             }
             Ok(_) | Err(EvalError::NonFinite(_)) | Err(EvalError::OutOfDomain(_)) => {}
             Err(e @ EvalError::UserAbort) => {
                 xp[j] = x_base;
                 return Err(e);
             }
-            Err(_) if attempt == MAX_RETREAT => {}
             Err(_) => {}
         }
         h *= 0.5;
@@ -425,16 +499,36 @@ fn eval_constraints_with_retreat<P: Nlp + ?Sized>(
     evals: &mut u64,
 ) -> Result<(), EvalError> {
     const MAX_RETREAT: usize = 8;
+    if h.iter().all(|&hj| hj == 0.0) {
+        return Ok(());
+    }
     for _ in 0..=MAX_RETREAT {
+        // Keep nominal displacements until acceptance so rounding does not
+        // compound across retreats. Zero entries denote unperturbed columns.
+        for (k, &j) in group.iter().enumerate() {
+            xp[j] = x[j] + h[k];
+            let actual = xp[j] - x[j];
+            if h[k] != 0.0 && (actual == 0.0 || !actual.is_finite() || !xp[j].is_finite()) {
+                return Err(EvalError::NonFinite(Some(j)));
+            }
+        }
         *evals += 1;
         match nlp.constraints(xp, out) {
-            Ok(()) if out.iter().all(|v| v.is_finite()) => return Ok(()),
+            Ok(()) if out.iter().all(|v| v.is_finite()) => {
+                for (k, &j) in group.iter().enumerate() {
+                    h[k] = xp[j] - x[j];
+                }
+                return Ok(());
+            }
             Err(e @ EvalError::UserAbort) => return Err(e),
             _ => {}
         }
-        for &j in group {
-            h[j] *= 0.5;
-            xp[j] = x[j] + h[j];
+        for (k, hj) in h.iter_mut().enumerate() {
+            let was_active = *hj != 0.0;
+            *hj *= 0.5;
+            if was_active && *hj == 0.0 {
+                return Err(EvalError::NonFinite(Some(group[k])));
+            }
         }
     }
     Err(EvalError::NonFinite(None))

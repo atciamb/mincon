@@ -70,3 +70,18 @@ def test_scipy_inequality_multiplier_sign_and_objective_count():
 def test_wrong_gradient_is_detected():
     result = check_gradients(lambda x: x[0]**3, [2.], lambda x: np.array([3*x[0]]))
     assert not result.passed
+
+
+def test_correct_gradient_survives_asymmetric_domain_retreat():
+    rejected = []
+
+    def f(x):
+        if not -2e-6 <= x[0] <= 1e-6:
+            rejected.append(x[0])
+            return np.nan
+        return 3. * x[0] + 5. * x[0]**2
+
+    r = check_gradients(f, [0.], lambda x: np.array([3. + 10. * x[0]]),
+                        num_points=1, tol=1e-10)
+    assert rejected  # Both nominal central probes must retreat.
+    assert r.passed, r

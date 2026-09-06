@@ -1,0 +1,273 @@
+   Compiling mincon-diff v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-diff)
+   Compiling mincon-ip v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-ip)
+   Compiling mincon-sqp v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-sqp)
+   Compiling mincon v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon)
+   Compiling mincon-py v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-py)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.15s
+     Running unittests src\lib.rs (target\debug\deps\mincon-bcfde5c168242d37.exe)
+
+running 18 tests
+test builder::tests::builder_produces_a_valid_nlp ... ok
+test builder::tests::inequality_uses_the_fmincon_convention ... ok
+test builder::tests::capabilities_track_what_was_supplied ... ok
+test builder::tests::multiplier_conversion_keeps_signs_straight ... ok
+test builder::tests::non_finite_objective_becomes_an_eval_error ... ok
+test portfolio::tests::convergence_beats_a_lower_objective_at_equal_feasibility ... ok
+test portfolio::tests::among_infeasible_points_the_least_violation_wins ... ok
+test portfolio::tests::feasibility_beats_a_lower_objective ... ok
+test portfolio::tests::ties_break_on_evaluation_count_so_the_result_is_deterministic ... ok
+test portfolio::tests::the_first_member_is_the_shippable_default ... ok
+test portfolio::tests::unimplemented_algorithms_are_not_enlisted ... ok
+test portfolio::tests::among_equally_converged_the_lower_objective_wins ... ok
+test tests::analytic_gradients_are_used_and_cost_fewer_evaluations ... ok
+test tests::respects_bounds_at_every_iterate ... ok
+test tests::solves_an_equality_constrained_quadratic_exactly ... ok
+test tests::portfolio_reports_every_member_and_the_true_cost ... ok
+test tests::an_infeasible_problem_is_never_reported_as_solved ... ok
+test tests::the_whole_test_set_still_passes_through_the_public_api ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running unittests src\lib.rs (target\debug\deps\mincon_core-33c3ab3dae16045e.exe)
+
+running 9 tests
+test options::tests::defaults_validate ... ok
+test sparsity::tests::dense_pattern_is_valid ... ok
+test options::tests::fmincon_profile_turns_off_our_advantages ... ok
+test sparsity::tests::rejects_unsorted_columns ... ok
+test result::tests::acceptable_is_not_success ... ok
+test result::tests::exit_flags_match_fmincon_integers ... ok
+test options::tests::iteration_cap_scales_with_n ... ok
+test sparsity::tests::transpose_roundtrips ... ok
+test sparsity::tests::triplets_sort_and_dedup ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\mincon_diff-190f0c3e0113f78a.exe)
+
+running 27 tests
+test coloring::tests::diagonal_needs_one_group ... ok
+test coloring::tests::arrowhead_is_the_adversarial_case ... ok
+test detect::tests::unconstrained_model_gives_an_empty_pattern ... ok
+test coloring::tests::dense_needs_one_group_per_column ... ok
+test coloring::tests::tridiagonal_needs_three_groups ... ok
+test detect::tests::declines_to_probe_a_huge_model ... ok
+test check::tests::correct_derivatives_pass ... ok
+test check::tests::a_dropped_chain_rule_factor_is_caught_and_localized ... ok
+test detect::tests::finds_a_banded_pattern_exactly ... ok
+test detect::tests::two_base_points_survive_a_stationary_first_probe ... ok
+test fd::tests::colored_jacobian_matches_the_analytic_one ... ok
+test fd::tests::a_pinned_variable_gets_a_zero_step ... ok
+test fd::tests::a_model_that_fails_outside_its_domain_still_yields_a_gradient ... ok
+test fd::tests::central_step_declines_when_the_box_is_tight ... ok
+test coloring::tests::star_coloring_is_at_least_as_strong_as_distance1 ... ok
+test evaluator::tests::counters_include_sparsity_probes_and_failed_fd_batches ... ok
+test coloring::tests::empty_columns_do_not_consume_groups ... ok
+test fd::tests::step_flips_direction_at_a_lower_bound ... ok
+test fd::tests::central_differences_are_more_accurate_than_forward ... ok
+test fd::tests::gradient_matches_the_analytic_one ... ok
+test check::tests::a_model_with_no_analytic_derivatives_trivially_passes ... ok
+test fd::tests::ignoring_bounds_steps_outside_them ... ok
+test fd::tests::realized_step_is_exact_after_rounding ... ok
+test fd::tests::step_flips_direction_at_an_upper_bound ... ok
+test fd::tests::step_shrinks_when_both_directions_are_blocked ... ok
+test fd::tests::uncolored_jacobian_agrees_with_the_colored_one ... ok
+test coloring::tests::banded_compression_scales ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\retreat.rs (target\debug\deps\retreat-a4a9ea39f5d60436.exe)
+
+running 11 tests
+test central_rounding_uses_the_actual_unequal_float_spacings ... ok
+test fixed_coordinates_need_no_probes ... ok
+test unrepresentable_nonfixed_probe_is_not_a_zero_derivative ... ok
+test dense_jacobian_uses_the_same_retreat_rules ... ok
+test one_color_can_mix_central_and_one_sided_columns ... ok
+test forward_retreat_uses_actual_displacement_for_gradient_and_jacobian ... ok
+test central_coloring_never_reflects_a_column_outside_its_box ... ok
+test unequal_central_retreat_is_exact_for_a_quadratic ... ok
+test user_abort_is_not_retried_or_replaced_with_another_side ... ok
+test narrow_box_uses_the_available_side_at_either_bound ... ok
+test central_gradient_and_jacobian_can_use_the_only_valid_side ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\mincon_ip-0f34c3a0a72c3dee.exe)
+
+running 37 tests
+test bfgs::tests::a_zero_step_is_skipped_not_applied ... ok
+test bfgs::tests::starts_as_the_identity ... ok
+test bfgs::tests::converges_to_the_hessian_of_a_quadratic ... ok
+test bfgs::tests::powell_damping_keeps_positive_definiteness_on_negative_curvature ... ok
+test bfgs::tests::non_finite_input_never_corrupts_the_approximation ... ok
+test filter::tests::non_finite_trial_points_are_always_blocked ... ok
+test filter::tests::sufficient_decrease_in_theta_is_accepted_when_not_switching ... ok
+test bfgs::tests::reset_restores_a_scaled_identity ... ok
+test bfgs::tests::secant_condition_holds_after_one_update ... ok
+test filter::tests::armijo_regime_accepts_a_real_objective_decrease ... ok
+test filter::tests::armijo_regime_rejects_an_insufficient_decrease ... ok
+test bfgs::tests::stays_symmetric ... ok
+test filter::tests::augmenting_prunes_dominated_entries ... ok
+test filter::tests::no_progress_is_rejected ... ok
+test bfgs::tests::upper_values_follow_the_pattern ... ok
+test filter::tests::sufficient_decrease_in_phi_is_accepted_when_not_switching ... ok
+test filter::tests::an_empty_filter_blocks_only_very_infeasible_points ... ok
+test filter::tests::minimum_step_size_is_positive_and_shrinks_with_steeper_descent ... ok
+test filter::tests::dominated_points_are_blocked_and_dominating_ones_are_not ... ok
+test filter::tests::reset_shrinks_theta_max ... ok
+test filter::tests::switching_condition_needs_descent_and_near_feasibility ... ok
+test kkt::tests::assembles_and_solves_a_hand_checkable_kkt_system ... ok
+test kkt::tests::dynamically_repaired_dual_pivot_triggers_explicit_dual_regularization ... ok
+test kkt::tests::entry_coords_round_trips_every_position ... ok
+test kkt::tests::full_rank_equality_does_not_need_a_perturbed_newton_system ... ok
+test kkt::tests::elastic_schur_diagonal_matches_a_hand_solved_system_and_resets ... ok
+test kkt::tests::indefinite_hessian_triggers_regularization_until_inertia_is_right ... ok
+test kkt::tests::transpose_map_moves_values_correctly ... ok
+test kkt::tests::slack_columns_get_their_minus_one ... ok
+test kkt::tests::mixed_units_kkt_preserves_the_unregularized_newton_solution ... ok
+test solver::restoration::tests::eliminated_elastics_match_analytic_kkt_and_envelope_derivatives ... ok
+test solver::tests::dual_fraction_to_boundary_never_lets_z_go_negative ... ok
+test solver::tests::push_inside_respects_every_bound_configuration ... ok
+test solver::restoration::tests::restoration_retries_derivative_failures_but_propagates_user_abort ... ok
+test solver::restoration::tests::poisoned_bfgs_model_recovers_on_an_analytic_quadratic ... ok
+test solver::restoration::tests::restoration_respects_the_parent_iteration_and_evaluation_limits ... ok
+test solver::restoration::tests::full_restoration_reenters_and_retreats_from_invalid_trials ... ok
+
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\restoration.rs (target\debug\deps\restoration-df3d37e5b494b230.exe)
+
+running 4 tests
+test strict_box_model_is_never_evaluated_outside_bounds_including_setup ... ok
+test scaled_nonzero_constraint_bound_and_multiplier_match_analytic_solution ... ok
+test inconsistent_affine_constraints_report_stationary_infeasibility ... ok
+test hs13_reaches_the_degenerate_solution_without_claiming_kkt_success ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src\lib.rs (target\debug\deps\mincon_linalg-b9930ca691aaa056.exe)
+
+running 23 tests
+test csc::tests::builder_sums_duplicates ... ok
+test ldlt::tests::a_tiny_isolated_pivot_is_regularized_flagged_and_stays_finite ... ok
+test ldlt::tests::factors_and_solves_a_small_spd_matrix ... ok
+test ldlt::tests::catastrophic_element_growth_is_detected_not_hidden ... ok
+test csc::tests::symmetric_upper_gemv_matches_full ... ok
+test ldlt::tests::handles_a_missing_structural_diagonal ... ok
+test ldlt::tests::all_orderings_agree_on_the_solution ... ok
+test csc::tests::gemv_transpose_matches_dense_for_symmetric ... ok
+test ldlt::tests::iterative_refinement_delivers_a_small_residual_on_an_ill_conditioned_system ... ok
+test ldlt::tests::regularization_fires_on_a_wrong_sign_pivot_and_is_reported ... ok
+test csc::tests::nonsquare_gemv ... ok
+test ldlt::tests::rejects_lower_triangular_input ... ok
+test ordering::tests::natural_is_identity ... ok
+test ldlt::tests::zero_pivot_without_regularization_is_an_error ... ok
+test ordering::tests::invert_roundtrips ... ok
+test csc::tests::gemv_matches_dense ... ok
+test ldlt::tests::reconstructs_the_matrix_exactly ... ok
+test ldlt::tests::raising_delta_w_restores_the_certificate ... ok
+test ordering::tests::rcm_handles_disconnected_components ... ok
+test ordering::tests::rcm_is_a_permutation ... ok
+test ordering::tests::rcm_reduces_bandwidth_on_a_reversed_path ... ok
+test ldlt::tests::larger_banded_system_solves_accurately ... ok
+test ldlt::tests::inertia_matches_an_independent_eigenvalue_oracle ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\_mincon-759db7be451717a6.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\mincon_qp-1a8da9ca9ded88da.exe)
+
+running 1 test
+test tests::reports_itself_unavailable ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\mincon_sqp-0409b9fb1ee5c67f.exe)
+
+running 2 tests
+test tests::the_error_points_at_the_specification ... ok
+test tests::reports_itself_unavailable_rather_than_pretending ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\mincon_testset-39224d3cf000a91b.exe)
+
+running 13 tests
+test torture::tests::infeasible_problem_really_is_infeasible ... ok
+test hs::tests::hs71_published_solution_checks_out ... ok
+test torture::tests::noisy_problem_noise_is_deterministic ... ok
+test hs::tests::hs110_is_undefined_outside_its_box ... ok
+test hs::tests::published_optima_are_attainable_where_we_know_the_solution ... ok
+test torture::tests::redundant_problem_has_the_advertised_rank_deficiency ... ok
+test torture::tests::pinned_problem_has_exactly_one_feasible_point ... ok
+test tests::names_are_unique ... ok
+test tests::every_problem_is_internally_consistent ... ok
+test torture::tests::unbounded_problem_really_is_unbounded ... ok
+test torture::tests::nan_pocket_is_where_we_claim_it_is ... ok
+test tests::objective_and_constraints_evaluate_at_the_starting_point ... ok
+test torture::tests::scaling_problem_spans_the_advertised_range ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mincon
+
+running 2 tests
+test crates\mincon\src\builder.rs - builder::Problem (line 24) ... ok
+test crates\mincon\src\lib.rs - (line 13) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.27s
+
+   Doc-tests mincon_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mincon_diff
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mincon_ip
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mincon_linalg
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests _mincon
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mincon_qp
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mincon_sqp
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests mincon_testset
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -55,7 +55,8 @@ and the user experiences it as "the optimizer crashed on my problem".
 1. computes `h = rel * max(|x_j|, typical_j, 1)`, signed by `sign(x_j)`;
 2. **flips the direction** if `x_j + h` would leave the box — a full-size step
    the other way beats a tiny one toward the bound;
-3. shrinks only when both directions are blocked;
+3. shrinks only when neither direction permits a full step, using the side
+   with more room (including inward from an endpoint of a narrow box);
 4. returns `h = 0` for a variable pinned by `lb == ub`, and the caller writes a
    zero derivative rather than dividing by zero;
 5. **recomputes the realized step as `(x_j + h) - x_j`** after rounding, so the
@@ -82,6 +83,34 @@ specification error, not a solver failure.
 A probe that returns non-finite has its step halved, up to eight times, before
 the derivative is given up on. Group probes shrink together so the columns stay
 consistent with the divisors used to recover them.
+
+**Retreat contract (correctness prerequisite to further solver tuning).**
+Every successful probe carries the realized displacement after retreat and
+floating-point rounding. Forward differences divide by that displacement.
+For opposite displacements `a` and `b`, use the quadratic-interpolation slope
+at the base point:
+
+```
+s_a = (f(x+a)-f(x))/a; s_b = (f(x+b)-f(x))/b
+derivative = (b*s_a-a*s_b)/(b-a)
+```
+
+For exactly symmetric steps, use `(f(x+a)-f(x+b))/(a-b)` directly. The
+asymmetric formula retains quadratic exactness when one side retreats farther
+or the floating-point spacings differ. Evaluate the asymmetric formula as
+`(f(x+a)-f(x+b))/(a-b) - ((a+b)/(a-b))*(s_a-s_b)`: a secant plus the
+asymmetry correction. This avoids subtracting two weighted one-sided slopes
+when the steps are almost symmetric. If only one side can be evaluated,
+fall back to that side's forward difference; a user abort never triggers a
+fallback. A fixed coordinate has derivative zero; a requested nonzero probe
+that rounds back to its base is an evaluation failure, not a zero derivative.
+
+Colored Jacobians retain each column's actual positive/negative steps. A
+column whose reflected step would cross a bound uses a one-sided difference,
+even when other columns in its color use central differences. Every callback
+must stay in the box, and all failed probes count. Analytical affine/quadratic
+oracles cover retreat, unequal steps, rounding, mixed boundary columns,
+serial/parallel execution and cancellation.
 
 ---
 

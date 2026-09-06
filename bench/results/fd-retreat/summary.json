@@ -1,0 +1,126 @@
+{
+  "baseline_commit": "e6c95ed",
+  "scope": "54 development fixtures, unchanged harness; no held-out comparison",
+  "baseline_statuses": {
+    "Optimal": 39,
+    "Acceptable": 6,
+    "StepTolerance": 2,
+    "NumericalFailure": 5,
+    "LocallyInfeasible": 1,
+    "Unbounded": 1
+  },
+  "current_statuses": {
+    "Optimal": 38,
+    "Acceptable": 6,
+    "StepTolerance": 2,
+    "NumericalFailure": 6,
+    "LocallyInfeasible": 1,
+    "Unbounded": 1
+  },
+  "baseline_verdicts": {
+    "PASS": 54
+  },
+  "current_verdicts": {
+    "PASS": 54
+  },
+  "baseline_total_f_evals": 7930,
+  "current_total_f_evals": 8281,
+  "changed_rows": [
+    {
+      "before": {
+        "problem": "HS11",
+        "iterations": 31,
+        "f_evals": 201,
+        "status": "NumericalFailure",
+        "verdict": "PASS"
+      },
+      "after": {
+        "problem": "HS11",
+        "iterations": 31,
+        "f_evals": 200,
+        "status": "NumericalFailure",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "before": {
+        "problem": "HS13",
+        "iterations": 123,
+        "f_evals": 773,
+        "status": "Acceptable",
+        "verdict": "PASS"
+      },
+      "after": {
+        "problem": "HS13",
+        "iterations": 143,
+        "f_evals": 1018,
+        "status": "Acceptable",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "before": {
+        "problem": "HS31",
+        "iterations": 163,
+        "f_evals": 1181,
+        "status": "NumericalFailure",
+        "verdict": "PASS"
+      },
+      "after": {
+        "problem": "HS31",
+        "iterations": 160,
+        "f_evals": 1161,
+        "status": "NumericalFailure",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "before": {
+        "problem": "HS35",
+        "iterations": 18,
+        "f_evals": 164,
+        "status": "Optimal",
+        "verdict": "PASS"
+      },
+      "after": {
+        "problem": "HS35",
+        "iterations": 28,
+        "f_evals": 264,
+        "status": "NumericalFailure",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "before": {
+        "problem": "HS43",
+        "iterations": 29,
+        "f_evals": 276,
+        "status": "NumericalFailure",
+        "verdict": "PASS"
+      },
+      "after": {
+        "problem": "HS43",
+        "iterations": 25,
+        "f_evals": 249,
+        "status": "NumericalFailure",
+        "verdict": "PASS"
+      }
+    },
+    {
+      "before": {
+        "problem": "HS100",
+        "iterations": 52,
+        "f_evals": 679,
+        "status": "Optimal",
+        "verdict": "PASS"
+      },
+      "after": {
+        "problem": "HS100",
+        "iterations": 55,
+        "f_evals": 733,
+        "status": "Optimal",
+        "verdict": "PASS"
+      }
+    }
+  ]
+}

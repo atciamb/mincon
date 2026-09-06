@@ -35,6 +35,11 @@ pass 54/54 independently checked expected outcomes. Read
 for current tests, measurements and limitations. M1 remains partial because
 the CUTEst gate has not run. No comparative fmincon claim is established.
 
+The subsequent finite-difference correction is recorded in
+`bench/results/fd-retreat/README.md`: 147 Rust tests, 7 wheel tests, 54/54
+fixture outcomes, with the strict-convergence regression recorded explicitly.
+Read the latest roadmap notes before selecting the next task.
+
 This is achievable. It is not achievable by being clever in one place; it is
 achievable by grinding through a specific list of known gaps without breaking
 what works.
