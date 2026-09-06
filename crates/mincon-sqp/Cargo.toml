@@ -1,0 +1,18 @@
+[package]
+name = "mincon-sqp"
+description = "Sequential quadratic programming for mincon (specification and scaffolding)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+mincon-core.workspace = true
+mincon-linalg.workspace = true
+mincon-diff.workspace = true
+mincon-qp.workspace = true
+
+[lints]
+workspace = true

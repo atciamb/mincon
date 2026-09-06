@@ -1,0 +1,1235 @@
+//! The primal-dual interior-point solver.
+//!
+//! Follows Wächter and Biegler (2006) closely enough that the paper is usable
+//! as a reference while reading this file; deviations are called out in
+//! comments and collected in `docs/02_SPEC_INTERIOR_POINT.md`.
+//!
+//! # Internal formulation
+//!
+//! The canonical problem `c_L <= c(x) <= c_U`, `x_L <= x <= x_U` is converted
+//! to equality form by giving every **inequality** a slack:
+//!
+//! ```text
+//!   v = (x, s)                      nv = n + (number of inequalities)
+//!   c_hat_i(v) = c_i(x) - c_L_i               for an equality i
+//!   c_hat_i(v) = c_i(x) - s_{k(i)}            for an inequality i
+//!   v_L <= v <= v_U   with the slack bounds taken from (c_L, c_U)
+//! ```
+//!
+//! Equalities are deliberately **not** slacked: a slack pinned by
+//! `c_L == c_U` would sit in a degenerate barrier interval and drive `Sigma`
+//! to infinity. This is the same choice IPOPT makes and it matters.
+//!
+//! # What is implemented and what is not
+//!
+//! Implemented: barrier subproblems with the monotone (Fiacco–McCormick)
+//! update, the primal-dual KKT system with inertia correction, the
+//! Fletcher–Leyffer filter line search with the switching condition,
+//! second-order corrections, fraction-to-boundary, bound-multiplier resets,
+//! the scaled `E_mu` termination test, gradient-based scaling, and damped BFGS.
+//!
+//! Not implemented, in descending order of importance — each is a milestone in
+//! `docs/10_ROADMAP.md` with its own acceptance gate:
+//!
+//! 1. **Feasibility restoration.** Currently a line-search failure ends the
+//!    solve with [`ExitFlag::NumericalFailure`] instead of minimizing
+//!    infeasibility and re-entering. This is *the* single biggest robustness
+//!    gap; on the CUTEst set it is worth roughly 10 percentage points of
+//!    success rate, and no benchmark against `fmincon` is meaningful until it
+//!    exists.
+//! 2. **Limited-memory BFGS.** Dense BFGS caps usable `n` at a couple of
+//!    thousand.
+//! 3. **Adaptive barrier update.** Only `Monotone` is wired up.
+//! 4. **The watchdog.**
+
+use std::time::Instant;
+
+/// Growth factor in `||x||` and in the objective, relative to the starting
+/// point, at which a still-feasible sequence is declared divergent.
+const DIVERGING_GROWTH_FACTOR: f64 = 1e10;
+
+/// Consecutive below-tolerance steps before reporting [`ExitFlag::StepTolerance`].
+const STALL_ITERATIONS: usize = 8;
+
+use mincon_core::{
+    Algorithm, EvalError, ExitFlag, HessianMode, IterationRecord, Nlp, Options, ScalingMode,
+    Solution, SolveError, SolveReport, Sparsity, Timings,
+};
+use mincon_diff::Evaluator;
+use mincon_linalg::Ordering;
+
+use crate::bfgs::DenseBfgs;
+use crate::filter::{Acceptance, Filter, FilterParams};
+use crate::kkt::{transpose_with_map, CorrectionParams, KktFailure, KktSystem, ValueMap};
+
+/// Barrier-loop constants (Wächter–Biegler Section 2.2).
+#[derive(Debug, Clone, Copy)]
+pub struct BarrierParams {
+    /// `kappa_epsilon`: solve each subproblem to this multiple of `mu`.
+    pub kappa_eps: f64,
+    /// `kappa_mu`: linear decrease factor.
+    pub kappa_mu: f64,
+    /// `theta_mu`: superlinear decrease exponent.
+    pub theta_mu: f64,
+    /// `kappa_Sigma`: bound-multiplier reset width.
+    pub kappa_sigma: f64,
+    /// `s_max` in the `E_mu` scaling factors.
+    pub s_max: f64,
+    /// `kappa_1`, `kappa_2`: how far inside their bounds the initial point is pushed.
+    pub bound_push: f64,
+    /// Fraction of a two-sided interval usable by the initial push.
+    pub bound_frac: f64,
+    /// `lambda_max`: cap on the least-squares multiplier initialization.
+    pub lambda_init_max: f64,
+    /// `kappa_soc`: abort second-order corrections when `theta` stops improving.
+    pub kappa_soc: f64,
+}
+
+impl Default for BarrierParams {
+    fn default() -> Self {
+        Self {
+            kappa_eps: 10.0,
+            kappa_mu: 0.2,
+            theta_mu: 1.5,
+            kappa_sigma: 1e10,
+            s_max: 100.0,
+            bound_push: 1e-2,
+            bound_frac: 1e-2,
+            lambda_init_max: 1e3,
+            kappa_soc: 0.99,
+        }
+    }
+}
+
+/// Which Hessian representation is in use.
+enum Hess {
+    Exact {
+        upper: Sparsity,
+        map: ValueMap,
+        lower_values: Vec<f64>,
+        upper_values: Vec<f64>,
+    },
+    Bfgs(Box<DenseBfgs>),
+}
+
+impl Hess {
+    fn pattern(&self) -> &Sparsity {
+        match self {
+            Hess::Exact { upper, .. } => upper,
+            Hess::Bfgs(b) => b.pattern(),
+        }
+    }
+}
+
+/// Run the interior-point method.
+///
+/// # Errors
+/// [`SolveError`] for problems that cannot be started at all. Everything else
+/// is reported through [`SolveReport::exit_flag`].
+pub fn solve<P: Nlp + ?Sized>(nlp: &P, opts: &Options) -> Result<SolveReport, SolveError> {
+    opts.validate().map_err(SolveError::InvalidOptions)?;
+    mincon_core::validate(nlp).map_err(SolveError::InvalidProblem)?;
+    Solver::new(nlp, opts)?.run()
+}
+
+struct Solver<'a, P: Nlp + ?Sized> {
+    eval: Evaluator<'a, P>,
+    opts: Options,
+    barrier: BarrierParams,
+    correction: CorrectionParams,
+
+    n: usize,
+    m: usize,
+    nv: usize,
+
+    /// `slack_of[i]` is the primal index of constraint `i`'s slack, if any.
+    slack_of: Vec<Option<usize>>,
+    /// For equalities, the value `c_i` must take.
+    eq_target: Vec<f64>,
+
+    v_l: Vec<f64>,
+    v_u: Vec<f64>,
+    has_l: Vec<bool>,
+    has_u: Vec<bool>,
+
+    /// Objective scaling factor.
+    d_f: f64,
+    /// Per-constraint scaling factors.
+    d_c: Vec<f64>,
+
+    kkt: KktSystem,
+    hess: Hess,
+    jac_map: ValueMap,
+    jac_values: Vec<f64>,
+    jac_t_values: Vec<f64>,
+
+    notes: Vec<String>,
+    start: Instant,
+}
+
+/// Everything evaluated at a point.
+struct Point {
+    v: Vec<f64>,
+    f: f64,
+    c: Vec<f64>,
+    c_hat: Vec<f64>,
+    theta: f64,
+    phi: f64,
+}
+
+impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
+    fn new(nlp: &'a P, opts: &Options) -> Result<Self, SolveError> {
+        let dims = nlp.dims();
+        let (n, m) = (dims.n, dims.m);
+        let eval = Evaluator::new(nlp, opts);
+        let mut notes: Vec<String> = eval.setup_notes().to_vec();
+
+        let (xl, xu) = nlp.x_bounds();
+        let (cl, cu) = nlp.c_bounds();
+
+        let mut slack_of = vec![None; m];
+        let mut v_l = xl.to_vec();
+        let mut v_u = xu.to_vec();
+        let mut eq_target = vec![0.0; m];
+        let mut nv = n;
+        for i in 0..m {
+            if (cu[i] - cl[i]).abs() <= 0.0 {
+                eq_target[i] = cl[i];
+            } else {
+                slack_of[i] = Some(nv);
+                v_l.push(cl[i]);
+                v_u.push(cu[i]);
+                nv += 1;
+            }
+        }
+
+        let has_l: Vec<bool> = v_l.iter().map(|v| !mincon_core::is_free(*v)).collect();
+        let has_u: Vec<bool> = v_u.iter().map(|v| !mincon_core::is_free(*v)).collect();
+
+        // Relax bounds so the strict interior is never empty.
+        let relax = opts.bound_relax_factor;
+        for j in 0..nv {
+            if has_l[j] {
+                v_l[j] -= relax * v_l[j].abs().max(1.0);
+            }
+            if has_u[j] {
+                v_u[j] += relax * v_u[j].abs().max(1.0);
+            }
+        }
+
+        let hess = match (opts.hessian, eval.has_exact_hessian()) {
+            (HessianMode::Exact, false) => {
+                return Err(SolveError::InvalidOptions(
+                    "HessianMode::Exact requested but the model does not provide one".into(),
+                ))
+            }
+            (HessianMode::Exact | HessianMode::Auto, true) => {
+                let lower = nlp
+                    .hessian_structure()
+                    .expect("has_exact_hessian implies a structure")
+                    .clone();
+                let (upper, map) = transpose_with_map(&lower);
+                let nnz = lower.nnz();
+                notes.push(format!(
+                    "Using the model's exact Hessian of the Lagrangian ({nnz} stored entries)."
+                ));
+                Hess::Exact {
+                    upper,
+                    map,
+                    lower_values: vec![0.0; nnz],
+                    upper_values: vec![0.0; nnz],
+                }
+            }
+            (HessianMode::DenseBfgs | HessianMode::Auto | HessianMode::LimitedMemoryBfgs, _) => {
+                if matches!(opts.hessian, HessianMode::LimitedMemoryBfgs) {
+                    notes.push(
+                        "Limited-memory BFGS is not implemented yet; using dense BFGS.".into(),
+                    );
+                }
+                Hess::Bfgs(Box::new(DenseBfgs::new(n)))
+            }
+            (HessianMode::FiniteDifference, _) => {
+                notes.push(
+                    "Finite-difference Hessians are not implemented yet; using dense BFGS.".into(),
+                );
+                Hess::Bfgs(Box::new(DenseBfgs::new(n)))
+            }
+        };
+
+        // Transposed Jacobian, embedded into the nv-row primal space.
+        let jac_pattern = eval.jacobian_pattern().clone();
+        let (jt, jac_map) = transpose_with_map(&jac_pattern);
+        let jt_nv = Sparsity::new(nv, m, jt.col_ptr().to_vec(), jt.row_idx().to_vec())
+            .map_err(SolveError::Internal)?;
+
+        let ordering = Ordering::default();
+        let kkt = KktSystem::new(nv, n, m, hess.pattern(), &jt_nv, &slack_of, ordering)
+            .map_err(SolveError::Internal)?;
+
+        Ok(Self {
+            n,
+            m,
+            nv,
+            slack_of,
+            eq_target,
+            v_l,
+            v_u,
+            has_l,
+            has_u,
+            d_f: 1.0,
+            d_c: vec![1.0; m],
+            kkt,
+            hess,
+            jac_map,
+            jac_values: vec![0.0; jac_pattern.nnz()],
+            jac_t_values: vec![0.0; jt.nnz()],
+            eval,
+            opts: opts.clone(),
+            barrier: BarrierParams::default(),
+            correction: CorrectionParams::default(),
+            notes,
+            start: Instant::now(),
+        })
+    }
+
+    // ---- evaluation helpers (all in the *scaled* problem) ----
+
+    fn f_at(&self, x: &[f64]) -> Result<f64, EvalError> {
+        Ok(self.d_f * self.eval.f(x)?)
+    }
+
+    fn c_at(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+        self.eval.c(x, out)?;
+        for i in 0..self.m {
+            out[i] *= self.d_c[i];
+        }
+        Ok(())
+    }
+
+    fn c_hat(&self, v: &[f64], c: &[f64], out: &mut [f64]) {
+        for i in 0..self.m {
+            out[i] = match self.slack_of[i] {
+                Some(k) => c[i] - v[k],
+                None => c[i] - self.d_c[i] * self.eq_target[i],
+            };
+        }
+    }
+
+    fn barrier_term(&self, v: &[f64], mu: f64) -> f64 {
+        let mut acc = 0.0;
+        for j in 0..self.nv {
+            if self.has_l[j] {
+                let d = v[j] - self.v_l[j];
+                if d <= 0.0 {
+                    return f64::INFINITY;
+                }
+                acc -= mu * d.ln();
+            }
+            if self.has_u[j] {
+                let d = self.v_u[j] - v[j];
+                if d <= 0.0 {
+                    return f64::INFINITY;
+                }
+                acc -= mu * d.ln();
+            }
+        }
+        acc
+    }
+
+    fn evaluate(&self, v: &[f64], mu: f64) -> Result<Point, EvalError> {
+        let x = &v[..self.n];
+        let f = self.f_at(x)?;
+        let mut c = vec![0.0; self.m];
+        self.c_at(x, &mut c)?;
+        let mut c_hat = vec![0.0; self.m];
+        self.c_hat(v, &c, &mut c_hat);
+        let theta = c_hat.iter().map(|v| v.abs()).sum::<f64>();
+        let phi = f + self.barrier_term(v, mu);
+        Ok(Point {
+            v: v.to_vec(),
+            f,
+            c,
+            c_hat,
+            theta,
+            phi,
+        })
+    }
+
+    /// Unscaled maximum constraint violation, which is what the user sees.
+    fn user_violation(&self, v: &[f64], c_scaled: &[f64]) -> f64 {
+        let (cl, cu) = self.eval.nlp().c_bounds();
+        let (xl, xu) = self.eval.nlp().x_bounds();
+        let mut worst = 0.0_f64;
+        for i in 0..self.m {
+            let ci = c_scaled[i] / self.d_c[i];
+            worst = worst.max(cl[i] - ci).max(ci - cu[i]);
+        }
+        for j in 0..self.n {
+            worst = worst.max(xl[j] - v[j]).max(v[j] - xu[j]);
+        }
+        worst.max(0.0)
+    }
+
+    // ---- setup ----
+
+    fn compute_scaling(&mut self, x: &[f64]) -> Result<(), SolveError> {
+        if !matches!(self.opts.scaling, ScalingMode::GradientBased) {
+            return Ok(());
+        }
+        let f0 = self.eval.f(x).map_err(SolveError::InitialPoint)?;
+        let mut g = vec![0.0; self.n];
+        if self.eval.grad(x, f0, &mut g).is_err() {
+            self.notes
+                .push("Scaling skipped: the gradient could not be evaluated at x0.".into());
+            return Ok(());
+        }
+        let gmax = self.opts.scaling_max_gradient;
+        let gnorm = g.iter().fold(0.0_f64, |a, v| a.max(v.abs()));
+        self.d_f = if gnorm > gmax { gmax / gnorm } else { 1.0 };
+
+        if self.m > 0 {
+            let mut c0 = vec![0.0; self.m];
+            if self.eval.c(x, &mut c0).is_ok() {
+                let mut jv = vec![0.0; self.eval.jacobian_pattern().nnz()];
+                if self.eval.jac(x, &c0, &mut jv).is_ok() {
+                    let p = self.eval.jacobian_pattern();
+                    let mut rowmax = vec![0.0_f64; self.m];
+                    for j in 0..self.n {
+                        for pos in p.col_ptr()[j]..p.col_ptr()[j + 1] {
+                            let i = p.row_idx()[pos];
+                            rowmax[i] = rowmax[i].max(jv[pos].abs());
+                        }
+                    }
+                    for i in 0..self.m {
+                        self.d_c[i] = if rowmax[i] > gmax {
+                            gmax / rowmax[i]
+                        } else {
+                            1.0
+                        };
+                    }
+                }
+            }
+        }
+        let scaled_f = (self.d_f - 1.0).abs() > 1e-12;
+        let scaled_c = self.d_c.iter().any(|d| (d - 1.0).abs() > 1e-12);
+        if scaled_f || scaled_c {
+            let cmin = self.d_c.iter().copied().fold(f64::INFINITY, f64::min);
+            self.notes.push(format!(
+                "Gradient-based scaling applied: objective factor {:.3e}, smallest constraint factor {:.3e}. \
+                 (fmincon leaves ScaleProblem off by default, so this is a deliberate divergence.)",
+                self.d_f,
+                if self.m == 0 { 1.0 } else { cmin }
+            ));
+        }
+        Ok(())
+    }
+
+    fn initial_point(&self) -> Result<Vec<f64>, SolveError> {
+        let x0 = self.eval.nlp().x0();
+        let mut v = vec![0.0; self.nv];
+        let k1 = self.barrier.bound_push;
+        let k2 = self.barrier.bound_frac;
+        for j in 0..self.n {
+            v[j] = push_inside(
+                x0[j],
+                self.v_l[j],
+                self.v_u[j],
+                self.has_l[j],
+                self.has_u[j],
+                k1,
+                k2,
+            );
+        }
+        if self.m > 0 {
+            let mut c = vec![0.0; self.m];
+            self.c_at(&v[..self.n], &mut c)
+                .map_err(SolveError::InitialPoint)?;
+            for i in 0..self.m {
+                if let Some(k) = self.slack_of[i] {
+                    v[k] = push_inside(
+                        c[i],
+                        self.v_l[k],
+                        self.v_u[k],
+                        self.has_l[k],
+                        self.has_u[k],
+                        k1,
+                        k2,
+                    );
+                }
+            }
+        }
+        Ok(v)
+    }
+
+    // ---- derivative assembly ----
+
+    fn refresh_jacobian(&mut self, x: &[f64], c: &[f64]) -> Result<(), EvalError> {
+        if self.m == 0 {
+            return Ok(());
+        }
+        // The evaluator works in unscaled space; undo the row scaling of `c`
+        // before handing it over, then scale the Jacobian rows.
+        let mut c_unscaled = vec![0.0; self.m];
+        for i in 0..self.m {
+            c_unscaled[i] = c[i] / self.d_c[i];
+        }
+        self.eval.jac(x, &c_unscaled, &mut self.jac_values)?;
+        let p = self.eval.jacobian_pattern();
+        for j in 0..self.n {
+            for pos in p.col_ptr()[j]..p.col_ptr()[j + 1] {
+                let i = p.row_idx()[pos];
+                self.jac_values[pos] *= self.d_c[i];
+            }
+        }
+        let values = std::mem::take(&mut self.jac_values);
+        self.jac_map.scatter(&values, &mut self.jac_t_values);
+        self.jac_values = values;
+        Ok(())
+    }
+
+    fn hessian_values(&mut self, x: &[f64], lambda: &[f64]) -> Result<&[f64], EvalError> {
+        match &mut self.hess {
+            Hess::Exact {
+                map,
+                lower_values,
+                upper_values,
+                ..
+            } => {
+                // The scaled Lagrangian is d_f * f + sum_i lambda_i d_c_i c_i,
+                // so sigma = d_f and the multipliers carry the row scaling.
+                let scaled: Vec<f64> = lambda.iter().zip(&self.d_c).map(|(l, d)| l * d).collect();
+                self.eval.hess(x, self.d_f, &scaled, lower_values)?;
+                map.scatter(lower_values, upper_values);
+                Ok(upper_values)
+            }
+            Hess::Bfgs(b) => Ok(b.upper_values()),
+        }
+    }
+
+    /// Gradient of the scaled objective with respect to `v` (zero in the slack
+    /// block), plus the barrier terms, giving `grad phi_mu`.
+    fn grad_phi(&self, grad_f: &[f64], v: &[f64], mu: f64, out: &mut [f64]) {
+        out.fill(0.0);
+        out[..self.n].copy_from_slice(grad_f);
+        for j in 0..self.nv {
+            if self.has_l[j] {
+                out[j] -= mu / (v[j] - self.v_l[j]);
+            }
+            if self.has_u[j] {
+                out[j] += mu / (self.v_u[j] - v[j]);
+            }
+        }
+    }
+
+    /// `out <- A * lambda` where `A` is the transposed Jacobian including the
+    /// slack `-1` entries.
+    fn a_times(&self, lambda: &[f64], out: &mut [f64]) {
+        out.fill(0.0);
+        let p = self.eval.jacobian_pattern();
+        for j in 0..self.n {
+            let mut acc = 0.0;
+            for pos in p.col_ptr()[j]..p.col_ptr()[j + 1] {
+                acc += self.jac_values[pos] * lambda[p.row_idx()[pos]];
+            }
+            out[j] = acc;
+        }
+        for i in 0..self.m {
+            if let Some(k) = self.slack_of[i] {
+                out[k] -= lambda[i];
+            }
+        }
+    }
+
+    // ---- the main loop ----
+
+    #[allow(clippy::too_many_lines)]
+    fn run(mut self) -> Result<SolveReport, SolveError> {
+        let (n, m, nv) = (self.n, self.m, self.nv);
+        let max_iter = self.opts.effective_max_iterations(n);
+
+        let x0_owned = self.eval.nlp().x0().to_vec();
+        self.compute_scaling(&x0_owned)?;
+        let mut v = self.initial_point()?;
+
+        let mut mu = self.opts.mu_init;
+        let mut point = self.evaluate(&v, mu).map_err(SolveError::InitialPoint)?;
+
+        let mut lambda = vec![0.0; m];
+        let mut z_l = vec![0.0; nv];
+        let mut z_u = vec![0.0; nv];
+        for j in 0..nv {
+            z_l[j] = if self.has_l[j] { 1.0 } else { 0.0 };
+            z_u[j] = if self.has_u[j] { 1.0 } else { 0.0 };
+        }
+
+        let mut grad_f = vec![0.0; n];
+        self.eval
+            .grad(&v[..n], point.f / self.d_f, &mut grad_f)
+            .map_err(SolveError::InitialPoint)?;
+        for g in &mut grad_f {
+            *g *= self.d_f;
+        }
+        self.refresh_jacobian(&v[..n], &point.c)
+            .map_err(SolveError::InitialPoint)?;
+
+        let mut filter = Filter::new(point.theta, FilterParams::default());
+        let mut trace: Vec<IterationRecord> = Vec::new();
+        let mut sigma = vec![0.0; nv];
+        let mut grad_phi = vec![0.0; nv];
+        let mut a_lambda = vec![0.0; nv];
+        let mut d_v = vec![0.0; nv];
+        let mut d_lambda = vec![0.0; m];
+        let mut d_zl = vec![0.0; nv];
+        let mut d_zu = vec![0.0; nv];
+        let mut prev_x = v[..n].to_vec();
+        let mut prev_lag_grad = vec![0.0; n];
+
+        let x0_norm = v[..n].iter().fold(0.0_f64, |a, x| a.max(x.abs()));
+        let f0_value = point.f / self.d_f;
+        let mut stalled = 0usize;
+        let mut exit = ExitFlag::MaxReached;
+        let mut acceptable_streak = 0usize;
+        let mut iterations = 0usize;
+        let mut last_delta_w = 0.0;
+        let mut last_delta_c = 0.0;
+        let mut last_soc = 0usize;
+        let mut last_alpha = 0.0;
+        let mut last_step_norm = 0.0;
+
+        for iter in 0..=max_iter {
+            iterations = iter;
+
+            // --- termination ---
+            let (e0, e_mu, compl) = self.optimality(&point, &grad_f, &lambda, &z_l, &z_u, mu);
+            let violation = self.user_violation(&point.v, &point.c);
+            if self.opts.record_trace {
+                trace.push(IterationRecord {
+                    iter,
+                    f_count: mincon_core::EvalCounters::get(&self.eval.counters().f),
+                    f: point.f / self.d_f,
+                    constraint_violation: violation,
+                    optimality: e0,
+                    step_norm: last_step_norm,
+                    alpha: last_alpha,
+                    mu,
+                    delta_w: last_delta_w,
+                    delta_c: last_delta_c,
+                    in_restoration: false,
+                    soc_count: last_soc,
+                });
+            }
+
+            if e0 <= self.opts.tol.optimality
+                && violation <= self.opts.tol.feasibility
+                && compl <= self.opts.tol.complementarity
+            {
+                exit = ExitFlag::Optimal;
+                break;
+            }
+            if e0 <= self.opts.tol.acceptable_optimality
+                && violation <= self.opts.tol.acceptable_feasibility
+            {
+                acceptable_streak += 1;
+                if acceptable_streak >= self.opts.tol.acceptable_iterations {
+                    exit = ExitFlag::Acceptable;
+                    break;
+                }
+            } else {
+                acceptable_streak = 0;
+            }
+            if point.f / self.d_f <= self.opts.tol.objective_limit
+                && violation <= self.opts.tol.feasibility
+            {
+                exit = ExitFlag::Unbounded;
+                break;
+            }
+            // Diverging iterates. Certifying unboundedness is undecidable for a
+            // local method, so this is a heuristic - but it must be a heuristic
+            // that actually fires. IPOPT's `diverging_iterates_tol` is an
+            // absolute 1e20 on ||x||, which an iterate growing linearly will
+            // never reach inside any sane budget: measured on TORTURE_UNBOUNDED,
+            // 420 iterations get to 3e13 and the solver reports MaxReached,
+            // telling the user nothing. So the test is *relative growth* from
+            // the starting point, on all three of: feasibility maintained,
+            // ||x|| exploded, and the objective fell by the same order.
+            if violation <= self.opts.tol.feasibility.max(1e-6) {
+                let xnorm = point.v[..n].iter().fold(0.0_f64, |a, v| a.max(v.abs()));
+                let f_now = point.f / self.d_f;
+                let grew = xnorm > DIVERGING_GROWTH_FACTOR * x0_norm.max(1.0);
+                let fell = f_now < f0_value - DIVERGING_GROWTH_FACTOR * f0_value.abs().max(1.0);
+                if grew && fell {
+                    self.notes.push(format!(
+                        "Iterates appear to be diverging: ||x||_inf grew from {x0_norm:.3e} to \
+                         {xnorm:.3e} and the objective fell from {f0_value:.3e} to {f_now:.3e}, \
+                         all while feasible. Reported as unbounded below. This is a growth \
+                         heuristic, not a proof - a problem with a very distant minimum can \
+                         trigger it, so check the returned point before trusting the flag."
+                    ));
+                    exit = ExitFlag::Unbounded;
+                    break;
+                }
+            }
+            // Step tolerance. fmincon's exit flag 2, and the honest answer on a
+            // degenerate problem where the multipliers are unbounded so the KKT
+            // residual can never come down: the iterate has stopped moving and
+            // saying so beats burning the budget and reporting MaxReached.
+            if iter > 0
+                && last_step_norm < self.opts.tol.step
+                && violation <= self.opts.tol.feasibility
+            {
+                stalled += 1;
+                if stalled >= STALL_ITERATIONS {
+                    self.notes.push(format!(
+                        "Steps have been below the step tolerance ({:.1e}) for {STALL_ITERATIONS} \
+                         consecutive iterations while feasible. The iterate has stopped moving; \
+                         first-order optimality is {e0:.3e}, which may be unattainable if the \
+                         constraint qualification fails at this point.",
+                        self.opts.tol.step
+                    ));
+                    exit = ExitFlag::StepTolerance;
+                    break;
+                }
+            } else {
+                stalled = 0;
+            }
+            if let Some(limit) = self.opts.max_evaluations {
+                if mincon_core::EvalCounters::get(&self.eval.counters().f) >= limit {
+                    exit = ExitFlag::MaxReached;
+                    break;
+                }
+            }
+            if let Some(limit) = self.opts.max_seconds {
+                if self.start.elapsed().as_secs_f64() >= limit {
+                    exit = ExitFlag::MaxReached;
+                    break;
+                }
+            }
+            if iter == max_iter {
+                exit = ExitFlag::MaxReached;
+                break;
+            }
+
+            // --- barrier parameter ---
+            if e_mu <= self.barrier.kappa_eps * mu && mu > self.opts.tol.optimality / 10.0 {
+                mu = (self.opts.tol.optimality / 10.0)
+                    .max((self.barrier.kappa_mu * mu).min(mu.powf(self.barrier.theta_mu)));
+                filter = Filter::new(point.theta, FilterParams::default());
+                point.phi = point.f + self.barrier_term(&point.v, mu);
+            }
+            let tau = self.opts.tau_min.max(1.0 - mu);
+
+            // --- barrier diagonal ---
+            for j in 0..nv {
+                let mut s = 0.0;
+                if self.has_l[j] {
+                    s += z_l[j] / (point.v[j] - self.v_l[j]).max(1e-300);
+                }
+                if self.has_u[j] {
+                    s += z_u[j] / (self.v_u[j] - point.v[j]).max(1e-300);
+                }
+                sigma[j] = s;
+            }
+
+            // --- factor and solve ---
+            let hess_ptr: Vec<f64> = {
+                let vals = self
+                    .hessian_values(&point.v[..n], &lambda)
+                    .map_err(|e| SolveError::Internal(format!("hessian evaluation: {e}")))?;
+                vals.to_vec()
+            };
+            let jt = self.jac_t_values.clone();
+            let outcome = match self.kkt.factor_with_correction(
+                &hess_ptr,
+                &jt,
+                &sigma,
+                mu,
+                self.opts.regularization,
+                &self.correction,
+            ) {
+                Ok(o) => o,
+                Err(KktFailure::RegularizationExhausted { .. }) => {
+                    self.notes.push(
+                        "Inertia correction could not make the KKT matrix suitable. Feasibility \
+                         restoration is not implemented yet, so the solve stops here."
+                            .into(),
+                    );
+                    exit = ExitFlag::NumericalFailure;
+                    break;
+                }
+                Err(KktFailure::Linear(e)) => return Err(SolveError::LinearAlgebra(e.to_string())),
+            };
+            last_delta_w = outcome.delta_w;
+            last_delta_c = outcome.delta_c;
+
+            self.grad_phi(&grad_f, &point.v, mu, &mut grad_phi);
+            self.a_times(&lambda, &mut a_lambda);
+            {
+                let rhs = self.kkt.rhs_mut();
+                for j in 0..nv {
+                    rhs[j] = -(grad_phi[j] + a_lambda[j]);
+                }
+                for i in 0..m {
+                    rhs[nv + i] = -point.c_hat[i];
+                }
+            }
+            self.kkt
+                .solve_scratch(self.opts.refinement_steps)
+                .map_err(|e| SolveError::LinearAlgebra(e.to_string()))?;
+            d_v.copy_from_slice(&self.kkt.sol()[..nv]);
+            d_lambda.copy_from_slice(&self.kkt.sol()[nv..]);
+
+            for j in 0..nv {
+                d_zl[j] = if self.has_l[j] {
+                    let d = (point.v[j] - self.v_l[j]).max(1e-300);
+                    mu / d - z_l[j] - (z_l[j] / d) * d_v[j]
+                } else {
+                    0.0
+                };
+                d_zu[j] = if self.has_u[j] {
+                    let d = (self.v_u[j] - point.v[j]).max(1e-300);
+                    mu / d - z_u[j] + (z_u[j] / d) * d_v[j]
+                } else {
+                    0.0
+                };
+            }
+
+            // --- fraction to boundary ---
+            let alpha_max = self.fraction_to_boundary(&point.v, &d_v, tau);
+            let alpha_z = fraction_to_boundary_dual(&z_l, &d_zl, tau)
+                .min(fraction_to_boundary_dual(&z_u, &d_zu, tau));
+
+            let dphi: f64 = grad_phi.iter().zip(&d_v).map(|(g, d)| g * d).sum();
+            let alpha_min = filter.min_step_size(dphi, point.theta);
+
+            // --- filter line search with second-order corrections ---
+            let mut alpha = alpha_max;
+            let mut accepted: Option<(Point, Acceptance, f64, usize)> = None;
+
+            for trial in 0..filter.params().max_backtracks {
+                if alpha < alpha_min {
+                    break;
+                }
+                let mut cand = vec![0.0; nv];
+                for j in 0..nv {
+                    cand[j] = point.v[j] + alpha * d_v[j];
+                }
+                match self.evaluate(&cand, mu) {
+                    Ok(trial_point) => {
+                        let acc = filter.evaluate(
+                            point.theta,
+                            point.phi,
+                            trial_point.theta,
+                            trial_point.phi,
+                            alpha,
+                            dphi,
+                        );
+                        if acc != Acceptance::Rejected {
+                            accepted = Some((trial_point, acc, alpha, 0));
+                            break;
+                        }
+                        // Second-order correction, only on the first trial and
+                        // only when the step made feasibility worse - the
+                        // Maratos-effect signature.
+                        if trial == 0
+                            && self.opts.max_soc > 0
+                            && m > 0
+                            && trial_point.theta >= point.theta
+                        {
+                            if let Some((soc_point, soc_acc, soc_alpha, used)) = self
+                                .second_order_correction(
+                                    &point, &d_v, alpha, mu, tau, dphi, &filter,
+                                )
+                            {
+                                accepted = Some((soc_point, soc_acc, soc_alpha, used));
+                                break;
+                            }
+                        }
+                    }
+                    Err(EvalError::UserAbort) => {
+                        exit = ExitFlag::StoppedByUser;
+                        break;
+                    }
+                    Err(_) => { /* model failure: retreat, exactly as fmincon's sqp does */ }
+                }
+                alpha *= filter.params().backtrack;
+            }
+
+            if exit == ExitFlag::StoppedByUser {
+                break;
+            }
+
+            let Some((new_point, acceptance, alpha_taken, soc)) = accepted else {
+                // Restoration would go here.
+                if self.eval.uses_central_differences() {
+                    self.notes.push(
+                        "Line search failed and feasibility restoration is not implemented yet. \
+                         This is the largest known gap; see docs/10_ROADMAP.md milestone M4."
+                            .into(),
+                    );
+                    exit = ExitFlag::NumericalFailure;
+                    break;
+                }
+                // Before giving up, sharpen the derivatives: a failing line
+                // search is most often finite-difference noise, not geometry.
+                self.eval.escalate_accuracy();
+                self.notes.push(
+                    "Line search failed; switching to central finite differences and retrying."
+                        .into(),
+                );
+                self.eval
+                    .grad(&point.v[..n], point.f / self.d_f, &mut grad_f)
+                    .map_err(|e| SolveError::Internal(format!("gradient after escalation: {e}")))?;
+                for g in &mut grad_f {
+                    *g *= self.d_f;
+                }
+                continue;
+            };
+
+            last_alpha = alpha_taken;
+            last_soc = soc;
+            last_step_norm = d_v
+                .iter()
+                .fold(0.0_f64, |a, d| a.max((alpha_taken * d).abs()));
+
+            if acceptance == Acceptance::SufficientDecrease {
+                filter.augment(point.theta, point.phi);
+            }
+
+            // --- accept the step ---
+            for i in 0..m {
+                lambda[i] += alpha_z * d_lambda[i];
+            }
+            for j in 0..nv {
+                z_l[j] = (z_l[j] + alpha_z * d_zl[j]).max(0.0);
+                z_u[j] = (z_u[j] + alpha_z * d_zu[j]).max(0.0);
+            }
+            self.reset_bound_multipliers(&new_point.v, mu, &mut z_l, &mut z_u);
+
+            // --- quasi-Newton update ---
+            if let Hess::Bfgs(_) = &self.hess {
+                self.a_times(&lambda, &mut a_lambda);
+                for j in 0..n {
+                    prev_lag_grad[j] = grad_f[j] + a_lambda[j] - z_l[j] + z_u[j];
+                }
+            }
+
+            v.copy_from_slice(&new_point.v);
+            let f_unscaled = new_point.f / self.d_f;
+            self.eval
+                .grad(&v[..n], f_unscaled, &mut grad_f)
+                .map_err(|e| SolveError::Internal(format!("gradient evaluation: {e}")))?;
+            for g in &mut grad_f {
+                *g *= self.d_f;
+            }
+            self.refresh_jacobian(&v[..n], &new_point.c)
+                .map_err(|e| SolveError::Internal(format!("jacobian evaluation: {e}")))?;
+
+            if let Hess::Bfgs(b) = &mut self.hess {
+                let mut a_new = vec![0.0; nv];
+                {
+                    let p = self.eval.jacobian_pattern();
+                    for j in 0..n {
+                        let mut acc = 0.0;
+                        for pos in p.col_ptr()[j]..p.col_ptr()[j + 1] {
+                            acc += self.jac_values[pos] * lambda[p.row_idx()[pos]];
+                        }
+                        a_new[j] = acc;
+                    }
+                }
+                let s: Vec<f64> = (0..n).map(|j| v[j] - prev_x[j]).collect();
+                let y: Vec<f64> = (0..n)
+                    .map(|j| (grad_f[j] + a_new[j] - z_l[j] + z_u[j]) - prev_lag_grad[j])
+                    .collect();
+                b.update(&s, &y);
+            }
+            prev_x.copy_from_slice(&v[..n]);
+            point = new_point;
+        }
+
+        Ok(self.finish(exit, iterations, point, lambda, z_l, z_u, trace))
+    }
+
+    #[allow(clippy::too_many_arguments)] // the SOC needs the whole line-search state
+    fn second_order_correction(
+        &mut self,
+        point: &Point,
+        d_v: &[f64],
+        alpha: f64,
+        mu: f64,
+        tau: f64,
+        dphi: f64,
+        filter: &Filter,
+    ) -> Option<(Point, Acceptance, f64, usize)> {
+        let (m, nv) = (self.m, self.nv);
+        let mut theta_old = f64::INFINITY;
+        let mut cand = vec![0.0; nv];
+        for j in 0..nv {
+            cand[j] = point.v[j] + alpha * d_v[j];
+        }
+        let trial = self.evaluate(&cand, mu).ok()?;
+        let mut c_soc: Vec<f64> = (0..m)
+            .map(|i| alpha * point.c_hat[i] + trial.c_hat[i])
+            .collect();
+
+        for k in 1..=self.opts.max_soc {
+            // Reuse the existing factorization: the matrix has not changed,
+            // only the right-hand side. This is what makes SOC nearly free.
+            {
+                let rhs = self.kkt.rhs_mut();
+                for i in 0..m {
+                    rhs[nv + i] = -c_soc[i];
+                }
+            }
+            if self.kkt.solve_scratch(self.opts.refinement_steps).is_err() {
+                return None;
+            }
+            let d_cor: Vec<f64> = self.kkt.sol()[..nv].to_vec();
+            let alpha_soc = self.fraction_to_boundary(&point.v, &d_cor, tau);
+            for j in 0..nv {
+                cand[j] = point.v[j] + alpha_soc * d_cor[j];
+            }
+            let Ok(soc_point) = self.evaluate(&cand, mu) else {
+                return None;
+            };
+            let acc = filter.evaluate(
+                point.theta,
+                point.phi,
+                soc_point.theta,
+                soc_point.phi,
+                alpha_soc,
+                dphi,
+            );
+            if acc != Acceptance::Rejected {
+                return Some((soc_point, acc, alpha_soc, k));
+            }
+            if soc_point.theta > self.barrier.kappa_soc * theta_old {
+                return None;
+            }
+            theta_old = soc_point.theta;
+            for i in 0..m {
+                c_soc[i] = alpha_soc * c_soc[i] + soc_point.c_hat[i];
+            }
+        }
+        None
+    }
+
+    fn fraction_to_boundary(&self, v: &[f64], d: &[f64], tau: f64) -> f64 {
+        let mut alpha = 1.0_f64;
+        for j in 0..self.nv {
+            if d[j] < 0.0 && self.has_l[j] {
+                let room = v[j] - self.v_l[j];
+                if room > 0.0 {
+                    alpha = alpha.min(-tau * room / d[j]);
+                }
+            } else if d[j] > 0.0 && self.has_u[j] {
+                let room = self.v_u[j] - v[j];
+                if room > 0.0 {
+                    alpha = alpha.min(tau * room / d[j]);
+                }
+            }
+        }
+        alpha.clamp(0.0, 1.0)
+    }
+
+    fn reset_bound_multipliers(&self, v: &[f64], mu: f64, z_l: &mut [f64], z_u: &mut [f64]) {
+        let k = self.barrier.kappa_sigma;
+        for j in 0..self.nv {
+            if self.has_l[j] {
+                let d = (v[j] - self.v_l[j]).max(1e-300);
+                z_l[j] = z_l[j].min(k * mu / d).max(mu / (k * d));
+            }
+            if self.has_u[j] {
+                let d = (self.v_u[j] - v[j]).max(1e-300);
+                z_u[j] = z_u[j].min(k * mu / d).max(mu / (k * d));
+            }
+        }
+    }
+
+    /// Returns `(E_0, E_mu, worst complementarity)`, all in the scaled problem
+    /// except the complementarity residual which is reported unscaled.
+    fn optimality(
+        &self,
+        point: &Point,
+        grad_f: &[f64],
+        lambda: &[f64],
+        z_l: &[f64],
+        z_u: &[f64],
+        mu: f64,
+    ) -> (f64, f64, f64) {
+        let (n, m, nv) = (self.n, self.m, self.nv);
+        let mut a_lambda = vec![0.0; nv];
+        self.a_times(lambda, &mut a_lambda);
+
+        let mut dual = 0.0_f64;
+        for j in 0..nv {
+            let gf = if j < n { grad_f[j] } else { 0.0 };
+            dual = dual.max((gf + a_lambda[j] - z_l[j] + z_u[j]).abs());
+        }
+
+        let primal = point.c_hat.iter().fold(0.0_f64, |a, c| a.max(c.abs()));
+
+        let mut compl0 = 0.0_f64;
+        let mut compl_mu = 0.0_f64;
+        let mut nbounds = 0usize;
+        let mut z_sum = 0.0;
+        for j in 0..nv {
+            if self.has_l[j] {
+                let d = point.v[j] - self.v_l[j];
+                compl0 = compl0.max((d * z_l[j]).abs());
+                compl_mu = compl_mu.max((d * z_l[j] - mu).abs());
+                nbounds += 1;
+                z_sum += z_l[j].abs();
+            }
+            if self.has_u[j] {
+                let d = self.v_u[j] - point.v[j];
+                compl0 = compl0.max((d * z_u[j]).abs());
+                compl_mu = compl_mu.max((d * z_u[j] - mu).abs());
+                nbounds += 1;
+                z_sum += z_u[j].abs();
+            }
+        }
+
+        let s_max = self.barrier.s_max;
+        let lam_sum: f64 = lambda.iter().map(|v| v.abs()).sum();
+        let denom_d = (m + nbounds).max(1) as f64;
+        let s_d = (s_max.max((lam_sum + z_sum) / denom_d)) / s_max;
+        let s_c = (s_max.max(z_sum / nbounds.max(1) as f64)) / s_max;
+
+        let e0 = (dual / s_d).max(primal).max(compl0 / s_c);
+        let e_mu = (dual / s_d).max(primal).max(compl_mu / s_c);
+        (e0, e_mu, compl0)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finish(
+        self,
+        exit: ExitFlag,
+        iterations: usize,
+        point: Point,
+        lambda: Vec<f64>,
+        z_l: Vec<f64>,
+        z_u: Vec<f64>,
+        trace: Vec<IterationRecord>,
+    ) -> SolveReport {
+        let n = self.n;
+        let counters = self.eval.counters();
+        let (e0, _, compl) = self.optimality(&point, &vec![0.0; n], &lambda, &z_l, &z_u, 0.0);
+        let _ = e0;
+
+        // Recompute the honest optimality with the real gradient.
+        let mut grad_f = vec![0.0; n];
+        let f_unscaled = point.f / self.d_f;
+        let _ = self.eval.grad(&point.v[..n], f_unscaled, &mut grad_f);
+        for g in &mut grad_f {
+            *g *= self.d_f;
+        }
+        let (optimality, _, _) = self.optimality(&point, &grad_f, &lambda, &z_l, &z_u, 0.0);
+        let violation = self.user_violation(&point.v, &point.c);
+
+        // Unscale the multipliers back into the user's problem.
+        let lambda_user: Vec<f64> = lambda
+            .iter()
+            .zip(&self.d_c)
+            .map(|(l, d)| l * d / self.d_f)
+            .collect();
+        let z_l_user: Vec<f64> = z_l[..n].iter().map(|z| z / self.d_f).collect();
+        let z_u_user: Vec<f64> = z_u[..n].iter().map(|z| z / self.d_f).collect();
+        let c_user: Vec<f64> = point.c.iter().zip(&self.d_c).map(|(c, d)| c / d).collect();
+
+        let timings = Timings {
+            total: self.start.elapsed(),
+            model: self.eval.model_time(),
+            ..Timings::default()
+        };
+
+        let mut notes = self.notes.clone();
+        if let Hess::Bfgs(b) = &self.hess {
+            if b.skipped() > 0 {
+                notes.push(format!(
+                    "{} of {} BFGS updates were skipped for bad curvature; an exact Hessian would help this model.",
+                    b.skipped(),
+                    b.skipped() + b.updates()
+                ));
+            }
+        }
+
+        SolveReport {
+            solution: Solution {
+                x: point.v[..n].to_vec(),
+                f: f_unscaled,
+                c: c_user,
+                lambda: lambda_user,
+                z_l: z_l_user,
+                z_u: z_u_user,
+            },
+            exit_flag: exit,
+            algorithm: Algorithm::InteriorPoint,
+            iterations,
+            f_evals: mincon_core::EvalCounters::get(&counters.f),
+            g_evals: mincon_core::EvalCounters::get(&counters.g),
+            c_evals: mincon_core::EvalCounters::get(&counters.c),
+            j_evals: mincon_core::EvalCounters::get(&counters.j),
+            h_evals: mincon_core::EvalCounters::get(&counters.h),
+            failed_evals: mincon_core::EvalCounters::get(&counters.failed),
+            optimality,
+            constraint_violation: violation,
+            complementarity: compl,
+            trace,
+            timings,
+            notes,
+        }
+    }
+}
+
+fn push_inside(x: f64, lo: f64, hi: f64, has_l: bool, has_u: bool, k1: f64, k2: f64) -> f64 {
+    match (has_l, has_u) {
+        (false, false) => x,
+        (true, false) => x.max(lo + k1 * lo.abs().max(1.0)),
+        (false, true) => x.min(hi - k1 * hi.abs().max(1.0)),
+        (true, true) => {
+            let width = hi - lo;
+            let pl = (k1 * lo.abs().max(1.0)).min(k2 * width);
+            let pu = (k1 * hi.abs().max(1.0)).min(k2 * width);
+            x.clamp(lo + pl, hi - pu)
+        }
+    }
+}
+
+fn fraction_to_boundary_dual(z: &[f64], dz: &[f64], tau: f64) -> f64 {
+    let mut alpha = 1.0_f64;
+    for (zi, di) in z.iter().zip(dz) {
+        if *di < 0.0 && *zi > 0.0 {
+            alpha = alpha.min(-tau * zi / di);
+        }
+    }
+    alpha.clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_inside_respects_every_bound_configuration() {
+        assert_eq!(push_inside(5.0, 0.0, 0.0, false, false, 0.01, 0.01), 5.0);
+        let a = push_inside(0.0, 0.0, f64::INFINITY, true, false, 0.01, 0.01);
+        assert!(a > 0.0);
+        let b = push_inside(1.0, f64::NEG_INFINITY, 1.0, false, true, 0.01, 0.01);
+        assert!(b < 1.0);
+        let c = push_inside(0.0, 0.0, 1.0, true, true, 0.01, 0.01);
+        assert!(c > 0.0 && c < 1.0);
+        // A point already comfortably inside is left alone.
+        assert_eq!(push_inside(0.5, 0.0, 1.0, true, true, 0.01, 0.01), 0.5);
+    }
+
+    #[test]
+    fn dual_fraction_to_boundary_never_lets_z_go_negative() {
+        let z = [1.0, 2.0];
+        let dz = [-2.0, 0.5];
+        let a = fraction_to_boundary_dual(&z, &dz, 0.99);
+        for i in 0..2 {
+            assert!(z[i] + a * dz[i] >= 0.0);
+        }
+        assert!(a > 0.0 && a <= 1.0);
+    }
+}

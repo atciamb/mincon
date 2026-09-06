@@ -1,0 +1,206 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Nightly: the full CUTEst benchmark. Tier 3 in docs/08_BENCHMARK_PROTOCOL.md.
+    - cron: "0 3 * * *"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # Tier 1: must stay under a minute, or it stops being run.
+  test:
+    name: test / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+      # The regression table is the real gate. It fails the build on any
+      # false report of success, which is the one unforgivable bug
+      # (docs/11_PITFALLS.md 1.1).
+      - name: Regression test set
+        shell: bash
+        run: |
+          out=$(cargo run --release -p mincon-ip --example run_testset)
+          echo "$out"
+          if echo "$out" | grep -qE "[1-9][0-9]* LIES"; then
+            echo "::error::the solver reported success on a problem with no solution"
+            exit 1
+          fi
+          rate=$(echo "$out" | tail -1 | sed -E 's#^([0-9]+)/([0-9]+).*#\1 \2#')
+          pass=$(echo "$rate" | cut -d' ' -f1)
+          total=$(echo "$rate" | cut -d' ' -f2)
+          echo "pass rate: $pass/$total"
+          # Ratchet. Raise this as milestones land; never lower it.
+          if [ "$pass" -lt 52 ]; then
+            echo "::error::regression: $pass/$total, expected at least 52"
+            exit 1
+          fi
+
+  msrv:
+    name: minimum supported Rust version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.80.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace
+
+  docs:
+    name: docs build clean
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Doc examples in the crate roots are compiled and run, so the README's
+      # promises stay true.
+      - run: cargo doc --workspace --no-deps
+      - run: cargo test --workspace --doc
+
+  wheel:
+    name: python wheel / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pip install maturin pytest numpy scipy
+      - name: Build the wheel
+        working-directory: crates/mincon-py
+        run: maturin build --release -o dist
+      - name: Install and smoke-test
+        shell: bash
+        run: |
+          pip install --force-reinstall crates/mincon-py/dist/*.whl
+          python - <<'EOF'
+          import numpy as np
+          from mincon import minimize, check_gradients
+
+          # HS71 to published accuracy, no derivatives.
+          f  = lambda x: x[0]*x[3]*(x[0]+x[1]+x[2]) + x[2]
+          r = minimize(f, [1.,5.,5.,1.], bounds=[(1,5)]*4, constraints=[
+                  {"type":"ineq","fun": lambda x: x[0]*x[1]*x[2]*x[3] - 25.0},
+                  {"type":"eq",  "fun": lambda x: 40.0 - (x**2).sum()}])
+          assert r.success, r.message
+          assert abs(r.fun - 17.0140173) < 1e-5, r.fun
+          assert r.maxcv < 1e-6, r.maxcv
+
+          # An infeasible problem must never be reported as solved.
+          r = minimize(lambda x: x@x, [0.,0.], constraints=[
+                  {"type":"eq","fun": lambda x: x[0]+x[1]-1},
+                  {"type":"eq","fun": lambda x: x[0]+x[1]-3}])
+          assert not r.success, "reported success on an infeasible problem"
+
+          # The derivative checker must catch a wrong gradient.
+          bad = check_gradients(lambda x: x[0]**3, [2.0], lambda x: np.array([3*x[0]]))
+          assert not bad.passed
+          print("python smoke test OK")
+          EOF
+
+  # Tier 2: runs on pull requests, minutes not hours.
+  benchmark:
+    name: benchmark (constrained-small)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: pip install maturin numpy scipy matplotlib
+      - working-directory: crates/mincon-py
+        run: maturin build --release -o dist
+      - run: pip install --force-reinstall crates/mincon-py/dist/*.whl
+      - name: Fetch the CUTEst problems
+        run: python -c "import sys; sys.path.insert(0,'bench'); import s2mpj_bridge as b; b.ensure_s2mpj()"
+      - name: Run
+        run: |
+          python bench/runner.py --set constrained-small --limit 120 \
+                 --solvers mincon scipy-slsqp scipy-trust-constr \
+                 --maxtime 20 -o results.jsonl
+          python bench/profiles.py results.jsonl -o profiles.png
+      - name: Fail on any false report of success
+        run: |
+          python - <<'EOF'
+          import json, sys
+          sys.path.insert(0, "bench")
+          from profiles import load, score
+          _, records = load("results.jsonl")
+          solved, _ = score(records)
+          lied = [r for r in records
+                  if r["solver"].startswith("mincon")
+                  and r.get("reported_success")
+                  and not solved.get((r["problem"], r["solver"]))
+                  and r["maxcv"] > 1e-5]
+          for r in lied:
+              print(f"LIE: {r['problem']} maxcv={r['maxcv']:.2e}")
+          sys.exit(1 if lied else 0)
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark
+          path: |
+            results.jsonl
+            profiles.png
+
+  # Tier 3: the full CUTEst set, nightly.
+  full-benchmark:
+    name: full CUTEst benchmark
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pip install maturin numpy scipy matplotlib
+      - working-directory: crates/mincon-py
+        run: maturin build --release -o dist
+      - run: pip install --force-reinstall crates/mincon-py/dist/*.whl
+      - run: python -c "import sys; sys.path.insert(0,'bench'); import s2mpj_bridge as b; b.ensure_s2mpj()"
+      - run: |
+          python bench/runner.py --set all --solvers mincon scipy-slsqp scipy-trust-constr \
+                 --maxtime 60 -o full.jsonl
+          python bench/profiles.py full.jsonl -o full-profiles.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: full-benchmark
+          path: |
+            full.jsonl
+            full-profiles.png

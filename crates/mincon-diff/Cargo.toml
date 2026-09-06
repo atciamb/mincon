@@ -1,0 +1,16 @@
+[package]
+name = "mincon-diff"
+description = "Derivative approximation for mincon: bounds-aware finite differences, graph coloring and sparsity detection"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+mincon-core.workspace = true
+rayon.workspace = true
+
+[lints]
+workspace = true

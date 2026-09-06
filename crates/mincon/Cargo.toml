@@ -1,0 +1,24 @@
+[package]
+name = "mincon"
+description = "A robust nonlinear constrained optimizer: a free, fast, pip-installable answer to MATLAB's fmincon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords = ["optimization", "nonlinear", "constrained", "nlp", "interior-point"]
+categories = ["mathematics", "science"]
+
+[dependencies]
+mincon-core.workspace = true
+mincon-linalg.workspace = true
+mincon-diff.workspace = true
+mincon-ip.workspace = true
+mincon-sqp.workspace = true
+
+[dev-dependencies]
+mincon-testset.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,8 @@
+/target/
+/.venv/
+/bench/vendor/
+/bench/artifacts/
+__pycache__/
+*.pyc
+*.pyd
+*.whl

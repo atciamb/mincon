@@ -1,0 +1,360 @@
+//! The derivative checker.
+//!
+//! `fmincon`'s `CheckGradients` compares user derivatives against finite
+//! differences and prints the worst discrepancy. It is the single most useful
+//! diagnostic in the toolbox, because a wrong analytic gradient is the most
+//! common cause of "the solver doesn't work on my problem" and it is almost
+//! impossible to diagnose from convergence behaviour alone.
+//!
+//! Two improvements on the original here:
+//!
+//! * We check at several points, not just the starting point. A gradient that
+//!   is wrong only where a branch flips is invisible at `x0` and catastrophic
+//!   in the line search.
+//! * We report a **relative** discrepancy with an absolute floor, and rank the
+//!   worst offenders, rather than a single number. "Component 47 of the
+//!   gradient is 3.2x too large" is actionable; "max discrepancy 1e-3" is not.
+
+use mincon_core::{EvalError, Nlp, Sparsity};
+
+use crate::fd::{FdConfig, FiniteDifferences};
+
+/// One disagreement between an analytic derivative and its finite-difference
+/// estimate.
+#[derive(Debug, Clone, Copy)]
+pub struct Discrepancy {
+    /// Row index (constraint), or `usize::MAX` for the objective gradient.
+    pub row: usize,
+    /// Column index (variable).
+    pub col: usize,
+    /// What the model said.
+    pub analytic: f64,
+    /// What finite differences said.
+    pub numerical: f64,
+    /// `|a - n| / max(|a|, |n|, 1)`.
+    pub relative: f64,
+    /// Which test point exposed it.
+    pub point: usize,
+}
+
+/// The verdict.
+#[derive(Debug, Clone)]
+pub struct CheckReport {
+    /// Worst offenders, sorted by relative discrepancy, at most 20.
+    pub worst: Vec<Discrepancy>,
+    /// Largest relative discrepancy seen anywhere.
+    pub max_relative: f64,
+    /// Threshold used.
+    pub tolerance: f64,
+    /// Number of points checked.
+    pub points_checked: usize,
+    /// Model evaluations spent.
+    pub evaluations: u64,
+}
+
+impl CheckReport {
+    /// Whether every derivative agreed to within the tolerance.
+    #[must_use]
+    pub fn passed(&self) -> bool {
+        self.max_relative <= self.tolerance
+    }
+
+    /// A message suitable for printing or attaching to the solve notes.
+    #[must_use]
+    pub fn message(&self) -> String {
+        if self.passed() {
+            return format!(
+                "Derivative check passed at {} point(s); largest relative discrepancy {:.2e} (tolerance {:.1e}).",
+                self.points_checked, self.max_relative, self.tolerance
+            );
+        }
+        let mut s = format!(
+            "Derivative check FAILED. Largest relative discrepancy {:.2e} exceeds tolerance {:.1e}.\n\
+             The solver will behave erratically until this is fixed - a wrong derivative is not a\n\
+             tolerance problem, it is a different optimization problem.\n\n\
+             Worst disagreements (analytic vs finite difference):\n",
+            self.max_relative, self.tolerance
+        );
+        for d in self.worst.iter().take(10) {
+            if d.row == usize::MAX {
+                s.push_str(&format!(
+                    "  grad f [{:>5}]        {:>14.6e}  vs {:>14.6e}   (rel {:.2e}, point {})\n",
+                    d.col, d.analytic, d.numerical, d.relative, d.point
+                ));
+            } else {
+                s.push_str(&format!(
+                    "  J [{:>5},{:>5}]       {:>14.6e}  vs {:>14.6e}   (rel {:.2e}, point {})\n",
+                    d.row, d.col, d.analytic, d.numerical, d.relative, d.point
+                ));
+            }
+        }
+        s
+    }
+}
+
+/// Compare a model's analytic derivatives against finite differences.
+///
+/// Points are the starting point plus deterministic displacements of it, so the
+/// check is reproducible.
+///
+/// # Errors
+/// Propagates a model failure that finite differences could not work around.
+pub fn check_derivatives<P: Nlp + ?Sized>(
+    nlp: &P,
+    tolerance: f64,
+    num_points: usize,
+) -> Result<CheckReport, EvalError> {
+    let dims = nlp.dims();
+    let (n, m) = (dims.n, dims.m);
+    let caps = nlp.capabilities();
+    let (lb, ub) = nlp.x_bounds();
+    let x0 = nlp.x0();
+
+    // Central differences: we are measuring correctness, not speed.
+    let fd = FiniteDifferences::new(
+        FdConfig {
+            fd_type: mincon_core::FdType::Central,
+            ..FdConfig::default()
+        },
+        n,
+        m,
+        nlp.typical_x(),
+        nlp.jacobian_structure(),
+    );
+
+    let jac_pattern: Sparsity = nlp
+        .jacobian_structure()
+        .cloned()
+        .unwrap_or_else(|| Sparsity::dense(m, n));
+
+    let mut all: Vec<Discrepancy> = Vec::new();
+    let mut evaluations = 0u64;
+    let mut points_checked = 0usize;
+
+    for point in 0..num_points.max(1) {
+        let x: Vec<f64> = if point == 0 {
+            x0.to_vec()
+        } else {
+            (0..n)
+                .map(|i| {
+                    let scale = nlp.typical_x().map_or(1.0, |t| t[i].abs().max(1.0));
+                    let d = 0.137 * scale * ((point as f64) + 0.4 * ((i % 5) as f64 - 2.0));
+                    clamp(x0[i] + d, lb[i], ub[i])
+                })
+                .collect()
+        };
+
+        let Ok(f0) = nlp.objective(&x) else { continue };
+        if !f0.is_finite() {
+            continue;
+        }
+        points_checked += 1;
+
+        if caps.gradient {
+            let mut analytic = vec![0.0; n];
+            if nlp.gradient(&x, &mut analytic).is_ok() {
+                let mut numeric = vec![0.0; n];
+                evaluations += fd.gradient(nlp, &x, f0, &mut numeric)?;
+                for j in 0..n {
+                    all.push(make(usize::MAX, j, analytic[j], numeric[j], point));
+                }
+            }
+        }
+
+        if caps.jacobian && m > 0 {
+            let mut c0 = vec![0.0; m];
+            if nlp.constraints(&x, &mut c0).is_err() {
+                continue;
+            }
+            let mut analytic = vec![0.0; jac_pattern.nnz()];
+            if nlp.jacobian(&x, &mut analytic).is_ok() {
+                let mut numeric = vec![0.0; jac_pattern.nnz()];
+                evaluations += fd.jacobian(nlp, &x, &c0, &mut numeric)?;
+                for j in 0..n {
+                    for pos in jac_pattern.col_ptr()[j]..jac_pattern.col_ptr()[j + 1] {
+                        let i = jac_pattern.row_idx()[pos];
+                        all.push(make(i, j, analytic[pos], numeric[pos], point));
+                    }
+                }
+            }
+        }
+    }
+
+    let max_relative = all.iter().fold(0.0_f64, |a, d| a.max(d.relative));
+    all.sort_by(|a, b| b.relative.total_cmp(&a.relative));
+    all.truncate(20);
+
+    Ok(CheckReport {
+        worst: all,
+        max_relative,
+        tolerance,
+        points_checked,
+        evaluations,
+    })
+}
+
+fn make(row: usize, col: usize, analytic: f64, numerical: f64, point: usize) -> Discrepancy {
+    let denom = analytic.abs().max(numerical.abs()).max(1.0);
+    Discrepancy {
+        row,
+        col,
+        analytic,
+        numerical,
+        relative: (analytic - numerical).abs() / denom,
+        point,
+    }
+}
+
+fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
+    if v < lo {
+        lo
+    } else if v > hi {
+        hi
+    } else {
+        v
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mincon_core::{Capabilities, NlpDims};
+
+    const INF: f64 = f64::INFINITY;
+
+    struct Model {
+        sabotage: bool,
+        lb: Vec<f64>,
+        ub: Vec<f64>,
+        cl: Vec<f64>,
+        cu: Vec<f64>,
+        x0: Vec<f64>,
+        pattern: Sparsity,
+    }
+
+    impl Model {
+        fn new(sabotage: bool) -> Self {
+            Self {
+                sabotage,
+                lb: vec![-INF; 3],
+                ub: vec![INF; 3],
+                cl: vec![0.0],
+                cu: vec![0.0],
+                x0: vec![0.7, -1.3, 2.1],
+                pattern: Sparsity::from_triplets(1, 3, &[(0, 0), (0, 1), (0, 2)]).unwrap(),
+            }
+        }
+    }
+
+    impl Nlp for Model {
+        fn dims(&self) -> NlpDims {
+            NlpDims { n: 3, m: 1 }
+        }
+        fn x_bounds(&self) -> (&[f64], &[f64]) {
+            (&self.lb, &self.ub)
+        }
+        fn c_bounds(&self) -> (&[f64], &[f64]) {
+            (&self.cl, &self.cu)
+        }
+        fn x0(&self) -> &[f64] {
+            &self.x0
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities::first_order()
+        }
+        fn objective(&self, x: &[f64]) -> Result<f64, EvalError> {
+            Ok(x[0] * x[0] + 3.0 * x[1] * x[2] + x[2].powi(3))
+        }
+        fn gradient(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+            out[0] = 2.0 * x[0];
+            out[1] = 3.0 * x[2];
+            // The classic mistake: a dropped chain-rule factor.
+            out[2] = if self.sabotage {
+                3.0 * x[1] + x[2] * x[2]
+            } else {
+                3.0 * x[1] + 3.0 * x[2] * x[2]
+            };
+            Ok(())
+        }
+        fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+            out[0] = x[0] * x[1] + x[2];
+            Ok(())
+        }
+        fn jacobian_structure(&self) -> Option<&Sparsity> {
+            Some(&self.pattern)
+        }
+        fn jacobian(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+            out[0] = x[1];
+            out[1] = x[0];
+            out[2] = 1.0;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn correct_derivatives_pass() {
+        let r = check_derivatives(&Model::new(false), 1e-5, 3).unwrap();
+        assert!(r.passed(), "{}", r.message());
+        assert_eq!(r.points_checked, 3);
+        assert!(r.message().contains("passed"));
+    }
+
+    #[test]
+    fn a_dropped_chain_rule_factor_is_caught_and_localized() {
+        let r = check_derivatives(&Model::new(true), 1e-5, 3).unwrap();
+        assert!(!r.passed());
+        let worst = r.worst[0];
+        assert_eq!(
+            worst.row,
+            usize::MAX,
+            "the objective gradient is the culprit"
+        );
+        assert_eq!(worst.col, 2, "component 2 is the wrong one");
+        assert!(r.message().contains("grad f"));
+        assert!(r.message().contains("FAILED"));
+    }
+
+    #[test]
+    fn a_model_with_no_analytic_derivatives_trivially_passes() {
+        struct Bare {
+            lb: Vec<f64>,
+            ub: Vec<f64>,
+            x0: Vec<f64>,
+        }
+        impl Nlp for Bare {
+            fn dims(&self) -> NlpDims {
+                NlpDims { n: 1, m: 0 }
+            }
+            fn x_bounds(&self) -> (&[f64], &[f64]) {
+                (&self.lb, &self.ub)
+            }
+            fn c_bounds(&self) -> (&[f64], &[f64]) {
+                (&[], &[])
+            }
+            fn x0(&self) -> &[f64] {
+                &self.x0
+            }
+            fn capabilities(&self) -> Capabilities {
+                Capabilities::none()
+            }
+            fn objective(&self, x: &[f64]) -> Result<f64, EvalError> {
+                Ok(x[0] * x[0])
+            }
+            fn constraints(&self, _x: &[f64], _o: &mut [f64]) -> Result<(), EvalError> {
+                Ok(())
+            }
+        }
+        let r = check_derivatives(
+            &Bare {
+                lb: vec![-INF],
+                ub: vec![INF],
+                x0: vec![1.0],
+            },
+            1e-6,
+            2,
+        )
+        .unwrap();
+        assert!(r.passed());
+        assert_eq!(r.max_relative, 0.0);
+    }
+}
