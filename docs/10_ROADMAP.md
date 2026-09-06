@@ -62,9 +62,14 @@ bound handling defects are corrected; analytical regression oracles and the
 rebuilt Python wheel pass. This prerequisite was taken before further tuning
 because incorrect derivatives invalidate solver diagnostics while the CUTEst
 qualification gate is unavailable. See `../bench/results/fd-retreat/README.md`.
-Its 54/54 fixture result includes only 38 strict Optimal returns. Investigate
-the missing convergence test inside soft restoration next; do not hide this
-distinction by counting accurate-point failure returns as strict convergence.
+The follow-up added convergence testing inside soft restoration and accurate
+two-probe inward boundary stencils. Current evidence is in
+`../bench/results/restoration-stopping/README.md`: 151 Rust tests, 7 Python
+wheel tests, 54/54 fixture outcomes and **40/54 strict Optimal**. HS33 and HS35
+also pass analytical KKT checks at the requested tolerances. Four accurate-point
+NumericalFailure returns remain; do not count them as strict convergence.
+Callback budgets/abort consistency and failed or empty derivative checks remain
+correctness priorities before release, alongside the pending qualification gate.
 
 Implementation sequence (completed locally):
 

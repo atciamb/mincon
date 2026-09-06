@@ -35,9 +35,10 @@ let r = minimize(&p, &Options::default())?;
 > **Status: early.** The development gate now passes all 54 expected outcomes
 > using independent objective/feasibility checks. This includes usable points
 > and expected failure diagnostics; it does not mean 54 certified optima.
+> Currently 40/54 report strict Optimal; 151 Rust tests and 7 wheel tests pass.
 > Soft and reduced-elastic restoration are implemented. CUTEst qualification,
 > SQP and large sparse work remain. **No superiority claim against fmincon.**
-> [Measurements and limitations](bench/results/restoration/README.md).
+> [Measurements and limitations](bench/results/restoration-stopping/README.md).
 
 ---
 
@@ -77,8 +78,9 @@ Full analysis: [`docs/01_FMINCON_ANATOMY.md`](docs/01_FMINCON_ANATOMY.md).
 * **Sparse `LDL^T`** written from scratch: dynamic regularization, inertia
   certified by Sylvester's law, element-growth detection, iterative refinement.
   **No HSL, no MUMPS, no Fortran** — which is what makes the wheel possible.
-* **Derivatives** — bounds-aware finite differences, graph coloring, sparsity
-  detection, a multi-point derivative checker.
+* **Derivatives** — bounds-aware finite differences with realized retreat
+  displacements and second-order inward boundary stencils, graph coloring,
+  sparsity detection, a multi-point derivative checker.
 * **Gradient-based scaling**, on by default.
 * **Algorithm portfolio** with deterministic ranking.
 * **Python bindings** — `abi3` wheel, SciPy-compatible `minimize`.

@@ -68,6 +68,24 @@ impl<P: Nlp + ?Sized> Solver<'_, P> {
         sum
     }
 
+    /// The main loop's complete original-problem stopping test. Filter
+    /// acceptance governs continued iteration, not termination at a KKT point.
+    fn recovery_converged(&self, state: &Recovery) -> bool {
+        let (e0, _, compl) = self.optimality(
+            &state.point,
+            &state.grad,
+            &state.lambda,
+            &state.zl,
+            &state.zu,
+            0.0,
+        );
+        e0 <= self.opts.tol.optimality
+            && self.user_violation(&state.point.v, &state.point.c) <= self.opts.tol.feasibility
+            && compl <= self.opts.tol.complementarity
+            && self.stationarity_inf(&state.grad, &state.lambda, &state.zl, &state.zu)
+                <= self.opts.tol.optimality
+    }
+
     fn record_recovery(
         &self,
         s: &Recovery,
@@ -281,6 +299,11 @@ impl<P: Nlp + ?Sized> Solver<'_, P> {
             self.record_recovery(state, mu, base_iter + state.steps, step, beta, trace);
             if !filter.is_blocked(state.point.theta, state.point.phi) {
                 self.notes.push(format!("Soft restoration re-entered after {} steps; barrier residual fell from {before:.3e} to {after:.3e} on the last step.", state.steps));
+                return Ok(());
+            }
+            if self.recovery_converged(state) {
+                self.notes.push("Soft restoration satisfied the complete original-problem convergence test while the filter blocked re-entry.".into());
+                state.exit = Some(ExitFlag::Optimal);
                 return Ok(());
             }
         }
@@ -671,6 +694,106 @@ mod tests {
         assert_eq!(r.exit, Some(ExitFlag::MaxReached));
         assert_eq!(r.steps, 0);
     }
+    #[test]
+    fn soft_restoration_can_converge_while_the_filter_blocks_reentry() {
+        let p = mincon_testset::TestProblem {
+            name: "filter-blocked quadratic",
+            n: 1,
+            m: 0,
+            x0: vec![1.0],
+            xl: vec![f64::NEG_INFINITY],
+            xu: vec![f64::INFINITY],
+            cl: vec![],
+            cu: vec![],
+            f: |x| 0.5 * x[0] * x[0],
+            c: |_, _| {},
+            f_opt: Some(0.0),
+            expect: mincon_testset::Expect::Optimum,
+            notes: "unique analytical minimizer x=0, gradient=x",
+        };
+        let nlp = p.as_nlp();
+        let mut solver = Solver::new(&nlp, &Options::default()).unwrap();
+        solver.eval.escalate_accuracy();
+        let point = solver.evaluate(&[1.0], 0.1).unwrap();
+        let mut filter = Filter::new(0.0, FilterParams::default());
+        // Isolate stopping from re-entry: even f=0 is blocked by this entry.
+        filter.augment(0.0, -1.0);
+        let r = solver
+            .restore(
+                &point,
+                &[1.0],
+                &[],
+                &[0.0],
+                &[0.0],
+                0.1,
+                &mut filter,
+                5,
+                0,
+                &mut vec![],
+                true,
+            )
+            .unwrap();
+        assert!(filter.is_blocked(r.point.theta, r.point.phi));
+        assert!(r.point.v[0].abs() < 1e-8); // Analytical stationarity.
+        assert!(r.point.f.abs() < 1e-16);
+        assert_eq!(r.exit, Some(ExitFlag::Optimal));
+        assert_eq!(r.steps, 1);
+    }
+
+    #[test]
+    fn recovery_stopping_keeps_complementarity_and_raw_stationarity_guards() {
+        let p = mincon_testset::TestProblem {
+            name: "linear bound KKT residuals",
+            n: 1,
+            m: 0,
+            x0: vec![1e-9],
+            xl: vec![0.0],
+            xu: vec![f64::INFINITY],
+            cl: vec![],
+            cu: vec![],
+            f: |x| x[0],
+            c: |_, _| {},
+            f_opt: Some(0.0),
+            expect: mincon_testset::Expect::Optimum,
+            notes: "min x subject to x>=0; exact KKT multiplier z_l=1",
+        };
+        let nlp = p.as_nlp();
+        let mut solver = Solver::new(&nlp, &Options::default()).unwrap();
+        let mut state = Recovery {
+            point: solver.evaluate(&[1e-9], 0.1).unwrap(),
+            grad: vec![1.0],
+            lambda: vec![],
+            zl: vec![1.0],
+            zu: vec![0.0],
+            steps: 1,
+            exit: None,
+        };
+        assert!(solver.recovery_converged(&state));
+        // Stationarity is exactly zero; only the stricter complementarity
+        // request should prevent termination at this interior point.
+        solver.opts.tol.complementarity = 1e-12;
+        assert!(!solver.recovery_converged(&state));
+        solver.opts.tol.complementarity = Options::default().tol.complementarity;
+
+        // Synthetic residuals for the same linear problem rescaled by 1e12:
+        // E_0 is made tiny by multiplier normalization, but raw g-z is ~0.01.
+        state.point = solver.evaluate(&[1e-25], 0.1).unwrap();
+        state.grad[0] = 1e12 + 0.01;
+        state.zl[0] = 1e12;
+        assert!((state.grad[0] - state.zl[0]).abs() > 1e-3);
+        let (e0, _, compl) = solver.optimality(
+            &state.point,
+            &state.grad,
+            &state.lambda,
+            &state.zl,
+            &state.zu,
+            0.0,
+        );
+        assert!(e0 <= solver.opts.tol.optimality);
+        assert!(compl <= solver.opts.tol.complementarity);
+        assert!(!solver.recovery_converged(&state));
+    }
+
     #[test]
     fn poisoned_bfgs_model_recovers_on_an_analytic_quadratic() {
         let p = mincon_testset::TestProblem {

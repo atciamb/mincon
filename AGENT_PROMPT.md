@@ -35,10 +35,12 @@ pass 54/54 independently checked expected outcomes. Read
 for current tests, measurements and limitations. M1 remains partial because
 the CUTEst gate has not run. No comparative fmincon claim is established.
 
-The subsequent finite-difference correction is recorded in
-`bench/results/fd-retreat/README.md`: 147 Rust tests, 7 wheel tests, 54/54
-fixture outcomes, with the strict-convergence regression recorded explicitly.
-Read the latest roadmap notes before selecting the next task.
+The subsequent finite-difference correction and restoration stopping work are
+recorded in `bench/results/fd-retreat/README.md` and
+`bench/results/restoration-stopping/README.md`. Latest: 151 Rust tests, 7 wheel
+tests, 54/54 fixture outcomes and 40 strict Optimal returns. HS33 and HS35 have
+independent analytical KKT checks. Read the latest roadmap notes before
+selecting the next task; intermediate regressions are preserved in the reports.
 
 This is achievable. It is not achievable by being clever in one place; it is
 achievable by grinding through a specific list of known gaps without breaking

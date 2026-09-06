@@ -225,6 +225,23 @@ fn one_color_can_mix_central_and_one_sided_columns() {
 }
 
 #[test]
+fn central_boundary_stencils_retain_quadratic_accuracy_after_retreat() {
+    let mut p = Window::new();
+    p.quadratic = true;
+    for (lower, upper) in [([0.0, -1.0], [1.0, 0.0]), ([0.0, -1.0], [1.0, 1.0])] {
+        p.lower = lower;
+        p.upper = upper;
+        for parallel in [false, true] {
+            for coloring in [false, true] {
+                let fd = engine(FdType::Central, parallel, coloring, 0.125);
+                check(&p, &fd, false);
+                check(&p, &fd, true);
+            }
+        }
+    }
+}
+
+#[test]
 fn fixed_coordinates_need_no_probes() {
     let mut p = Window::new();
     p.lower = p.x;

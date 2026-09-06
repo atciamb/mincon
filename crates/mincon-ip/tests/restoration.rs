@@ -85,3 +85,51 @@ fn strict_box_model_is_never_evaluated_outside_bounds_including_setup() {
     assert!((0.0..=1.0).contains(&r.solution.x[0]));
     assert!(r.solution.f < 1e-6);
 }
+
+#[test]
+fn hs33_and_hs35_converge_with_independently_checked_kkt_residuals() {
+    for name in ["HS33", "HS35"] {
+        let p = mincon_testset::by_name(name).unwrap();
+        let opts = Options::default();
+        let r = mincon_ip::solve(&p.as_nlp(), &opts).unwrap();
+        let s = &r.solution;
+        let x = &s.x;
+        assert_eq!(r.exit_flag, ExitFlag::Optimal, "{name}: {}", r.summary());
+        assert!(p.violation(x) <= opts.tol.feasibility);
+        assert!(((p.f)(x) - p.f_opt.unwrap()).abs() < 1e-7);
+        // Algebraic derivatives, never the finite-difference engine or its
+        // reported residual. Jacobian convention is grad f + J^T lambda-zl+zu.
+        let mut residual = if name == "HS33" {
+            vec![
+                3.0 * x[0] * x[0] - 12.0 * x[0] + 11.0 + 2.0 * x[0] * (s.lambda[1] - s.lambda[0]),
+                2.0 * x[1] * (s.lambda[1] - s.lambda[0]),
+                1.0 + 2.0 * x[2] * (s.lambda[0] + s.lambda[1]),
+            ]
+        } else {
+            vec![
+                -8.0 + 4.0 * x[0] + 2.0 * x[1] + 2.0 * x[2] - s.lambda[0],
+                -6.0 + 4.0 * x[1] + 2.0 * x[0] - s.lambda[0],
+                -4.0 + 2.0 * x[2] + 2.0 * x[0] - 2.0 * s.lambda[0],
+            ]
+        };
+        for j in 0..3 {
+            residual[j] += s.z_u[j] - s.z_l[j];
+            assert!(s.z_l[j] >= 0.0 && s.z_u[j] >= 0.0);
+            assert!((s.z_l[j] * (x[j] - p.xl[j])).abs() <= opts.tol.complementarity);
+            if p.xu[j].is_finite() {
+                assert!((s.z_u[j] * (p.xu[j] - x[j])).abs() <= opts.tol.complementarity);
+            }
+        }
+        let stationarity = residual.iter().fold(0.0_f64, |a, v| a.max(v.abs()));
+        assert!(
+            stationarity <= opts.tol.optimality,
+            "{name}: analytical residual {residual:?}"
+        );
+        let mut c = vec![0.0; p.m];
+        (p.c)(x, &mut c);
+        for (ci, li) in c.iter().zip(&s.lambda) {
+            assert!(*li <= 0.0); // All constraints have lower bound zero.
+            assert!((ci * li).abs() <= opts.tol.complementarity);
+        }
+    }
+}

@@ -105,9 +105,18 @@ fall back to that side's forward difference; a user abort never triggers a
 fallback. A fixed coordinate has derivative zero; a requested nonzero probe
 that rounds back to its base is an evaluation failure, not a zero derivative.
 
-Colored Jacobians retain each column's actual positive/negative steps. A
-column whose reflected step would cross a bound uses a one-sided difference,
-even when other columns in its color use central differences. Every callback
+When central differences cannot fit on both sides of a bound, use two inward
+probes at `h` and `h/2` and the same quadratic-interpolation derivative. Choose
+the second displacement from the first probe's realized displacement after
+retreat, so both do not retreat to the same point. If rounding nevertheless
+coalesces them, or only one probe survives, use the single-probe fallback.
+This retains second-order accuracy near bounds when two probes are available;
+using the central step size in a first-order formula can instead increase the
+truncation error and corrupt multipliers near an active bound.
+
+Colored Jacobians retain each column's actual first/second steps. A column
+whose reflected step would cross a bound uses two inward probes, even when
+other columns in its color use opposite-sided differences. Every callback
 must stay in the box, and all failed probes count. Analytical affine/quadratic
 oracles cover retreat, unequal steps, rounding, mixed boundary columns,
 serial/parallel execution and cancellation.

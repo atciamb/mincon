@@ -18,6 +18,18 @@ No barrier update occurs inside soft restoration. Rejected evaluations or
 insufficient residual reduction lead to full restoration, not success. A user
 abort propagates. Restoration must not reuse derivatives from a rejected point.
 
+After an accepted soft-restoration step, test convergence of the **original**
+problem using all four main-loop conditions: `E_0 <= tol.optimality`, user-space
+violation within `tol.feasibility`, complementarity within
+`tol.complementarity`, and stationarity before multiplier normalization within
+`tol.optimality`. A converged point can terminate with `Optimal` even when
+the filter blocks re-entry. This is a terminal check, not relaxed filter
+acceptance for further iteration. Use the accepted point's original objective,
+gradient, Jacobian and original-problem multipliers; never elastic multipliers.
+Otherwise the existing residual and filter rules continue unchanged. Test
+against an analytical quadratic whose solution is blocked by a deliberately
+dominating filter entry, and retain the degenerate/infeasible non-success gates.
+
 Before full restoration, allow one reset of an existing BFGS model to its
 initial unit matrix and retry soft restoration. This addresses a curvature
 model poisoned by tiny secant steps; it is tested on a quadratic with an

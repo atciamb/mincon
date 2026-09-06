@@ -1,0 +1,6 @@
+    Checking mincon-diff v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-diff)
+    Checking mincon-ip v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-ip)
+    Checking mincon-sqp v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-sqp)
+    Checking mincon v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon)
+    Checking mincon-py v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-py)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.11s

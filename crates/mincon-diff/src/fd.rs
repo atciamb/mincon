@@ -128,8 +128,8 @@ pub fn forward_step(x: f64, typical: f64, rel: f64, lb: f64, ub: f64, respect: b
     }
 }
 
-/// Compute a bounds-respecting central pair. Falls back to a forward step when
-/// the box is too tight for a symmetric probe.
+/// Compute a bounds-respecting central pair. Returns `None` when the caller
+/// must instead use inward probes because the box is too tight.
 #[must_use]
 pub fn central_step(
     x: f64,
@@ -271,7 +271,23 @@ impl FiniteDifferences {
             let step = forward_step(x[j], self.typical[j], rel, lb[j], ub[j], respect);
             xp[j] = step.x_plus;
             let fp = eval_with_retreat(|v| nlp.objective(v), &mut xp, j, x[j], step.h, &mut evals)?;
-            Ok((difference(f0, Some(fp), None, j)?, evals))
+            let other = if central {
+                let probe = eval_with_retreat(
+                    |v| nlp.objective(v),
+                    &mut xp,
+                    j,
+                    x[j],
+                    fp.1 * 0.5,
+                    &mut evals,
+                );
+                if matches!(probe, Err(EvalError::UserAbort)) {
+                    return Err(EvalError::UserAbort);
+                }
+                probe.ok()
+            } else {
+                None
+            };
+            Ok((difference(f0, Some(fp), other, j)?, evals))
         };
 
         if parallel {
@@ -327,23 +343,27 @@ impl FiniteDifferences {
             let mut xp = x.to_vec();
             let mut h = Vec::with_capacity(group.len());
             let mut hneg = Vec::with_capacity(group.len());
+            let mut inward = Vec::with_capacity(group.len());
             for &j in group {
                 if respect && lb[j] == ub[j] {
                     h.push(0.0);
                     hneg.push(0.0);
+                    inward.push(false);
                 } else if let Some(hj) = central
                     .then(|| central_step(x[j], self.typical[j], rel, lb[j], ub[j], respect))
                     .flatten()
                 {
                     h.push(hj);
                     hneg.push(-hj);
+                    inward.push(false);
                 } else {
                     let step = forward_step(x[j], self.typical[j], rel, lb[j], ub[j], respect);
                     if step.h == 0.0 || !step.h.is_finite() {
                         return Err(EvalError::NonFinite(Some(j)));
                     }
                     h.push(step.h);
-                    hneg.push(0.0);
+                    hneg.push(if central { step.h * 0.5 } else { 0.0 });
+                    inward.push(central);
                 }
             }
             let mut evals = 0u64;
@@ -354,8 +374,16 @@ impl FiniteDifferences {
             if matches!(plus, Err(EvalError::UserAbort)) {
                 return Err(EvalError::UserAbort);
             }
-            // Reset all coordinates: one-sided columns must stay at the base
-            // point while central columns in the same color probe the other side.
+            // After a successful retreat, place inward probes halfway toward
+            // the base so the two samples remain distinct. Opposite-sided
+            // columns retain their independent nominal steps.
+            if plus.is_ok() {
+                for k in 0..group.len() {
+                    if inward[k] {
+                        hneg[k] = h[k] * 0.5;
+                    }
+                }
+            }
             xp.copy_from_slice(x);
             let minus = eval_constraints_with_retreat(
                 nlp, &mut xp, x, &mut hneg, group, &mut cm, &mut evals,
@@ -421,7 +449,7 @@ struct GroupDerivative {
     evals: u64,
 }
 
-/// Derivative of the interpolating quadratic at zero for unequal signed
+/// Derivative of the interpolating quadratic at zero for arbitrary distinct
 /// displacements. A surviving single probe gives a first-order fallback.
 fn difference(
     base: f64,
@@ -430,6 +458,7 @@ fn difference(
     j: usize,
 ) -> Result<f64, EvalError> {
     let value = match (plus, minus) {
+        (Some((fa, a)), Some((_, b))) if a == b => (fa - base) / a,
         (Some((fa, a)), Some((fb, b))) if a == -b => (fa - fb) / (a - b),
         (Some((fa, a)), Some((fb, b))) => {
             let sa = (fa - base) / a;
