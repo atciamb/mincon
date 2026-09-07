@@ -4,9 +4,13 @@ on:
   push:
     branches: [main, master]
   pull_request:
-  schedule:
-    # Nightly: the full CUTEst benchmark. Tier 3 in docs/08_BENCHMARK_PROTOCOL.md.
-    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      cutest_suite:
+        description: Explicitly opt into downloading and running external CUTEst problems
+        type: choice
+        default: none
+        options: [none, small, all]
 
 env:
   CARGO_TERM_COLOR: always
@@ -135,11 +139,11 @@ jobs:
       - name: Python regression tests against the installed wheel
         run: python -m pytest crates/mincon-py/tests -q
 
-  # Tier 2: runs on pull requests, minutes not hours.
+  # External benchmark acquisition is opt-in.
   benchmark:
     name: benchmark (constrained-small)
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch' && inputs.cutest_suite == 'small'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -183,11 +187,11 @@ jobs:
             results.jsonl
             profiles.png
 
-  # Tier 3: the full CUTEst set, nightly.
+  # Tier 3: the full CUTEst set, explicitly requested.
   full-benchmark:
     name: full CUTEst benchmark
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'workflow_dispatch' && inputs.cutest_suite == 'all'
     timeout-minutes: 720
     steps:
       - uses: actions/checkout@v4

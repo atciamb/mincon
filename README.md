@@ -5,6 +5,7 @@ does well — solving the problem a working scientist actually has, without bein
 told how — with Rust computations and Python wheels built using maturin.
 Experimental version 0.1.0 is [available on PyPI](https://pypi.org/project/mincon/0.1.0/).
 Install with `pip install mincon`. Prebuilt wheels support Windows and Linux x86_64.
+Source and contributions: [atciamb/mincon on GitHub](https://github.com/atciamb/mincon).
 
 ```
 minimize    f(x)

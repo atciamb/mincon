@@ -4,7 +4,8 @@ September 7, 2026. Source commit: `5e0f136`.
 **Published:** [mincon 0.1.0](https://pypi.org/project/mincon/0.1.0/), September 7, 2026.
 The initial upload stopped with `NonInteractive: Credential not found for API token.`
 After the owner configured credentials outside the repository, all three reviewed
-artifacts uploaded successfully. No repository remote or GitHub Trusted Publisher is configured.
+artifacts uploaded successfully. Source is now public at https://github.com/atciamb/mincon.
+GitHub Trusted Publisher configuration remains outstanding.
 
 ## User-facing behavior
 

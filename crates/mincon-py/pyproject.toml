@@ -20,6 +20,10 @@ classifiers = [
 dependencies = ["numpy>=1.21"]
 dynamic = ["version"]
 
+[project.urls]
+Repository = "https://github.com/atciamb/mincon"
+Issues = "https://github.com/atciamb/mincon/issues"
+
 [project.optional-dependencies]
 bench = ["scipy>=1.10", "matplotlib>=3.6", "pandas>=2.0"]
 dev = ["pytest>=7", "maturin>=1.15,<2", "twine>=6"]

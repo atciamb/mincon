@@ -44,7 +44,8 @@ Alternatively, `.github/workflows/publish.yml` builds, installs and tests
 Windows/Linux wheels and rebuilds/tests an sdist. It publishes only on a manual
 dispatch with `publish=true`, after configuring a PyPI Trusted Publisher for
 the real repository, workflow filename `publish.yml`, and environment `pypi`.
-There is no Git remote configured yet; this workflow has not run on GitHub.
+The public repository is https://github.com/atciamb/mincon, configured as `origin`.
+The publication workflow has not run on GitHub; Trusted Publisher setup remains outstanding.
 Do not claim workflow success from local validation alone.
 
 Sources: [maturin distribution guide](https://www.maturin.rs/distribution.html),
