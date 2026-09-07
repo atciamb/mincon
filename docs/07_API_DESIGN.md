@@ -123,6 +123,23 @@ keep working.
 The solve itself releases the GIL (`py.detach`), so a `mincon` call does not
 block other Python threads.
 
+### MATLAB-style convenience interface
+
+`fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
+nonlcon=None, options=None, *, jac=None, args=(), tol=None)` lowers to the
+same automatic solver as `minimize`. `A @ x <= b`, `Aeq @ x == beq`, and
+`nonlcon(x, *args) -> (c, ceq)` with `c <= 0`, `ceq == 0` use MATLAB's signs.
+Bounds accept scalars or vectors; empty linear pairs and nonlinear components
+mean absent constraints. Reject mismatched shapes before calling the model.
+Derivatives, scaling and solver configuration remain optional.
+
+Return `OptimizeResult`, not a MATLAB tuple. `multipliers` groups `ineqlin`,
+`eqlin`, `ineqnonlin`, `eqnonlin`, `lower`, `upper` using the corresponding
+MATLAB signs. The raw `con` and `lambda` fields retain the internal `minimize`
+convention; use `multipliers` when porting MATLAB code. Both APIs expose `z_l`
+and `z_u`. This is a convenience interface, not full MATLAB option compatibility.
+Analytical solutions test inequalities, equalities, bounds and multiplier signs.
+
 ### Packaging
 
 `maturin` with `abi3-py39`: one wheel per platform covers every CPython from
@@ -143,10 +160,9 @@ accuracy with no derivatives.
    sensitivity analysis and MPC all re-solve slightly perturbed problems.
 4. **Callbacks.** `callback(x, state) -> bool` for progress and early stopping,
    matching SciPy. The `EvalError::UserAbort` path already exists underneath.
-5. **`fmincon`-shaped façade.** `A, b, Aeq, beq, lb, ub, nonlcon` taking
-   `(c, ceq)` with `c <= 0`, and multipliers returned in `fmincon`'s sign
-   convention (`to_fmincon_multipliers` is the start). Makes porting a MATLAB
-   model transcription rather than translation.
+5. **`fmincon` façade: implemented.** The convenience interface above supplies
+   familiar constraint inputs and grouped multipliers. Full MATLAB options and
+   output tuple compatibility are outside its contract.
 6. **C ABI.** So Julia, R, Fortran and C++ can call it. A solver that only
    Rust and Python can reach has given up most of its potential users.
 

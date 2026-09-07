@@ -450,6 +450,8 @@ fn minimize(
     d.set_item("algorithm", format!("{:?}", report.algorithm))?;
     d.set_item("con", report.solution.c.to_pyarray(py))?;
     d.set_item("lambda", report.solution.lambda.to_pyarray(py))?;
+    d.set_item("z_l", report.solution.z_l.to_pyarray(py))?;
+    d.set_item("z_u", report.solution.z_u.to_pyarray(py))?;
     d.set_item("notes", PyList::new(py, &report.notes)?)?;
     d.set_item("time", report.timings.total.as_secs_f64())?;
     d.set_item("model_time", report.timings.model.as_secs_f64())?;

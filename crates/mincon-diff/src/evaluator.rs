@@ -145,7 +145,7 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
                 rel_step: opts.fd_step,
                 respect_bounds: opts.fd_respect_bounds,
                 use_coloring: opts.fd_coloring,
-                parallel: opts.threads.map_or(true, |t| t > 1) && caps.parallel_safe,
+                parallel: opts.threads.is_none_or(|t| t > 1) && caps.parallel_safe,
             },
             dims.n,
             dims.m,

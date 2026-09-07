@@ -12,15 +12,11 @@ subject to  c_L <= c(x) <= c_U
 ```
 
 ```python
-from mincon import minimize
+from mincon import fmincon
 
-# HS71, the IPOPT tutorial problem. No derivatives supplied.
-f  = lambda x: x[0]*x[3]*(x[0]+x[1]+x[2]) + x[2]
-r = minimize(f, [1., 5., 5., 1.], bounds=[(1, 5)]*4, constraints=[
-        {"type": "ineq", "fun": lambda x: x[0]*x[1]*x[2]*x[3] - 25},
-        {"type": "eq",   "fun": lambda x: 40 - (x**2).sum()},
-    ])
-print(r.x, r.fun)     # [1. 4.743 3.821 1.379]  17.014017290992278
+r = fmincon(lambda x: ((x - 1)**2).sum(), [0., 0.],
+            nonlcon=lambda x: ([x.sum() - 1], []))
+print(r.x, r.fun, r.success)  # approximately [0.5, 0.5], 0.5, True
 ```
 
 ```rust
@@ -35,10 +31,16 @@ let r = minimize(&p, &Options::default())?;
 > **Status: early.** The development gate now passes all 54 expected outcomes
 > using independent objective/feasibility checks. This includes usable points
 > and expected failure diagnostics; it does not mean 54 certified optima.
-> Currently 40/54 report strict Optimal; 151 Rust tests and 7 wheel tests pass.
+> Currently 40/54 report strict Optimal; 151 Rust tests and 18 Python tests pass locally.
 > Soft and reduced-elastic restoration are implemented. CUTEst qualification,
 > SQP and large sparse work remain. **No superiority claim against fmincon.**
 > [Measurements and limitations](bench/results/restoration-stopping/README.md).
+
+`fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
+callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
+uses SciPy's `ineq >= 0` convention. Both have automatic defaults and return
+an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
+[release procedure](docs/13_RELEASE.md). Publication remains pending authentication.
 
 ---
 

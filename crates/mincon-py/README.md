@@ -1,172 +1,108 @@
 # mincon
 
-A nonlinear constrained optimizer in Rust, aimed at what MATLAB's `fmincon`
-does well — solving the problem a working scientist actually has, without being
-told how — and available with `pip install mincon`.
+Nonlinear constrained optimization with a Rust solver and a simple Python API.
+Supply your objective, starting point and constraints. Derivative estimation,
+scaling and solver configuration have automatic defaults.
 
+**Experimental 0.1 release.** This is research software under active
+development, not a completed or proven superior replacement for MATLAB's
+`fmincon`. It computes local solutions; it does not guarantee global minima.
+
+## Install
+
+```bash
+python -m pip install mincon
 ```
-minimize    f(x)
-subject to  c_L <= c(x) <= c_U
-            x_L <=   x  <= x_U
+
+Prebuilt wheels target standard CPython on Windows x86_64 and Linux x86_64.
+NumPy is installed automatically. On platforms without a matching wheel, pip
+builds from source and requires Rust 1.83 or newer and a C/C++ toolchain.
+macOS wheels and broader runtime coverage remain release work.
+
+## Familiar fmincon inputs
+
+```python
+from mincon import fmincon
+
+# Closest point to (1, 1), subject to x[0] + x[1] <= 1.
+result = fmincon(
+    lambda x: ((x - 1)**2).sum(),
+    [0., 0.],
+    nonlcon=lambda x: ([x.sum() - 1], []),
+)
+print(result.x)       # approximately [0.5, 0.5]
+print(result.fun)     # approximately 0.5
+print(result.success, result.message)
 ```
+
+No gradients, Hessians, algorithm selection or tolerance settings are required.
+Optional constraint arguments use MATLAB's conventions:
+
+| Argument | Meaning |
+|---|---|
+| `A`, `b` | `A @ x <= b` |
+| `Aeq`, `beq` | `Aeq @ x == beq` |
+| `lb`, `ub` | Lower/upper bounds, scalars or vectors |
+| `nonlcon` | Returns `(c, ceq)` with `c <= 0`, `ceq == 0`; use `[]` for an absent component |
+
+For example, `fmincon(fun, x0, A=[[1, 1]], b=[1], lb=0)` uses only linear
+constraints and bounds. The result is a Python object, not MATLAB's output
+tuple. `result.multipliers` groups multipliers with MATLAB's signs. Options
+use Python names such as `options={"maxiter": 500}`, not MATLAB option names.
+
+## SciPy-style inputs
 
 ```python
 from mincon import minimize
 
-# HS71, the IPOPT tutorial problem. No derivatives supplied.
-f  = lambda x: x[0]*x[3]*(x[0]+x[1]+x[2]) + x[2]
-r = minimize(f, [1., 5., 5., 1.], bounds=[(1, 5)]*4, constraints=[
-        {"type": "ineq", "fun": lambda x: x[0]*x[1]*x[2]*x[3] - 25},
-        {"type": "eq",   "fun": lambda x: 40 - (x**2).sum()},
-    ])
-print(r.x, r.fun)     # [1. 4.743 3.821 1.379]  17.014017290992278
+result = minimize(
+    lambda x: ((x - 1)**2).sum(),
+    [0., 0.],
+    constraints={"type": "ineq", "fun": lambda x: 1 - x.sum()},
+)
 ```
 
-```rust
-use mincon::{minimize, Options, Problem};
+**Sign convention:** `minimize` inequalities mean `fun(x) >= 0`;
+`fmincon` nonlinear inequalities mean `c(x) <= 0`. Equalities are zero in both.
+Use `bounds=[(0, None), (0, None)]` with `minimize`; use `lb=0` with `fmincon`.
 
-let p = Problem::new(2, |x| 100.0*(x[1]-x[0]*x[0]).powi(2) + (1.0-x[0]).powi(2))
-    .start_at(&[-1.2, 1.0])
-    .inequality(1, |x, c| c[0] = x[0]*x[0] + x[1]*x[1] - 1.0);
-let r = minimize(&p, &Options::default())?;
-```
+Supply `jac=` if you have an analytical objective gradient. It is optional.
+`args=(...)` passes additional arguments to your objective and nonlinear
+constraints. Inspect `help(fmincon)` or `help(minimize)` for the full interface.
 
-> **Status: early. A working baseline, not a finished product.** It solves 52
-> of 54 regression problems with zero false reports of success, and it has
-> substantial known gaps — feasibility restoration and SQP among them. It has
-> not yet been run against the full CUTEst set, so **there is no comparative
-> claim against `fmincon` here yet.** There will be one when the numbers exist.
+## Interpreting results
 
----
+- `x`, `fun`: returned point and objective.
+- `success`: requested numerical first-order and feasibility checks passed.
+  This is not a second-order or global-minimum certificate.
+- `maxcv`: constraint violation in your original units.
+- `usable`: a usable-point status; it does not replace checking `success`.
+- `message`, `notes`: termination reason and solver diagnostics.
+- `nfev`, `nit`: objective calls across the portfolio and iteration count.
 
-## Why
+Always examine the status and feasibility before using the result. An
+`Acceptable` or stagnation exit has `success=False`. Finite differences and
+noisy model evaluations limit attainable accuracy.
 
-`fmincon` is the standard because it works untuned. Its advantage is not
-algorithmic — its interior-point method is the published KNITRO design, its SQP
-is textbook Han–Powell — it is two decades of defensive engineering and
-defaults that work. That is reproducible. Meanwhile it has four fixable
-deficits, and it costs money and cannot be embedded.
+## Current scope
 
-| | `fmincon` | `mincon` |
-|---|---|---|
-| Problem scaling | **off by default** | gradient-based, **on by default** |
-| Sparsity of nonlinear Jacobians | must be declared | detected, and CPR-colored |
-| Algorithms per call | one, user chooses | a portfolio, raced |
-| Derivatives | finite differences for function handles | analytic, AD-bridged, or FD |
-| Licence | proprietary | MIT / Apache-2.0 |
-| Install | MATLAB + toolbox | `pip install mincon` |
+Implemented: primal-dual interior point, feasibility restoration, automatic
+gradient scaling, bounded finite differences with retreat, Jacobian sparsity
+detection/coloring and a portfolio of interior-point configurations. Python
+callbacks run serially. SQP, sparse user Jacobians, limited-memory curvature,
+hard per-callback evaluation budgets and progress callbacks are not complete.
+`maxfev` and time limits are checked between batches/iterations; they cannot
+interrupt an ongoing callback. The derivative checker needs further validation
+for failed or unevaluable checks; it is not a certificate.
 
-Measured consequences of the first two: `TORTURE_SCALING` (twelve orders of
-magnitude between objective and constraint gradients) solves in **one
-iteration** with scaling on; a tridiagonal Jacobian costs **3 finite-difference
-evaluations regardless of `n`**.
+The local development suite passes 54/54 expected fixture outcomes, with
+40 strict Optimal returns. Fixture passes also include accurate points with
+non-success statuses and expected infeasible/unbounded diagnostics. Broader
+CUTEst and matched competitor comparisons remain outstanding.
 
-Full analysis: [`docs/01_FMINCON_ANATOMY.md`](docs/01_FMINCON_ANATOMY.md).
+## License
 
----
+MIT OR Apache-2.0. Rust dependency notices are included in the installed
+package as `THIRD_PARTY_LICENSES.txt`. Source is included in the source
+distribution; no MATLAB installation or license is required.
 
-## What works today
-
-* **Interior point** — primal-dual, filter line search, Wächter–Biegler
-  Algorithm IC inertia correction, second-order corrections,
-  fraction-to-boundary, bound-multiplier resets, scaled `E_mu` termination.
-* **Sparse `LDL^T`** written from scratch: dynamic regularization, inertia
-  certified by Sylvester's law, element-growth detection, iterative refinement.
-  **No HSL, no MUMPS, no Fortran** — which is what makes the wheel possible.
-* **Derivatives** — bounds-aware finite differences, graph coloring, sparsity
-  detection, a multi-point derivative checker.
-* **Gradient-based scaling**, on by default.
-* **Algorithm portfolio** with deterministic ranking.
-* **Python bindings** — `abi3` wheel, SciPy-compatible `minimize`.
-* **Test set** — 45 Hock–Schittkowski problems plus 10 torture problems whose
-  pass criterion is *reporting the right failure*.
-* **Benchmark harness** — 1075 CUTEst problems via S2MPJ, Dolan–Moré
-  performance profiles, Moré–Wild data profiles, and a MATLAB script to
-  generate the `fmincon` baseline.
-
-### Known gaps, in priority order
-
-1. **Feasibility restoration.** A line-search failure ends the solve. The
-   biggest robustness gap; worth roughly ten points on CUTEst.
-2. **Automatic differentiation.** Finite differences cap achievable accuracy at
-   `sqrt(eps)` and cost `n` evaluations per gradient.
-3. **AMD ordering.** `Ordering::Amd` falls back to RCM.
-4. **Limited-memory BFGS.** Dense BFGS caps usable `n` at a couple of thousand.
-5. **SQP.** Specified, not built. Measured: we use ~5x more evaluations per
-   portfolio member than SciPy's SLSQP on small dense problems — that regime
-   belongs to SQP.
-
-Each is a milestone with an objective gate in
-[`docs/10_ROADMAP.md`](docs/10_ROADMAP.md).
-
----
-
-## Layout
-
-```
-AGENT_PROMPT.md          the brief for continuing this work
-docs/                    mission, competitive analysis, specs, resources, roadmap, pitfalls
-crates/
-  mincon-core/           problem model, options, results
-  mincon-linalg/         sparse LDL^T with certified inertia, KKT assembly
-  mincon-diff/           finite differences, coloring, sparsity detection, checker
-  mincon-ip/             interior point
-  mincon-sqp/            SQP  (specified, not implemented)
-  mincon-qp/             QP subsolver  (specified, not implemented)
-  mincon/                public API, algorithm portfolio
-  mincon-py/             PyO3 bindings + the Python package
-  mincon-testset/        Hock-Schittkowski and torture problems
-bench/                   CUTEst harness, performance profiles, fmincon baseline
-```
-
----
-
-## Building
-
-```bash
-cargo test --workspace                                   # 122 tests
-cargo run --release -p mincon-ip --example run_testset    # the regression table
-cargo run --release -p mincon-ip --example diagnose HS71  # one problem, in detail
-
-pip install maturin
-cd crates/mincon-py && maturin develop --release
-```
-
-Benchmarks:
-
-```bash
-pip install -e 'crates/mincon-py[bench]'
-python bench/runner.py --set smoke --solvers mincon scipy-slsqp
-python bench/profiles.py results.jsonl -o profiles.png
-```
-
----
-
-## The honesty rule
-
-This project measures itself against a product with a twenty-year head start,
-and the temptation to flatter the numbers is constant. So:
-
-* Benchmark success is decided by the harness, never by the solver's own
-  report — a rule that cuts against us as readily as for us.
-* The portfolio's cost is reported across **all** members, not the winner's.
-* `Acceptable` is not counted as success.
-* Known gaps are listed above, not buried.
-* When the CUTEst run happens, the README will name the problem classes where
-  `fmincon` still wins.
-
-A benchmark with no losses in it is a benchmark nobody believes.
-
----
-
-## Licence
-
-MIT or Apache-2.0, at your option. Every dependency is MIT, Apache-2.0 or BSD;
-nothing here requires a licence, a Fortran toolchain, or HSL.
-
-## Acknowledgements
-
-Standing on: Wächter & Biegler's IPOPT paper, Chiang & Zavala's inertia-free
-regularization, Curtis–Powell–Reid coloring, Dolan & Moré's performance
-profiles, Gratton & Toint's S2MPJ, and Hock & Schittkowski's test set. Full
-annotated bibliography in [`docs/09_RESOURCES.md`](docs/09_RESOURCES.md).

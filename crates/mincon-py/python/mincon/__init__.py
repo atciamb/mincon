@@ -38,7 +38,7 @@ import numpy as np
 
 from . import _mincon
 
-__all__ = ["minimize", "check_gradients", "OptimizeResult", "ExitFlag", "__version__"]
+__all__ = ["minimize", "fmincon", "check_gradients", "OptimizeResult", "ExitFlag", "__version__"]
 
 __version__ = _mincon.__version__
 
@@ -118,11 +118,10 @@ def minimize(
         Starting point.
     args : tuple, optional
         Extra arguments passed to ``fun``, ``jac`` and every constraint.
-    method : {'auto', 'interior-point', 'sqp'}, optional
+    method : {'auto', 'interior-point'}, optional
         ``'auto'`` (the default) races several configurations and returns the
         best answer. On a single thread it runs them in sequence and stops at
-        the first success, so it never costs more than a single solve on a
-        problem the default configuration handles.
+        the first success. SQP is not implemented in this release.
     jac : callable, optional
         ``jac(x, *args) -> array_like``. Without it the gradient is estimated
         by finite differences, which is supported and tested but costs
@@ -159,6 +158,10 @@ def minimize(
     and any place the solver had to compromise.
     """
     x0 = np.ascontiguousarray(np.asarray(x0, dtype=np.float64).ravel())
+    if x0.size == 0 or not np.all(np.isfinite(x0)):
+        raise ValueError("x0 must contain at least one finite number and no NaN or infinity")
+    if not callable(fun) or (jac is not None and not callable(jac)):
+        raise TypeError("fun and an optional jac must be callable")
 
     if args:
         _f = fun
@@ -170,6 +173,11 @@ def minimize(
     cons = _normalize_constraints(constraints, args)
 
     opts = dict(options or {})
+    supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
+                 "seed", "check_derivatives", "scaling", "finite_diff"}
+    unknown = set(opts) - supported
+    if unknown:
+        raise ValueError(f"unknown options: {sorted(unknown, key=str)}; supported: {sorted(supported)}")
     if tol is not None:
         opts.setdefault("tol", tol)
 
@@ -183,6 +191,106 @@ def minimize(
         options=opts,
     )
     return OptimizeResult(raw)
+
+
+def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
+            nonlcon=None, options=None, *, jac=None, args=(), tol=None):
+    """Minimize with MATLAB-style constraint inputs and automatic defaults.
+
+    ``A @ x <= b``, ``Aeq @ x == beq``, ``lb <= x <= ub`` and
+    ``nonlcon(x, *args) -> (c, ceq)`` with ``c <= 0`` and ``ceq == 0``.
+    Every constraint argument is optional. Bounds may be scalars or vectors.
+    No derivatives or solver options are required. Options use the Python
+    names documented by :func:`minimize`, not MATLAB option names.
+
+    Returns an :class:`OptimizeResult`: use ``r.x``, ``r.fun``, ``r.success``
+    and ``r.maxcv``. ``r.multipliers`` groups the MATLAB-sign multipliers as
+    ``ineqlin``, ``eqlin``, ``ineqnonlin``, ``eqnonlin``, ``lower``, ``upper``.
+    The raw ``con`` and ``lambda`` fields retain the conventions of minimize.
+    This is a convenience interface, not MATLAB output-tuple compatibility.
+
+    Example: ``fmincon(lambda x: ((x-1)**2).sum(), [0., 0.],
+    nonlcon=lambda x: ([x.sum()-1], []))`` returns approximately ``[.5, .5]``.
+    """
+    x0 = np.asarray(x0, dtype=float).ravel()
+    n = x0.size
+    cons = []
+    sizes = []
+    for matrix, rhs, name, kind in [(A, b, "A", "ineq"), (Aeq, beq, "Aeq", "eq")]:
+        if matrix is None and rhs is None:
+            sizes.append(0)
+            continue
+        if matrix is None or rhs is None:
+            raise ValueError(f"{name} and its right-hand side must be supplied together")
+        mat = np.asarray(matrix, dtype=float)
+        vec = np.asarray(rhs, dtype=float).ravel()
+        if mat.size == 0 and vec.size == 0:
+            sizes.append(0)
+            continue
+        if mat.ndim != 2 or mat.shape != (vec.size, n):
+            raise ValueError(f"{name} must have shape ({vec.size}, {n})")
+        if not np.all(np.isfinite(mat)) or not np.all(np.isfinite(vec)):
+            raise ValueError(f"{name} and its right-hand side must be finite")
+        sign = -1.0 if kind == "ineq" else 1.0
+        cons.append({"type": kind, "fun": lambda x, mat=mat, vec=vec, sign=sign: sign*(mat @ x-vec)})
+        sizes.append(vec.size)
+
+    def bound(value, default, name):
+        if value is None:
+            return np.full(n, default)
+        a = np.asarray(value, dtype=float)
+        if a.size == 0:
+            return np.full(n, default)
+        if a.ndim == 0:
+            a = np.full(n, float(a))
+        if a.shape != (n,):
+            raise ValueError(f"{name} must be a scalar or a vector of length {n}")
+        return a
+
+    bounds = list(zip(bound(lb, -np.inf, "lb"), bound(ub, np.inf, "ub")))
+    nonlinear_sizes = [0, 0]
+    nonlinear_seen = [False, False]
+    if nonlcon is not None:
+        if not callable(nonlcon):
+            raise TypeError("nonlcon must be callable and return (c, ceq)")
+
+        def component(index):
+            def evaluate(x):
+                pair = nonlcon(x, *args)
+                if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+                    raise ValueError("nonlcon must return (c, ceq), with c <= 0 and ceq == 0")
+                value = pair[index]
+                a = np.asarray([] if value is None else value, dtype=float)
+                if a.ndim > 1:
+                    raise ValueError("nonlcon components must be scalars or one-dimensional arrays")
+                a = a.reshape(-1)
+                if nonlinear_seen[index] and nonlinear_sizes[index] != a.size:
+                    raise ValueError("nonlcon component lengths must remain constant")
+                nonlinear_sizes[index] = a.size
+                nonlinear_seen[index] = True
+                return -a if index == 0 else a
+            return evaluate
+
+        cons.extend([{"type": "ineq", "fun": component(0)},
+                     {"type": "eq", "fun": component(1)}])
+
+    # Bind user arguments here so linear constraints do not receive them.
+    objective = (lambda x: fun(x, *args)) if args else fun
+    gradient = (lambda x: jac(x, *args)) if args and jac is not None else jac
+    result = minimize(objective, x0, jac=gradient, bounds=bounds,
+                      constraints=cons, tol=tol, options=options)
+    multipliers = {}
+    start = 0
+    for name, size, sign in zip(
+        ["ineqlin", "eqlin", "ineqnonlin", "eqnonlin"],
+        sizes + nonlinear_sizes, [-1., 1., -1., 1.],
+    ):
+        multipliers[name] = sign * result["lambda"][start:start+size]
+        start += size
+    multipliers["lower"] = result.z_l
+    multipliers["upper"] = result.z_u
+    result.multipliers = multipliers
+    return result
 
 
 def check_gradients(
@@ -213,6 +321,10 @@ def _normalize_bounds(bounds, n):
             out.append((None, None))
             continue
         lo, hi = b
+        low = -np.inf if lo is None else float(lo)
+        high = np.inf if hi is None else float(hi)
+        if np.isnan(low) or np.isnan(high) or low > high or low == np.inf or high == -np.inf:
+            raise ValueError(f"invalid bounds at index {i}: require low <= high with no NaN")
         out.append((None if lo is None else float(lo), None if hi is None else float(hi)))
     if len(out) != n:
         raise ValueError(f"bounds has {len(out)} entries but x0 has {n}")

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
   schedule:
     # Nightly: the full CUTEst benchmark. Tier 3 in docs/08_BENCHMARK_PROTOCOL.md.
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.80.0
+      - uses: dtolnay/rust-toolchain@1.83.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace
 
