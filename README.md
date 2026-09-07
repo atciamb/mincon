@@ -3,7 +3,8 @@
 A nonlinear constrained optimizer in Rust, aimed at what MATLAB's `fmincon`
 does well — solving the problem a working scientist actually has, without being
 told how — with Rust computations and Python wheels built using maturin.
-Public PyPI publication remains a release task; the local wheel is tested.
+Experimental version 0.1.0 is [available on PyPI](https://pypi.org/project/mincon/0.1.0/).
+Install with `pip install mincon`. Prebuilt wheels support Windows and Linux x86_64.
 
 ```
 minimize    f(x)
@@ -40,7 +41,7 @@ let r = minimize(&p, &Options::default())?;
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
 uses SciPy's `ineq >= 0` convention. Both have automatic defaults and return
 an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
-[release procedure](docs/13_RELEASE.md). Publication remains pending authentication.
+[release procedure](docs/13_RELEASE.md). A fresh PyPI installation passes all 18 Python tests.
 
 ---
 

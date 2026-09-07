@@ -2,8 +2,11 @@
   "source_commit": "5e0f136",
   "version": "0.1.0",
   "classification": "Alpha",
-  "published": false,
-  "upload_blocker": "Twine NonInteractive: Credential not found for API token.",
+  "published": true,
+  "published_date": "2026-09-07",
+  "release_url": "https://pypi.org/project/mincon/0.1.0/",
+  "public_hashes_verified": true,
+  "public_install_python_tests_passed": 18,
   "artifacts": [
     {
       "file": "bench/artifacts/release-candidate/final-dist/mincon-0.1.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",

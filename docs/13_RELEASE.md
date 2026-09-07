@@ -4,6 +4,10 @@ The first public version is **0.1.0, experimental/Alpha**. It is not a completed
 replacement for fmincon. The packaged README is the public description; keep
 its supported platforms, simple examples and limitations accurate.
 
+Published September 7, 2026: [mincon 0.1.0](https://pypi.org/project/mincon/0.1.0/).
+All three public artifact hashes match the reviewed manifest. A fresh Windows
+installation from PyPI passed the documented example and all 18 Python tests.
+
 The public entry points are `minimize` (SciPy inequality signs) and `fmincon`
 (MATLAB constraint inputs/signs). Users supply a function, starting point and
 constraints; derivatives and options are optional. The result has `.x`, `.fun`,
@@ -33,9 +37,8 @@ For direct local publication, configure a token in the standard external
 python -m twine upload --non-interactive --repository-url https://upload.pypi.org/legacy/ <reviewed distribution files>
 ```
 
-No PyPI account/token was configured at the beginning of this preparation.
-The package page returned 404; that does not guarantee PyPI will accept the
-name. An actual authenticated upload decides ownership/name eligibility.
+The initial upload lacked credentials. Publication subsequently succeeded
+using the owner's external token configuration; no credentials are in the repository.
 
 Alternatively, `.github/workflows/publish.yml` builds, installs and tests
 Windows/Linux wheels and rebuilds/tests an sdist. It publishes only on a manual

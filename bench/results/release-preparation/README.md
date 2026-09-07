@@ -1,10 +1,10 @@
 # Experimental 0.1.0 release preparation
 
 September 7, 2026. Source commit: `5e0f136`.
-**Not published.** An authenticated upload remains outstanding. The attempted
-noninteractive upload to the production PyPI endpoint stopped with
-`NonInteractive: Credential not found for API token.` No distribution was
-uploaded. No repository remote or GitHub Trusted Publisher is configured.
+**Published:** [mincon 0.1.0](https://pypi.org/project/mincon/0.1.0/), September 7, 2026.
+The initial upload stopped with `NonInteractive: Credential not found for API token.`
+After the owner configured credentials outside the repository, all three reviewed
+artifacts uploaded successfully. No repository remote or GitHub Trusted Publisher is configured.
 
 ## User-facing behavior
 
@@ -56,15 +56,15 @@ NumPy 2.5.3, maturin 1.15.0, zig 0.16.0. The Linux linker emitted a deprecated
 optimization-setting warning; the build and compatibility audit succeeded.
 macOS/ARM wheels and tests across every supported Python minor remain pending.
 
-## Finishing publication
+## Public installation verification
 
-Configure a PyPI token outside the repository/chat, or set up the real GitHub
-repository and Trusted Publisher. The prepared `publish.yml` workflow tests
-Windows/Linux wheels and the sdist before a manually requested publication;
-it has not been executed on GitHub. See `docs/13_RELEASE.md` for instructions.
+The PyPI JSON release endpoint lists exactly the three reviewed files, with
+SHA-256 digests matching `artifacts.json`. A new Windows CPython 3.12 environment
+installed `mincon==0.1.0` from `https://pypi.org/simple` with binary packages only.
+NumPy installed automatically. The documented example returned `[0.5, 0.5]`,
+objective `0.5000000010000067`, success True. All **18 Python tests passed**
+against this installed public package (0.19 seconds).
 
-After authenticating, upload only the hash-checked final artifacts, confirm the
-PyPI release, and perform a fresh `pip install mincon` from PyPI. The user has
-authorized publication; renewed permission is unnecessary. The external
-authentication prerequisite is the remaining immediate blocker. The package
-must retain its experimental description and documented solver limitations.
+The prepared `publish.yml` workflow has not run on GitHub. See `docs/13_RELEASE.md`
+for future releases. The package retains its experimental description and
+documented solver limitations.
