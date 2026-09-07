@@ -71,6 +71,13 @@ NumericalFailure returns remain; do not count them as strict convergence.
 Callback budgets/abort consistency and failed or empty derivative checks remain
 correctness priorities before release, alongside the pending qualification gate.
 
+September 7: the user requested public distribution with simple fmincon-style
+usage. A façade, truthful Alpha metadata, license notices and Windows/Linux
+wheels rebuilt from an sdist are prepared and tested. Publication is blocked
+by missing PyPI authentication, not waiting on renewed permission. See
+`../bench/results/release-preparation/README.md` for exact artifacts and status.
+This early release preparation does not complete M1/M2 or the broader solver.
+
 Implementation sequence (completed locally):
 
 1. **Algorithm R** first — plain Newton steps on the primal-dual system with

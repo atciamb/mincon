@@ -1,0 +1,7 @@
+Checking 
+bench/artifacts/release-candidate/final-dist\mincon-0.1.0-cp39-abi3-manylinux_2_
+17_x86_64.manylinux2014_x86_64.whl: PASSED
+Checking 
+bench/artifacts/release-candidate/final-dist\mincon-0.1.0-cp39-abi3-win_amd64.wh
+l: PASSED
+Checking bench/artifacts/release-candidate/final-dist\mincon-0.1.0.tar.gz: PASSED

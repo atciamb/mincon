@@ -1,0 +1,9 @@
+Processing ./bench/artifacts/release-candidate/final-dist/mincon-0.1.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+Installing collected packages: mincon
+  Attempting uninstall: mincon
+    Found existing installation: mincon 0.1.0
+    Uninstalling mincon-0.1.0:
+      Successfully uninstalled mincon-0.1.0
+Successfully installed mincon-0.1.0
+..................                                                       [100%]
+18 passed in 1.65s

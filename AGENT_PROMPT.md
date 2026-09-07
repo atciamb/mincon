@@ -42,6 +42,13 @@ tests, 54/54 fixture outcomes and 40 strict Optimal returns. HS33 and HS35 have
 independent analytical KKT checks. Read the latest roadmap notes before
 selecting the next task; intermediate regressions are preserved in the reports.
 
+September 7 release handoff: `fmincon` Python convenience inputs are implemented;
+18 Python tests pass on Windows and Linux. An experimental 0.1.0 source archive
+and both wheels are reviewed. Read `bench/results/release-preparation/README.md`
+and `docs/13_RELEASE.md`. Publication was explicitly authorized but the upload
+stopped because no PyPI token was available. Do not claim it is on PyPI until
+an authenticated upload and a fresh PyPI installation have been verified.
+
 This is achievable. It is not achievable by being clever in one place; it is
 achievable by grinding through a specific list of known gaps without breaking
 what works.
