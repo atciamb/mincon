@@ -1,26 +1,8 @@
 //! Solver options and their defaults.
 //!
-//! # Defaults are the product
-//!
-//! `fmincon`'s reputation rests on defaults that work without tuning. Any
-//! option we expose is a small failure; any option a user *has* to set to get
-//! a solve is a large one. Every default below is chosen so that the
-//! plug-and-play path — a Python callable, no gradients, no scaling, no
-//! options — is the strongest configuration we can offer.
-//!
-//! Three defaults differ deliberately from `fmincon` and are the core of the
-//! competitive thesis (see `docs/01_FMINCON_ANATOMY.md`):
-//!
-//! 1. **Scaling is on by default.** `fmincon`'s `ScaleProblem` defaults to
-//!    `false`. IPOPT's `nlp_scaling_method` defaults to `gradient-based`. A
-//!    large share of `fmincon`'s real-world failures are badly scaled models
-//!    that IPOPT walks through. We take IPOPT's side.
-//! 2. **The portfolio is on by default.** When more than one worker thread is
-//!    available we race interior-point against SQP and return the first
-//!    success. A single `fmincon` call cannot do this. This is the cheapest
-//!    available multiplier on the headline robustness number.
-//! 3. **Sparsity is detected, not assumed absent.** `fmincon` needs
-//!    `JacobPattern`/`HessPattern` to be told. We probe.
+//! Gradient-based scaling, sparsity detection and the automatic portfolio
+//! support use without user-supplied derivatives or algorithm settings.
+//! The current portfolio uses interior-point configurations; SQP is not implemented.
 
 use crate::EPS;
 

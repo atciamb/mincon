@@ -13,7 +13,7 @@ and know its inertia. The established answer is HSL's `MA27`/`MA57`.
 HSL is not redistributable under a permissive licence. That single fact is why
 `pip install ipopt` does not exist, why `cyipopt` builds are fragile, and why a
 large share of people who would benefit from IPOPT use SciPy instead. Since
-`pip install mincon` is a load-bearing goal (`docs/00_MISSION.md`), HSL is out.
+`pip install mincon` must work with redistributable dependencies, HSL is out.
 
 What is left:
 

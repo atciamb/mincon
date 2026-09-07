@@ -25,37 +25,12 @@
 //! assert!(r.constraint_violation < 1e-6);
 //! ```
 //!
-//! # Where this is going
-//!
-//! `fmincon` has had two decades of tuning and it deserves respect: it is
-//! genuinely the most reliable general-purpose local NLP solver most people
-//! can reach, and the published plug-and-play success rate to beat is about
-//! **76% on constrained problems**. Beating it is not a matter of writing a
-//! textbook interior-point method faster. The plan, in full, is in
-//! `docs/00_MISSION.md`; the short version is that the wins available are:
-//!
-//! 1. **Better defaults.** Scaling on, sparsity detected, tolerances that mean
-//!    something. `fmincon` ships `ScaleProblem = false`.
-//! 2. **An algorithm portfolio.** Racing configurations that fail differently.
-//!    A single `fmincon` call cannot.
-//! 3. **Sparse-native everything**, including graph-colored finite differences,
-//!    which `fmincon` does not do for nonlinear constraint Jacobians.
-//! 4. **Being free and embeddable**, so it can go in CI, in a container, in a
-//!    student's laptop, and in someone else's library.
-//!
-//! And the things we must not lose to: bound-honouring iterates,
-//! non-finite-tolerant line searches, and trustworthy exit flags.
-//!
 //! # Current status
 //!
-//! Working: interior point with a filter line search, sparse `LDL^T` with
-//! certified inertia, gradient-based scaling, colored finite differences,
-//! sparsity detection, damped BFGS, the portfolio driver. Passing 52 of 54
-//! problems in `mincon-testset` with zero false reports of success.
-//!
-//! Missing and specified: feasibility restoration (the biggest gap), SQP,
-//! limited-memory BFGS, automatic differentiation, AMD ordering. See
-//! `docs/10_ROADMAP.md`.
+//! Experimental constrained optimizer with interior-point steps, feasibility
+//! restoration, gradient-based scaling, finite differences and a portfolio
+//! of interior-point configurations. See the repository README for current
+//! validation results and implementation limitations.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

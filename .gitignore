@@ -7,3 +7,9 @@ __pycache__/
 *.pyd
 *.whl
 .pytest_cache/
+
+# Local development briefs and planning notes
+/AGENT_PROMPT.md
+/docs/00_MISSION.md
+/docs/01_FMINCON_ANATOMY.md
+/docs/10_ROADMAP.md

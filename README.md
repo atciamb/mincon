@@ -46,32 +46,6 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
 
 ---
 
-## Why
-
-`fmincon` is the standard because it works untuned. Its advantage is not
-algorithmic — its interior-point method is the published KNITRO design, its SQP
-is textbook Han–Powell — it is two decades of defensive engineering and
-defaults that work. That is reproducible. Meanwhile it has four fixable
-deficits, and it costs money and cannot be embedded.
-
-| | `fmincon` | `mincon` |
-|---|---|---|
-| Problem scaling | **off by default** | gradient-based, **on by default** |
-| Sparsity of nonlinear Jacobians | must be declared | detected, and CPR-colored |
-| Algorithms per call | one, user chooses | a portfolio, raced |
-| Derivatives | finite differences for function handles | analytic, AD-bridged, or FD |
-| Licence | proprietary | MIT / Apache-2.0 |
-| Install | MATLAB + toolbox | `pip install mincon` |
-
-Measured consequences of the first two: `TORTURE_SCALING` (twelve orders of
-magnitude between objective and constraint gradients) solves in **one
-iteration** with scaling on; a tridiagonal Jacobian costs **3 finite-difference
-evaluations regardless of `n`**.
-
-Full analysis: [`docs/01_FMINCON_ANATOMY.md`](docs/01_FMINCON_ANATOMY.md).
-
----
-
 ## What works today
 
 * **Interior point** — primal-dual, filter line search, Wächter–Biegler
@@ -106,16 +80,12 @@ Full analysis: [`docs/01_FMINCON_ANATOMY.md`](docs/01_FMINCON_ANATOMY.md).
    portfolio member than SciPy's SLSQP on small dense problems — that regime
    belongs to SQP.
 
-Each is a milestone with an objective gate in
-[`docs/10_ROADMAP.md`](docs/10_ROADMAP.md).
-
 ---
 
 ## Layout
 
 ```
-AGENT_PROMPT.md          the brief for continuing this work
-docs/                    mission, competitive analysis, specs, resources, roadmap, pitfalls
+docs/                    algorithm specifications, resources, implementation notes, release guide
 crates/
   mincon-core/           problem model, options, results
   mincon-linalg/         sparse LDL^T with certified inertia, KKT assembly

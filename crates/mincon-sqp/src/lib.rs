@@ -82,7 +82,7 @@ use mincon_core::{Nlp, Options, SolveError, SolveReport};
 pub fn solve<P: Nlp + ?Sized>(_nlp: &P, _opts: &Options) -> Result<SolveReport, SolveError> {
     Err(SolveError::InvalidOptions(
         "the SQP algorithm is not implemented yet; see docs/03_SPEC_SQP.md and \
-         docs/10_ROADMAP.md milestone M5. Use Algorithm::InteriorPoint."
+         Use Algorithm::InteriorPoint."
             .into(),
     ))
 }

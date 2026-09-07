@@ -30,8 +30,7 @@
 //! Soft and reduced-elastic feasibility restoration are implemented; see
 //! `docs/12_RESTORATION_IMPLEMENTATION.md` for the variant and its evidence.
 //!
-//! Not implemented, in descending order of importance — each is a milestone in
-//! `docs/10_ROADMAP.md` with its own acceptance gate:
+//! Current implementation limitations:
 //!
 //! 1. **Limited-memory BFGS.** Dense BFGS caps usable `n` at a couple of
 //!    thousand.
