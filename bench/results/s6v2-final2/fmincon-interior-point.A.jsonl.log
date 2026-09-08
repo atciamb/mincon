@@ -1,0 +1,16 @@
+HS84                   fmincon-interior-point   ok     status=1 f_model=161 c_model=161 wall=1.635s
+CATENARY_40            fmincon-interior-point   ok     status=0 f_model=3074 c_model=3074 wall=0.403s
+EXPFIT2_NOISY          fmincon-interior-point   ok     status=1 f_model=173 c_model=173 wall=0.134s
+QUADSPHERE2_300        fmincon-interior-point   ok     status=0 f_model=3013 c_model=3013 wall=0.304s
+QUADSPHERE2_30         fmincon-interior-point   ok     status=0 f_model=3013 c_model=3013 wall=0.317s
+HS56                   fmincon-interior-point   ok     status=1 f_model=100 c_model=100 wall=0.071s
+ELLIPSOID2_20          fmincon-interior-point   ok     status=1 f_model=1255 c_model=1255 wall=0.162s
+POLYQP_100             fmincon-interior-point   ok     status=0 f_model=3030 c_model=3030 wall=2.677s
+ELLIPSOID2_200         fmincon-interior-point   ok     status=0 f_model=3047 c_model=3047 wall=0.200s
+CATENARY_10            fmincon-interior-point   ok     status=1 f_model=769 c_model=769 wall=0.066s
+EXPFIT2_CLEAN          fmincon-interior-point   ok     status=1 f_model=173 c_model=173 wall=0.035s
+TUBULAR_COLUMN         fmincon-interior-point   ok     status=1 f_model=27 c_model=27 wall=0.074s
+POLYQP_10              fmincon-interior-point   ok     status=1 f_model=231 c_model=231 wall=0.031s
+DISPATCH_20            fmincon-interior-point   ok     status=1 f_model=1326 c_model=1326 wall=0.181s
+DISPATCH_5             fmincon-interior-point   ok     status=1 f_model=120 c_model=120 wall=0.024s
+HS25                   fmincon-interior-point   ok     status=1 f_model=4 c_model=0 wall=0.043s

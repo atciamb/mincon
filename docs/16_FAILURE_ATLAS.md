@@ -22,7 +22,11 @@ distinguished from false claims by the oracle's KKT columns.
 | 11 | Harness/adapter faults (would have flattered or penalised a solver) | `np.isclose` equality rows, uncounted constraint calls, IPOPT with analytic derivatives on a black-box board, no returned point in records, moving targets; my own track-C adapter passed no constraint Jacobian to mincon (2.45× artefact) | — | protocol v2, oracle, schema; constraint `jac` support and re-run | fixed |
 | 12 | Derivative checker passing with no evidence; `check_derivatives` option unused | latent | NaN discarded by `f64::max`; empty comparison sets | conclusive/inconclusive verdicts; option wired | fixed (C1) |
 
-## Where fmincon still wins (development + validation, track A)
+| 13 | Adaptive barrier collapses `mu` on a centred but infeasible iterate (HS63) | 39 vs 8 iterations, 303 vs 40 evaluations | LOQO rule gives `sigma = 0` when `xi = 1`; `mu` falls to its floor at iteration 1, then oscillates for 30 iterations | primal-infeasibility floor tried: fixes HS63, neutral overall (1.00× [0.98, 1.10]) — rejected; HS63 added as a fixture | **open** |
+| 14 | Finite-difference-limited stationarity (HS62, HS100, HS74, HS83) | 250–1800 evaluations vs 13–50 with exact derivatives | the KKT residual floor is the derivative error; the solver kept iterating and exited `Acceptable` | error-aware termination (C4): estimate the error on the steepest coordinates, stop there, escalate to central first | fixed (0.20–0.68× on those; 0.97× overall) |
+| 15 | Dense BFGS from the identity at large n (ELLIPSOID2_200, QUADSPHERE2_300, round 2) | ~800 iterations / 166k evaluations; 42k evaluations without attaining | initial `B = I` is far from the curvature; each BFGS update fixes one direction | unguarded initial scaling rejected (`s4-bfgs-scaling-rejected`); guarded variant untested | **open** |
+
+## Where fmincon still wins (development + validation + held-out, track A)
 
 * fmincon-ip attains HS2, HS16 and BADSTART_DISC's global basins where mincon
   lands in another (cluster 6); it reaches the RANKLOSS_JAC-type degenerate
@@ -30,7 +34,8 @@ distinguished from false claims by the oracle's KKT columns.
 * fmincon-sqp and SLSQP use 0.6–0.75× the evaluations of any interior-point
   code on the small dense problems that dominate this corpus (cluster: no
   SQP in mincon yet; `docs/03_SPEC_SQP.md`).
-* On HS100 and HS38 fmincon-ip needs fewer evaluations than C2 (cluster 8).
+* On HS38, HS56, HS63 and ELLIPSOID2_20 fmincon-ip needs fewer evaluations than C4 (clusters 8, 13).
+* At n ≥ 200 with finite differences fmincon-ip fails at its evaluation cap while mincon spends a large budget (cluster 15); fmincon-sqp attains QUADSPHERE2_300 where mincon does not.
 
 ## Where mincon wins
 

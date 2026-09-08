@@ -15,4 +15,6 @@ are not claimed.
 | 7 | The 1e-8 → 1e-6 tolerance change explains most of the B0 evaluation gap | `s3-tolerance` ablation (0.62× at equal attainment) | development split | a default change, not an algorithmic gain |
 | 8 | The adaptive barrier saves ~7% evaluations and one attainment | `s4-barrier` (0.93 [0.85, 0.98]) | development split | regressions on HS100/HS38/HS63 |
 | 9 | mincon's Python API supports exact constraint Jacobians and checks them | Python tests; track C runs | — | dense Jacobian only; no `jac_sparsity` yet |
-| 10 | Statements **not** made: universal dominance; large-scale (n > 1000) performance; multi-core speed-ups; any result for CUTEst/S2MPJ (never acquired) | — | — | — |
+| 10 | Round 2 (candidate C4, 16 unseen problems): 14 vs 12 attained (+12.5 pp [0, +28.6]), evaluations 0.88 [0.68, 1.10], track C 15 vs 15 at 0.82 [0.62, 1.06], wall 0.077 [0.032, 0.234] | `s6v2-final2`, `s6v2-timing` | final2 split, targets v3 | intervals touch the contract bounds; n = 16 |
+| 11 | Error-aware finite-difference termination is neutral-to-positive (0.97× [0.96, 1.01]) and large on log/exp-sensitive models | `s5-fd-error-aware` | 130 development problems | the certificate is bounded by the estimated derivative error, stated in the report notes |
+| 12 | Statements **not** made: universal dominance; large-scale (n > 1000) performance; multi-core speed-ups; any result for CUTEst/S2MPJ (never acquired) | — | — | — |

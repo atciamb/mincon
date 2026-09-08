@@ -1,0 +1,16 @@
+POLYQP_100             scipy-slsqp        ok     status=0 f_model=1213 c_model=1214 wall=4.416s
+HS25                   scipy-slsqp        ok     status=0 f_model=4 c_model=0 wall=0.003s
+EXPFIT2_NOISY          scipy-slsqp        ok     status=0 f_model=94 c_model=95 wall=0.006s
+ELLIPSOID2_20          scipy-slsqp        ok     status=0 f_model=1031 c_model=1032 wall=0.039s
+QUADSPHERE2_300        scipy-slsqp        ok     status=0 f_model=25444 c_model=25445 wall=4.863s
+CATENARY_40            scipy-slsqp        ok     status=0 f_model=9314 c_model=9315 wall=0.454s
+CATENARY_10            scipy-slsqp        ok     status=0 f_model=476 c_model=477 wall=0.019s
+DISPATCH_20            scipy-slsqp        ok     status=0 f_model=630 c_model=631 wall=0.026s
+EXPFIT2_CLEAN          scipy-slsqp        ok     status=0 f_model=99 c_model=100 wall=0.006s
+POLYQP_10              scipy-slsqp        ok     status=0 f_model=100 c_model=101 wall=0.007s
+ELLIPSOID2_200         scipy-slsqp        ok     status=0 f_model=58747 c_model=58748 wall=5.872s
+TUBULAR_COLUMN         scipy-slsqp        ok     status=0 f_model=18 c_model=19 wall=0.002s
+HS56                   scipy-slsqp        ok     status=0 f_model=73 c_model=74 wall=0.003s
+DISPATCH_5             scipy-slsqp        ok     status=0 f_model=84 c_model=85 wall=0.004s
+HS84                   scipy-slsqp        ok     status=0 f_model=6 c_model=13 wall=0.001s
+QUADSPHERE2_30         scipy-slsqp        ok     status=0 f_model=1518 c_model=1519 wall=0.052s

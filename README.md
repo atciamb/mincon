@@ -31,19 +31,21 @@ let r = minimize(&p, &Options::default())?;
 ```
 
 > **Status: experimental, measured.** Matched against the installed MATLAB
-> R2025b `fmincon` on a 133-problem single-source corpus with an independent
-> KKT oracle (`docs/15_BENCHMARK_PROTOCOL_V2.md`). At defaults, on the
-> held-out split, mincon attained 19/22 targets vs 18/22 for
-> `fmincon-interior-point` (not statistically separable), used **1.4×** its
-> model evaluations there (1.06× on the development split, 0.91× on the
-> validation split), and returned **30–100× faster** in wall-clock time on
-> problems up to a few hundred variables (same laptop, single thread).
-> `fmincon-sqp` and SciPy SLSQP need 0.6–0.8× the evaluations of any
-> interior-point code on small dense problems; mincon has no SQP yet.
-> **The preregistered superiority contract is not met**; see
-> `bench/results/s6-final/README.md` and `docs/16_FAILURE_ATLAS.md` for
-> exactly where fmincon wins. Development gate: 160 Rust tests, 54/54
-> fixtures with independent checks (50 strict `Optimal`), 23 Python tests.
+> R2025b `fmincon` on a 149-problem single-source corpus with an independent
+> KKT oracle (`docs/15_BENCHMARK_PROTOCOL_V2.md`), two rounds of held-out
+> qualification. At defaults mincon attained at least as many targets as
+> `fmincon-interior-point` on every split (held-out: 19 vs 18 of 22, then
+> 14 vs 12 of 16), used about the same number of model evaluations (0.88×
+> to 1.43× across four sets; 0.88× [0.68, 1.10] on the latest held-out set)
+> and returned **10–100× faster** in wall-clock time on problems up to a few
+> hundred variables (same laptop, single thread). `fmincon-sqp` and SciPy
+> SLSQP need 0.6–0.8× the evaluations of any interior-point code on small
+> dense problems; mincon has no SQP yet, and dense BFGS makes it slow past
+> n ≈ 200. **The preregistered superiority contract is not met at these
+> sample sizes**; see `bench/results/s6v2-final2/README.md`,
+> `docs/17_CLAIM_AUDIT.md` and `docs/16_FAILURE_ATLAS.md` for exactly where
+> fmincon wins. Development gate: 160 Rust tests, 55/55 fixtures with
+> independent checks, 23 Python tests.
 
 `fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
@@ -87,14 +89,18 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
 
 1. **SQP.** Specified, not built. `fmincon-sqp`/SLSQP use 0.6–0.8× the
    evaluations of every interior-point code on small dense problems.
-2. **Finite-difference accuracy on sensitive models** (HS62: 13 evaluations
-   with exact derivatives, 250–500 with forward differences); pass `jac` and
+2. **Dense BFGS from the identity at n ≳ 100** (ELLIPSOID2_200: ~800
+   iterations; QUADSPHERE2_300 not solved within budget): hundreds of
+   iterations on long curved valleys for every BFGS-based solver, and
+   ~25 ms/iteration at n = 200. Pass exact derivatives; a guarded initial
+   scaling is the next candidate fix (an unguarded one was rejected).
+3. **Adaptive barrier stalls** on a few problems (HS63: 39 vs 8 iterations
+   monotone) before the monotone fallback fires; a primal-infeasibility floor
+   was rejected as neutral overall.
+4. **Finite-difference accuracy on sensitive models**: the solver now stops
+   at the estimated derivative accuracy (HS62: 100 evaluations, was 504) but
+   the certificate is only as good as the derivatives; pass `jac` and
    constraint `jac` when you can.
-3. **Adaptive barrier stalls** on a few problems (HS63, HS100) before the
-   monotone fallback fires.
-4. **Quasi-Newton on long curved valleys** (chained Rosenbrock, n ≥ 50):
-   hundreds of iterations for every BFGS-based solver; dense BFGS also caps
-   usable `n` at a couple of thousand and costs ~25 ms/iteration at n = 200.
 5. **Nonlinear infeasibility is not always diagnosed** (INFEASIBLE_NL runs to
    the iteration limit; so do fmincon and SLSQP).
 6. **AMD ordering** falls back to RCM; inertia-free acceptance is not wired.
