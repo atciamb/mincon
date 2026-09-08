@@ -1,0 +1,88 @@
+# Capability and defect inventory at `8ec00bd`
+
+Built from the source and tests on September 7, 2026, before any solver change.
+Four states are distinguished: **measured** (implemented and covered by an
+independent check), **unqualified** (implemented, but no independent measure
+of its effect), **exposed-unsupported** (an option or API exists but does not
+do what its name says) and **absent**.
+
+## Capability matrix
+
+| Area | State | Evidence / location |
+|---|---|---|
+| Primal-dual interior point, filter line search, SOC, fraction-to-boundary, bound-multiplier reset | measured | `crates/mincon-ip/src/solver.rs`; 54-fixture gate, `bench/results/b0-baseline` |
+| Inertia correction (Wächter–Biegler IC) | measured on fixtures | `kkt.rs::factor_with_correction` |
+| Monotone barrier update | measured | `solver.rs` (`mu` update block) |
+| `BarrierUpdate::Adaptive` / `AdaptiveThenMonotone` (the default) | exposed-unsupported: only the monotone rule is wired; the enum value is accepted silently | `solver.rs` uses `kappa_mu`/`theta_mu` only |
+| Watchdog (`Options::watchdog`) | exposed-unsupported: never read by the solver | grep shows no consumer |
+| `RegularizationMode::InertiaFree` / `Hybrid` | exposed-unsupported: both take the certified-inertia path | `options.rs` doc comments say so |
+| `HessianMode::LimitedMemoryBfgs`, `FiniteDifference` | exposed-unsupported: fall back to dense BFGS with a note | `solver.rs::new` |
+| Dense damped BFGS | measured on fixtures | `bfgs.rs` |
+| Soft + reduced-elastic restoration, `LocallyInfeasible` exit | measured on fixtures | `solver/restoration.rs`, `docs/12` |
+| Gradient-based scaling | unqualified as an ablation (portfolio member `ip-unscaled` exists) | `solver.rs::compute_scaling` |
+| Sparse LDLᵀ with dynamic regularization, inertia, refinement | measured by unit tests; no randomized indefinite stress test | `mincon-linalg/src/ldlt.rs` |
+| `Ordering::Amd` | exposed-unsupported: falls back to RCM | `ordering.rs:53` |
+| `LinearSolverKind::DenseLblt` | absent (option accepted) | no dense LBLᵀ implementation |
+| Forward/central/adaptive finite differences, bound-aware retreat, boundary stencils | measured (HS33/HS35 analytic KKT tests) | `mincon-diff/src/fd.rs` |
+| Jacobian sparsity detection (2 base points, one probe per variable) | unqualified: a hypothesis with no runtime re-verification or fallback | `detect.rs` |
+| CPR graph coloring | measured by unit tests | `coloring.rs` |
+| Derivative checker | **defective** (see D1) | `check.rs` |
+| Portfolio (3 IP members) | unqualified; resource accounting defective (D5) | `crates/mincon/src/portfolio.rs` |
+| SQP, QP subsolver | absent (`is_available()` returns false; `Algorithm::Sqp` errors) | `mincon-sqp`, `mincon-qp` |
+| Python `minimize` / `fmincon` façade, multipliers grouped MATLAB-style | measured (18 tests, PyPI wheel) | `mincon-py` |
+| Sparse Jacobian / `jac_sparsity` from Python; constraint Jacobian callback from Python | absent (only `jac` for the objective) | `mincon-py/src/lib.rs` |
+| Hard wall-time / evaluation budget | unqualified: checked once per iteration only; FD probes and line-search trials can overshoot by O(n) evaluations | `solver.rs` termination block |
+
+## Defects confirmed in the source (to be fixed in S3)
+
+D1. **Derivative checker can pass with no evidence.** `CheckReport::passed()`
+is `max_relative <= tolerance`. (a) If every `gradient()`/`jacobian()` call
+fails, or every objective evaluation fails, no comparison is made and the
+check passes. (b) A NaN analytic entry produces `relative = NaN`, and
+`f64::max` discards NaN, so `max_relative` stays small and the check passes.
+(c) `points_checked` may be zero and still pass. A test
+(`a_model_with_no_analytic_derivatives_trivially_passes`) currently encodes
+the wrong semantics.
+
+D2. **Python `fmincon` façade evaluates `nonlcon` twice per constraint
+evaluation** (`component(0)` and `component(1)` each call the user function),
+doubling nonlinear-constraint cost; the `minimize` path also evaluates every
+constraint block separately from the objective, so a joint model is called at
+least 2–3 times per point.
+
+D3. **Benchmark harness (`bench/runner.py`, `bench/matlab/fmincon_baseline.m`)**:
+equality rows classified by `np.isclose(cl, cu)` in Python but `cl == cu` in
+MATLAB; constraint calls not counted and each eq/lo/hi group re-evaluates the
+full constraint vector; IPOPT receives analytic derivatives, others do not;
+SciPy ignores `maxfev`/`maxtime`; MATLAB sets `MaxFunctionEvaluations=1e5`,
+`MaxIterations=3000` while the header says defaults; the MATLAB deadline is a
+cooperative `OutputFcn` with `persistent t0`; records omit the returned point
+and any stationarity evidence; `json.dumps` emits non-standard `Infinity`;
+targets are "best objective seen among the contestants", so they move as
+contestants are added. The harness is retained as a scaffold only; S1 replaces
+it.
+
+D4. **Termination is stricter than documented and platform-sensitive.**
+`Optimal` requires the scaled `E_0 <= 1e-8` *and* the unscaled stationarity
+∞-norm `<= 1e-8`. HS5 flips between `Optimal` (Linux) and `Acceptable`
+(Windows) at identical objective values. HS11/HS31/HS37/HS43 end in
+`NumericalFailure` at points with relative objective error `<= 5e-8`.
+
+D5. **Portfolio resources.** With `threads > 1` every member runs to
+completion on its own thread regardless of the `threads` value (three members
+spawn even for `threads = 2`); there is no cancellation once one member has
+converged; `total_f_evals` sums only members that returned `Ok`, so a member
+that errored contributes zero; from Python every callback needs the GIL, so
+parallel members serialize and the default portfolio costs roughly three
+sequential solves in wall time (to be measured in S2).
+
+D6. **Multiplier update.** `lambda += alpha_z * d_lambda` uses the dual step
+length; Wächter–Biegler use the primal `alpha`. There is no least-squares
+multiplier initialization although `BarrierParams::lambda_init_max` exists.
+
+D7. **Sparsity detection is a hypothesis.** Two base points, entries that are
+zero at both are treated as structural zeros for the whole run; no periodic
+check, no fallback.
+
+These items are the input to the S2 failure atlas and the S3 repairs; none is
+fixed in this commit.

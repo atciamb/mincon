@@ -1,0 +1,41 @@
+"""Frozen family-aware split assignment (development / validation / final / diagnostic).
+
+Rules, fixed before any matched run (see docs/15_BENCHMARK_PROTOCOL_V2.md):
+* the 44 Hock–Schittkowski problems already present in the Rust test set are exposed -> development;
+* the remaining HS problems are hashed by name into dev/val/final at 40/30/30;
+* adversarial problems are hashed at 50/25/25; diagnostic-tagged problems go to the diagnostic track;
+* whole structured families are assigned together: chainrosen, lqtraj, expfit -> dev;
+  quadsphere -> validation; ellipsoid, portfolio -> final;
+* engineering designs: SPRING, THREEBAR_TRUSS, CANTILEVER -> validation; PRESSURE_VESSEL, WELDED_BEAM,
+  SPEED_REDUCER -> final.
+The assignment is a pure function of the problem name; it never looks at any solver result.
+"""
+import hashlib
+
+EXPOSED_HS = {"HS1", "HS2", "HS3", "HS4", "HS5", "HS38", "HS45", "HS110", "HS6", "HS7", "HS8", "HS9", "HS26", "HS27", "HS28",
+              "HS39", "HS40", "HS42", "HS10", "HS11", "HS12", "HS13", "HS14", "HS15", "HS16", "HS18", "HS21", "HS22", "HS23",
+              "HS24", "HS29", "HS30", "HS31", "HS32", "HS33", "HS34", "HS35", "HS36", "HS37", "HS41", "HS43", "HS44", "HS71", "HS100"}
+FAMILY_SPLIT = {"chainrosen": "dev", "lqtraj": "dev", "expfit": "dev", "quadsphere": "validation", "ellipsoid": "final",
+                "portfolio": "final"}
+ENGINEERING = {"SPRING": "validation", "THREEBAR_TRUSS": "validation", "CANTILEVER": "validation",
+               "PRESSURE_VESSEL": "final", "WELDED_BEAM": "final", "SPEED_REDUCER": "final"}
+
+
+def _u(name):
+    return int(hashlib.sha256(name.encode()).hexdigest()[:8], 16) / 2 ** 32
+
+
+def assign(name, family, tags):
+    if "diagnostic" in tags:
+        return "diagnostic"
+    if family == "hs":
+        if name in EXPOSED_HS:
+            return "dev"
+        u = _u(name)
+        return "dev" if u < 0.4 else ("validation" if u < 0.7 else "final")
+    if family == "adversarial":
+        u = _u(name)
+        return "dev" if u < 0.5 else ("validation" if u < 0.75 else "final")
+    if family == "engineering":
+        return ENGINEERING[name]
+    return FAMILY_SPLIT[family]
