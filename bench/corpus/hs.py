@@ -682,3 +682,36 @@ def HS118():
     return hs("HS118", x, f, c, cl, cu, xl=xl, xu=xu, x0=[20, 55, 15, 20, 60, 20, 20, 60, 20, 20, 60, 20, 20, 60, 20], ref_f=664.8204500,
               notes="transcription of the difference rows as one-sided pairs; verify against published optimum before use as target",
               tags=["unverified-transcription"])
+
+
+# ---- added for the second held-out set (unseen by any tuning) ----
+@register
+def HS25():
+    x = xs(3)
+    terms = []
+    for i in range(1, 100):
+        u = 25 + (-50 * math.log(0.01 * i)) ** (2 / 3)
+        terms.append((-0.01 * i + exp(-(u - x[1]) ** x[2] / x[0])) ** 2)
+    return hs("HS25", x, sp.Add(*terms), xl=[0.1, 0, 0], xu=[100, 25.6, 5], x0=[100, 12.5, 3], ref_f=0.0, ref_x=[[50, 25, 1.5]],
+              tags=["fitting", "domain"], notes="99-term data fit; (u_i - x2)^x3 needs u_i > x2, guaranteed by the box")
+
+@register
+def HS56():
+    x = xs(7); cl, cu = eq(4)
+    a = math.asin(math.sqrt(1 / 4.2)); b = math.asin(math.sqrt(5 / 7.2))
+    c = [x[0] - 4.2 * sin(x[3]) ** 2, x[1] - 4.2 * sin(x[4]) ** 2, x[2] - 4.2 * sin(x[5]) ** 2,
+         x[0] + 2 * x[1] + 2 * x[2] - 7.2 * sin(x[6]) ** 2]
+    return hs("HS56", x, -x[0] * x[1] * x[2], c, cl, cu, x0=[1, 1, 1, a, a, a, b], ref_f=-3.456)
+
+@register
+def HS84():
+    x = xs(5)
+    a = [-24345, -8720288.849, 150512.5253, -156.6950325, 476470.3222, 729482.8271, -145421.402, 2931.1506, -40.427932,
+         5106.192, 15711.36, -155011.1084, 4360.53352, 12.9492344, 10236.884, 13176.786, -326669.5104, 7390.68412,
+         -27.8986976, 16643.076, 30988.146]
+    f = -a[0] - a[1] * x[0] - a[2] * x[0] * x[1] - a[3] * x[0] * x[2] - a[4] * x[0] * x[3] - a[5] * x[0] * x[4]
+    c = [a[6] * x[0] + a[7] * x[0] * x[1] + a[8] * x[0] * x[2] + a[9] * x[0] * x[3] + a[10] * x[0] * x[4],
+         a[11] * x[0] + a[12] * x[0] * x[1] + a[13] * x[0] * x[2] + a[14] * x[0] * x[3] + a[15] * x[0] * x[4],
+         a[16] * x[0] + a[17] * x[0] * x[1] + a[18] * x[0] * x[2] + a[19] * x[0] * x[3] + a[20] * x[0] * x[4]]
+    return hs("HS84", x, f, c, [0, 0, 0], [294000, 294000, 277200], xl=[0, 1.2, 20, 9, 6.5], xu=[1000, 2.4, 60, 9.3, 7],
+              x0=[2.52, 2, 37.5, 9.25, 6.8], ref_f=-5280335.133, tags=["ranged", "scaling"])

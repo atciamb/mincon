@@ -68,7 +68,7 @@ def solve_mincon(model, track, budget, threads, variant, overrides=None):
         opts["maxfev"] = int(budget["maxfev"])
     if budget.get("maxtime"):
         opts["maxtime"] = float(budget["maxtime"])
-    opts.update(overrides or {})
+    opts.update({k: v for k, v in (overrides or {}).items() if not k.startswith("_")})  # "_tag=..." keys only label the run
     jac = model.grad if track == "C" else None
     method = {"mincon": "auto", "mincon-ip": "interior-point"}.get(variant, "auto")
     t0 = time.perf_counter()

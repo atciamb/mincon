@@ -623,6 +623,17 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         );
         let mut adaptive_stall = 0usize;
         let mut best_e0 = f64::INFINITY;
+        // Error-aware termination for finite-difference derivatives: the
+        // stationarity target cannot be below the derivative error, so once the
+        // iterate is close the error is estimated on the four steepest coordinates
+        // (a few extra evaluations, at most every ten iterations) and the target is raised to it, capped at
+        // the acceptable tolerance; forward differences that are too inaccurate
+        // escalate to central before that cap is used.
+        let approximate = self.opts.fd_error_aware
+            && (self.eval.gradient_is_approximate() || self.eval.jacobian_is_approximate());
+        let mut tol_eff = self.opts.tol.optimality;
+        let mut error_checked_at: Option<usize> = None;
+        let mut near_convergence_iters = 0usize;
         let mut iterations = 0usize;
         let mut restoration_work = 0usize;
         let mut last_delta_w = 0.0;
@@ -654,11 +665,88 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                 });
             }
 
-            if e0 <= self.opts.tol.optimality
+            if e0 <= 100.0 * self.opts.tol.optimality
+                && violation <= self.opts.tol.acceptable_feasibility
+            {
+                near_convergence_iters += 1;
+            } else {
+                near_convergence_iters = 0;
+            }
+            // Only worth its evaluations when the iterate has lingered near the
+            // end: a solve that finishes in the next step or two pays nothing.
+            if approximate
+                && near_convergence_iters >= 3
+                && e0 > self.opts.tol.optimality
+                && error_checked_at.is_none_or(|k| iter >= k + 10)
+            {
+                error_checked_at = Some(iter);
+                let mut c_unscaled = point.c.clone();
+                for i in 0..m {
+                    c_unscaled[i] /= self.d_c[i];
+                }
+                let g_unscaled: Vec<f64> = grad_f.iter().map(|g| g / self.d_f).collect();
+                let mut j_unscaled = self.jac_values.clone();
+                {
+                    let p = self.eval.jacobian_pattern();
+                    for j in 0..n {
+                        for pos in p.col_ptr()[j]..p.col_ptr()[j + 1] {
+                            j_unscaled[pos] /= self.d_c[p.row_idx()[pos]];
+                        }
+                    }
+                }
+                if let Ok((g_err, j_err)) = self.eval.derivative_error_estimate(
+                    &point.v[..n],
+                    point.f / self.d_f,
+                    &c_unscaled,
+                    &g_unscaled,
+                    &j_unscaled,
+                    4,
+                ) {
+                    let d_c_max = self.d_c.iter().copied().fold(0.0_f64, f64::max);
+                    let err_scaled = (g_err * self.d_f).max(j_err * d_c_max);
+                    if err_scaled > self.opts.tol.acceptable_optimality
+                        && !self.eval.uses_central_differences()
+                        && matches!(self.opts.fd_type, mincon_core::FdType::Adaptive)
+                    {
+                        self.eval.escalate_accuracy();
+                        self.notes.push(format!(
+                            "Estimated forward-difference derivative error {err_scaled:.2e} (scaled) exceeds the \
+                             acceptable optimality tolerance; switched to central differences at iteration {iter}."
+                        ));
+                        error_checked_at = Some(iter.saturating_sub(5)); // allow a re-estimate soon
+                        self.eval
+                            .grad(&point.v[..n], point.f / self.d_f, &mut grad_f)
+                            .map_err(|e| {
+                                SolveError::Internal(format!("gradient after escalation: {e}"))
+                            })?;
+                        for g in &mut grad_f {
+                            *g *= self.d_f;
+                        }
+                        self.refresh_jacobian(&point.v[..n], &point.c)
+                            .map_err(|e| {
+                                SolveError::Internal(format!("Jacobian after escalation: {e}"))
+                            })?;
+                        continue;
+                    }
+                    tol_eff = err_scaled.clamp(
+                        self.opts.tol.optimality,
+                        self.opts.tol.acceptable_optimality,
+                    );
+                }
+            }
+            if e0 <= tol_eff
                 && violation <= self.opts.tol.feasibility
                 && compl <= self.opts.tol.complementarity
-                && self.stationarity_inf(&grad_f, &lambda, &z_l, &z_u) <= self.opts.tol.optimality
+                && self.stationarity_inf(&grad_f, &lambda, &z_l, &z_u) <= tol_eff
             {
+                if tol_eff > self.opts.tol.optimality {
+                    self.notes.push(format!(
+                        "Converged to the accuracy of the finite-difference derivatives: scaled KKT error \
+                         {e0:.2e} is below the estimated derivative error {tol_eff:.2e}, which is above the \
+                         requested optimality tolerance {:.1e}. Supply analytic derivatives for a tighter certificate.",
+                        self.opts.tol.optimality
+                    ));
+                }
                 exit = ExitFlag::Optimal;
                 break;
             }

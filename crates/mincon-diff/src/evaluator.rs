@@ -296,6 +296,60 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
         Ok(())
     }
 
+    /// Whether the objective gradient comes from finite differences.
+    #[must_use]
+    pub fn gradient_is_approximate(&self) -> bool {
+        !self.nlp.capabilities().gradient
+    }
+
+    /// Whether the constraint Jacobian comes from finite differences.
+    #[must_use]
+    pub fn jacobian_is_approximate(&self) -> bool {
+        self.jac_pattern.nrows() > 0 && !self.nlp.capabilities().jacobian
+    }
+
+    /// Estimate the error of the finite-difference derivatives at `x` on the
+    /// `k` coordinates with the largest gradient magnitude (a few extra model
+    /// evaluations, not a full gradient). Returns `(gradient error, Jacobian
+    /// error)` in unscaled model units; analytic derivatives contribute zero.
+    ///
+    /// # Errors
+    /// As [`Evaluator::f`].
+    pub fn derivative_error_estimate(
+        &self,
+        x: &[f64],
+        f0: f64,
+        c0: &[f64],
+        grad: &[f64],
+        jac: &[f64],
+        k: usize,
+    ) -> Result<(f64, f64), EvalError> {
+        let approx_g = self.gradient_is_approximate();
+        let approx_j = self.jacobian_is_approximate();
+        if !approx_g && !approx_j {
+            return Ok((0.0, 0.0));
+        }
+        let n = grad.len();
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by(|a, b| grad[*b].abs().total_cmp(&grad[*a].abs()));
+        order.truncate(k.max(1).min(n));
+        let pat = &self.jac_pattern;
+        let col = |j: usize, out: &mut [f64]| {
+            out.fill(0.0);
+            for pos in pat.col_ptr()[j]..pat.col_ptr()[j + 1] {
+                out[pat.row_idx()[pos]] = jac[pos];
+            }
+        };
+        let counted = self.counted();
+        let (g_err, j_err, _) = self
+            .fd
+            .error_estimate(&counted, x, f0, c0, grad, &col, &order)?;
+        Ok((
+            if approx_g { g_err } else { 0.0 },
+            if approx_j { j_err } else { 0.0 },
+        ))
+    }
+
     /// Constraint Jacobian values, in [`Evaluator::jacobian_pattern`] order.
     ///
     /// # Errors

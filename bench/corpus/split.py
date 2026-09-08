@@ -15,10 +15,15 @@ import hashlib
 EXPOSED_HS = {"HS1", "HS2", "HS3", "HS4", "HS5", "HS38", "HS45", "HS110", "HS6", "HS7", "HS8", "HS9", "HS26", "HS27", "HS28",
               "HS39", "HS40", "HS42", "HS10", "HS11", "HS12", "HS13", "HS14", "HS15", "HS16", "HS18", "HS21", "HS22", "HS23",
               "HS24", "HS29", "HS30", "HS31", "HS32", "HS33", "HS34", "HS35", "HS36", "HS37", "HS41", "HS43", "HS44", "HS71", "HS100"}
-FAMILY_SPLIT = {"chainrosen": "dev", "lqtraj": "dev", "expfit": "dev", "quadsphere": "validation", "ellipsoid": "final",
-                "portfolio": "final"}
+# Round 1 (2026-09-07): dev / validation / final. The round-1 final split was used for diagnosis
+# after its qualification run (protocol §2), so it is relabelled "final1-dev" here: development
+# material that is reported separately. Round 2 held-out families (heldout2.py) are "final2".
+FAMILY_SPLIT = {"chainrosen": "dev", "lqtraj": "dev", "expfit": "dev", "quadsphere": "validation", "ellipsoid": "final1-dev",
+                "portfolio": "final1-dev", "polyqp": "final2", "dispatch": "final2", "catenary": "final2", "ellipsoid2": "final2",
+                "quadsphere2": "final2", "expfit2": "final2", "engineering2": "final2"}
 ENGINEERING = {"SPRING": "validation", "THREEBAR_TRUSS": "validation", "CANTILEVER": "validation",
-               "PRESSURE_VESSEL": "final", "WELDED_BEAM": "final", "SPEED_REDUCER": "final"}
+               "PRESSURE_VESSEL": "final1-dev", "WELDED_BEAM": "final1-dev", "SPEED_REDUCER": "final1-dev"}
+NEW_HS = {"HS25", "HS56", "HS84"}   # added after round 1: never seen by tuning
 
 
 def _u(name):
@@ -29,13 +34,15 @@ def assign(name, family, tags):
     if "diagnostic" in tags:
         return "diagnostic"
     if family == "hs":
+        if name in NEW_HS:
+            return "final2"
         if name in EXPOSED_HS:
             return "dev"
         u = _u(name)
-        return "dev" if u < 0.4 else ("validation" if u < 0.7 else "final")
+        return "dev" if u < 0.4 else ("validation" if u < 0.7 else "final1-dev")
     if family == "adversarial":
         u = _u(name)
-        return "dev" if u < 0.5 else ("validation" if u < 0.75 else "final")
+        return "dev" if u < 0.5 else ("validation" if u < 0.75 else "final1-dev")
     if family == "engineering":
         return ENGINEERING[name]
     return FAMILY_SPLIT[family]

@@ -4,6 +4,7 @@ use mincon_core::{Algorithm, Options};
 
 fn main() {
     let name = std::env::args().nth(1).unwrap_or_else(|| "HS16".into());
+    let full_trace = std::env::args().any(|a| a == "--trace");
     let p = mincon_testset::by_name(&name).expect("unknown problem");
     let opts = Options {
         algorithm: Algorithm::InteriorPoint,
@@ -23,6 +24,24 @@ fn main() {
     println!("published f* = {:?}", p.f_opt);
     for n in &r.notes {
         println!("note: {n}");
+    }
+    if full_trace {
+        println!("\nfull trace:");
+        println!(" iter   f_count             f       viol optimality     alpha        mu    step  resto");
+        for t in &r.trace {
+            println!(
+                "{:>5} {:>9} {:>13.6e} {:>10.2e} {:>10.2e} {:>9.2e} {:>9.2e} {:>7.1e} {}",
+                t.iter,
+                t.f_count,
+                t.f,
+                t.constraint_violation,
+                t.optimality,
+                t.alpha,
+                t.mu,
+                t.step_norm,
+                t.in_restoration as u8
+            );
+        }
     }
 
     // Independent check: is this a local minimum? Sample the feasible

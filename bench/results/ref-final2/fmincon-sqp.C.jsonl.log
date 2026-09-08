@@ -1,0 +1,16 @@
+HS84                   fmincon-sqp              ok     status=1 f_model=4 c_model=4 wall=0.311s
+CATENARY_10            fmincon-sqp              ok     status=2 f_model=85 c_model=85 wall=0.061s
+QUADSPHERE2_30         fmincon-sqp              ok     status=2 f_model=372 c_model=372 wall=0.090s
+QUADSPHERE2_300        fmincon-sqp              ok     status=2 f_model=3922 c_model=3922 wall=60.121s
+DISPATCH_5             fmincon-sqp              ok     status=1 f_model=15 c_model=15 wall=0.094s
+DISPATCH_20            fmincon-sqp              ok     status=1 f_model=44 c_model=44 wall=0.019s
+POLYQP_10              fmincon-sqp              ok     status=1 f_model=13 c_model=13 wall=0.044s
+CATENARY_40            fmincon-sqp              ok     status=2 f_model=657 c_model=657 wall=0.247s
+EXPFIT2_CLEAN          fmincon-sqp              ok     status=1 f_model=35 c_model=35 wall=0.042s
+HS56                   fmincon-sqp              ok     status=1 f_model=17 c_model=17 wall=0.008s
+HS25                   fmincon-sqp              ok     status=1 f_model=1 c_model=0 wall=0.055s
+POLYQP_100             fmincon-sqp              ok     status=1 f_model=20 c_model=20 wall=2.204s
+EXPFIT2_NOISY          fmincon-sqp              ok     status=1 f_model=36 c_model=36 wall=0.035s
+ELLIPSOID2_200         fmincon-sqp              ok     status=2 f_model=2140 c_model=2140 wall=0.608s
+ELLIPSOID2_20          fmincon-sqp              ok     status=1 f_model=158 c_model=158 wall=0.022s
+TUBULAR_COLUMN         fmincon-sqp              ok     status=1 f_model=7 c_model=7 wall=0.011s

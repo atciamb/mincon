@@ -228,6 +228,96 @@ impl FiniteDifferences {
         }
     }
 
+    /// Estimate the truncation error of the current finite-difference scheme on
+    /// the coordinates `cols`, by re-differencing with twice the step
+    /// (forward: one extra objective and constraint evaluation per coordinate;
+    /// central: two). Returns `(max gradient disagreement, max Jacobian
+    /// disagreement, evaluations)` in the model's own units; the disagreement
+    /// `D(h) - D(2h)` is, to first order, the truncation error of `D(h)` for
+    /// forward differences and three times it for central ones. Coordinates
+    /// that cannot move (pinned, or no room for a doubled step) are skipped.
+    ///
+    /// # Errors
+    /// Propagates model failures.
+    #[allow(clippy::too_many_arguments)]
+    pub fn error_estimate<P: Nlp + ?Sized>(
+        &self,
+        nlp: &P,
+        x: &[f64],
+        f0: f64,
+        c0: &[f64],
+        grad: &[f64],
+        jac_dense_col: &dyn Fn(usize, &mut [f64]),
+        cols: &[usize],
+    ) -> Result<(f64, f64, u64), EvalError> {
+        let (lb, ub) = nlp.x_bounds();
+        let central = self.use_central();
+        let rel = 2.0 * self.config.relative_step(central);
+        let respect = self.config.respect_bounds;
+        let m = c0.len();
+        let mut g_err = 0.0_f64;
+        let mut j_err = 0.0_f64;
+        let mut evals = 0u64;
+        let mut xp = x.to_vec();
+        let mut cp = vec![0.0; m];
+        let mut cm = vec![0.0; m];
+        let mut jcol = vec![0.0; m];
+        for &j in cols {
+            if respect && lb[j] == ub[j] {
+                continue;
+            }
+            let (d_f, d_c): (f64, Vec<f64>) = if central {
+                let Some(h) = central_step(x[j], self.typical[j], rel, lb[j], ub[j], respect)
+                else {
+                    continue;
+                };
+                xp[j] = x[j] + h;
+                let fp = nlp.objective(&xp)?;
+                if m > 0 {
+                    nlp.constraints(&xp, &mut cp)?;
+                }
+                xp[j] = x[j] - h;
+                let fm = nlp.objective(&xp)?;
+                if m > 0 {
+                    nlp.constraints(&xp, &mut cm)?;
+                }
+                xp[j] = x[j];
+                evals += 2;
+                (
+                    (fp - fm) / (2.0 * h),
+                    (0..m).map(|i| (cp[i] - cm[i]) / (2.0 * h)).collect(),
+                )
+            } else {
+                let st = forward_step(x[j], self.typical[j], rel, lb[j], ub[j], respect);
+                if st.h == 0.0 {
+                    continue;
+                }
+                xp[j] = st.x_plus;
+                let fp = nlp.objective(&xp)?;
+                if m > 0 {
+                    nlp.constraints(&xp, &mut cp)?;
+                }
+                xp[j] = x[j];
+                evals += 1;
+                (
+                    (fp - f0) / st.h,
+                    (0..m).map(|i| (cp[i] - c0[i]) / st.h).collect(),
+                )
+            };
+            if !d_f.is_finite() || d_c.iter().any(|v| !v.is_finite()) {
+                return Err(EvalError::NonFinite(None));
+            }
+            g_err = g_err.max((d_f - grad[j]).abs());
+            if m > 0 {
+                jac_dense_col(j, &mut jcol);
+                for i in 0..m {
+                    j_err = j_err.max((d_c[i] - jcol[i]).abs());
+                }
+            }
+        }
+        Ok((g_err, j_err, evals))
+    }
+
     /// Approximate the objective gradient at `x`, given `f0 = f(x)`.
     ///
     /// # Errors
@@ -241,9 +331,26 @@ impl FiniteDifferences {
         f0: f64,
         out: &mut [f64],
     ) -> Result<u64, EvalError> {
+        self.gradient_with_step(nlp, x, f0, out, 1.0)
+    }
+
+    /// As [`FiniteDifferences::gradient`] with the relative step multiplied by
+    /// `step_factor`. Two evaluations with factors 1 and 2 give a Richardson-style
+    /// estimate of the truncation error of the first.
+    ///
+    /// # Errors
+    /// As [`FiniteDifferences::gradient`].
+    pub fn gradient_with_step<P: Nlp + ?Sized>(
+        &self,
+        nlp: &P,
+        x: &[f64],
+        f0: f64,
+        out: &mut [f64],
+        step_factor: f64,
+    ) -> Result<u64, EvalError> {
         let (lb, ub) = nlp.x_bounds();
         let central = self.use_central();
-        let rel = self.config.relative_step(central);
+        let rel = self.config.relative_step(central) * step_factor;
         let respect = self.config.respect_bounds;
         let parallel = self.config.parallel && nlp.capabilities().parallel_safe;
 
@@ -325,12 +432,28 @@ impl FiniteDifferences {
         c0: &[f64],
         out: &mut [f64],
     ) -> Result<u64, EvalError> {
+        self.jacobian_with_step(nlp, x, c0, out, 1.0)
+    }
+
+    /// As [`FiniteDifferences::jacobian`] with the relative step multiplied by
+    /// `step_factor` (see [`FiniteDifferences::gradient_with_step`]).
+    ///
+    /// # Errors
+    /// As [`FiniteDifferences::jacobian`].
+    pub fn jacobian_with_step<P: Nlp + ?Sized>(
+        &self,
+        nlp: &P,
+        x: &[f64],
+        c0: &[f64],
+        out: &mut [f64],
+        step_factor: f64,
+    ) -> Result<u64, EvalError> {
         if self.m == 0 {
             return Ok(0);
         }
         let (lb, ub) = nlp.x_bounds();
         let central = self.use_central();
-        let rel = self.config.relative_step(central);
+        let rel = self.config.relative_step(central) * step_factor;
         let respect = self.config.respect_bounds;
 
         // Column groups: one per color if we have a coloring, else one per column.

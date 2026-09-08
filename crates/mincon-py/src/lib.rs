@@ -324,6 +324,9 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
             }
         };
     }
+    if let Some(v) = get!("fd_error_aware", bool) {
+        o.fd_error_aware = v;
+    }
     if let Some(v) = get!("barrier", String) {
         o.barrier_update = match v.as_str() {
             "monotone" => BarrierUpdate::Monotone,

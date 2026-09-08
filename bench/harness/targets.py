@@ -87,5 +87,9 @@ if __name__ == "__main__":
     if sys.argv[1] == "init":
         init()
     else:
-        files = [f for pat in sys.argv[3:] if not pat.startswith("--") for f in glob.glob(pat)]
-        update(sys.argv[2], files)
+        args = sys.argv[3:]
+        base = "v1"
+        if "--base" in args:
+            i = args.index("--base"); base = args[i + 1]; args = args[:i] + args[i + 2:]
+        files = [f for pat in args if not pat.startswith("--") for f in glob.glob(pat)]
+        update(sys.argv[2], files, base=base)

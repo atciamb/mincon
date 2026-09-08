@@ -37,7 +37,7 @@
     "scaling"
    ],
    "checksum": "9260e04455ced0ed",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "CANTILEVER",
@@ -57,6 +57,44 @@
    ],
    "checksum": "c4130a31e55f372c",
    "split": "validation"
+  },
+  {
+   "name": "CATENARY_10",
+   "family": "catenary",
+   "n": 18,
+   "m": 10,
+   "n_eq": 10,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": null,
+   "has_ref_x": false,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "best-known"
+   ],
+   "checksum": "604f25ec0c17d456",
+   "split": "final2"
+  },
+  {
+   "name": "CATENARY_40",
+   "family": "catenary",
+   "n": 78,
+   "m": 40,
+   "n_eq": 40,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": null,
+   "has_ref_x": false,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "best-known"
+   ],
+   "checksum": "7ffdff7bd79159d9",
+   "split": "final2"
   },
   {
    "name": "CHAINROSEN_BOX_10",
@@ -192,6 +230,44 @@
    "split": "validation"
   },
   {
+   "name": "DISPATCH_20",
+   "family": "dispatch",
+   "n": 20,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 20,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": null,
+   "has_ref_x": false,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "best-known"
+   ],
+   "checksum": "9edbbbb72de76794",
+   "split": "final2"
+  },
+  {
+   "name": "DISPATCH_5",
+   "family": "dispatch",
+   "n": 5,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 5,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": null,
+   "has_ref_x": false,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "best-known"
+   ],
+   "checksum": "8a4047aa8d8154ab",
+   "split": "final2"
+  },
+  {
    "name": "DOMAIN_LOG",
    "family": "adversarial",
    "n": 2,
@@ -230,6 +306,40 @@
    "split": "validation"
   },
   {
+   "name": "ELLIPSOID2_20",
+   "family": "ellipsoid2",
+   "n": 20,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 128.32552772008117,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [],
+   "checksum": "bc23b9c881c52c3f",
+   "split": "final2"
+  },
+  {
+   "name": "ELLIPSOID2_200",
+   "family": "ellipsoid2",
+   "n": 200,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 1215.199923891227,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [],
+   "checksum": "8c9ddeeb7dd11bcd",
+   "split": "final2"
+  },
+  {
    "name": "ELLIPSOID_5",
    "family": "ellipsoid",
    "n": 5,
@@ -244,7 +354,7 @@
    "source": "bench/corpus/structured.py",
    "tags": [],
    "checksum": "be8da7352ddaff71",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "ELLIPSOID_50",
@@ -261,7 +371,7 @@
    "source": "bench/corpus/structured.py",
    "tags": [],
    "checksum": "0c4cab10e90bc754",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "ELLIPSOID_500",
@@ -278,7 +388,7 @@
    "source": "bench/corpus/structured.py",
    "tags": [],
    "checksum": "66ec309a50ebbe1d",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "EQQP6",
@@ -296,6 +406,45 @@
    "tags": [],
    "checksum": "7714cc2a8cf56cff",
    "split": "validation"
+  },
+  {
+   "name": "EXPFIT2_CLEAN",
+   "family": "expfit2",
+   "n": 4,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 4,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": 0.0,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "fitting"
+   ],
+   "checksum": "b046d04b61b1dfa8",
+   "split": "final2"
+  },
+  {
+   "name": "EXPFIT2_NOISY",
+   "family": "expfit2",
+   "n": 4,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 4,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": null,
+   "has_ref_x": false,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "fitting",
+    "best-known"
+   ],
+   "checksum": "f3d3db756aaf8310",
+   "split": "final2"
   },
   {
    "name": "EXPFIT_CLEAN",
@@ -495,7 +644,7 @@
    "source": "Hock & Schittkowski 1981; hexagon; degenerate",
    "tags": [],
    "checksum": "958ed5fc284d85b0",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS11",
@@ -601,7 +750,7 @@
    "source": "Hock & Schittkowski 1981; Colville #2",
    "tags": [],
    "checksum": "1ee92d9725561a36",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS118",
@@ -863,6 +1012,26 @@
    "tags": [],
    "checksum": "028e7992d94db617",
    "split": "dev"
+  },
+  {
+   "name": "HS25",
+   "family": "hs",
+   "n": 3,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 3,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.0,
+   "has_ref_x": true,
+   "source": "Hock & Schittkowski 1981; 99-term data fit; (u_i - x2)^x3 needs u_i > x2, guaranteed by the box",
+   "tags": [
+    "fitting",
+    "domain"
+   ],
+   "checksum": "8d23fdaca1a4c71f",
+   "split": "final2"
   },
   {
    "name": "HS26",
@@ -1291,7 +1460,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "bbacd2f100262777",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS49",
@@ -1359,7 +1528,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "f67d8c9f923378be",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS52",
@@ -1413,6 +1582,23 @@
    ],
    "checksum": "384f98243c178ce1",
    "split": "dev"
+  },
+  {
+   "name": "HS56",
+   "family": "hs",
+   "n": 7,
+   "m": 4,
+   "n_eq": 4,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": -3.456,
+   "has_ref_x": false,
+   "source": "Hock & Schittkowski 1981",
+   "tags": [],
+   "checksum": "639a9cb983896b9d",
+   "split": "final2"
   },
   {
    "name": "HS57",
@@ -1499,7 +1685,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "60da815f279990fe",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS63",
@@ -1516,7 +1702,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "9ad3f8ef5849370c",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS64",
@@ -1673,7 +1859,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "708ab9817851aa4a",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS76",
@@ -1690,7 +1876,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "907a61f160a51293",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS77",
@@ -1707,7 +1893,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "b62d7c2b2a3cb278",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS78",
@@ -1741,7 +1927,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "1ad9d8537bd954de",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS8",
@@ -1775,7 +1961,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "52900c702ed5499b",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS81",
@@ -1812,6 +1998,26 @@
    ],
    "checksum": "b2a848faafe1c49d",
    "split": "dev"
+  },
+  {
+   "name": "HS84",
+   "family": "hs",
+   "n": 5,
+   "m": 3,
+   "n_eq": 0,
+   "n_ranged": 3,
+   "n_bounded": 5,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": -5280335.133,
+   "has_ref_x": false,
+   "source": "Hock & Schittkowski 1981",
+   "tags": [
+    "ranged",
+    "scaling"
+   ],
+   "checksum": "00e44d6e824b97a5",
+   "split": "final2"
   },
   {
    "name": "HS86",
@@ -1862,7 +2068,7 @@
    "source": "Hock & Schittkowski 1981; transformer design",
    "tags": [],
    "checksum": "cc8c0a94b5a9ae1c",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS95",
@@ -1896,7 +2102,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "899ba45e843f5a6f",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "HS97",
@@ -1930,7 +2136,7 @@
    "source": "Hock & Schittkowski 1981",
    "tags": [],
    "checksum": "bce5ab11a8665641",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "INFEASIBLE_LIN",
@@ -2090,6 +2296,40 @@
    "split": "dev"
   },
   {
+   "name": "POLYQP_10",
+   "family": "polyqp",
+   "n": 10,
+   "m": 20,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 20,
+   "ref_f": -1.3307319893913616,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [],
+   "checksum": "be0af97ad458d1bd",
+   "split": "final2"
+  },
+  {
+   "name": "POLYQP_100",
+   "family": "polyqp",
+   "n": 100,
+   "m": 200,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 200,
+   "ref_f": -8.34349012023698,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [],
+   "checksum": "6427e4b2923592a8",
+   "split": "final2"
+  },
+  {
    "name": "PORTFOLIO_100",
    "family": "portfolio",
    "n": 100,
@@ -2107,7 +2347,7 @@
     "convex"
    ],
    "checksum": "054c4ac78e8c30b8",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "PORTFOLIO_20",
@@ -2127,7 +2367,7 @@
     "convex"
    ],
    "checksum": "871a44ff1b23a891",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "PRESSURE_VESSEL",
@@ -2146,7 +2386,45 @@
     "best-known"
    ],
    "checksum": "8e1d8b5375bdd2d2",
-   "split": "final"
+   "split": "final1-dev"
+  },
+  {
+   "name": "QUADSPHERE2_30",
+   "family": "quadsphere2",
+   "n": 30,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 30,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": 0.327666449368758,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "ill-conditioned"
+   ],
+   "checksum": "78f9c1a7b4e5f0a8",
+   "split": "final2"
+  },
+  {
+   "name": "QUADSPHERE2_300",
+   "family": "quadsphere2",
+   "n": 300,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 300,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": 0.03777324609690312,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "ill-conditioned"
+   ],
+   "checksum": "f9bdde46771fe80a",
+   "split": "final2"
   },
   {
    "name": "QUADSPHERE_10",
@@ -2255,7 +2533,7 @@
     "best-known"
    ],
    "checksum": "8f0e5d1c08e415ac",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "SPRING",
@@ -2316,6 +2594,25 @@
    "split": "validation"
   },
   {
+   "name": "TUBULAR_COLUMN",
+   "family": "engineering2",
+   "n": 2,
+   "m": 6,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 2,
+   "n_fixed": 0,
+   "linear_rows": 2,
+   "ref_f": 26.5313,
+   "has_ref_x": false,
+   "source": "Rao tubular column; best-known 26.5313",
+   "tags": [
+    "best-known"
+   ],
+   "checksum": "05d09c080d5ac932",
+   "split": "final2"
+  },
+  {
    "name": "UNBOUNDED_PAR",
    "family": "adversarial",
    "n": 2,
@@ -2352,7 +2649,7 @@
     "scaling"
    ],
    "checksum": "1eb384a873e77afb",
-   "split": "final"
+   "split": "final1-dev"
   },
   {
    "name": "WELDED_BEAM",
@@ -2371,7 +2668,7 @@
     "best-known"
    ],
    "checksum": "881d13e35192cd78",
-   "split": "final"
+   "split": "final1-dev"
   }
  ]
 }

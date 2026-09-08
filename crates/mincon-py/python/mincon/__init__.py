@@ -147,7 +147,10 @@ def minimize(
         ``threads``, ``seed``, ``check_derivatives``,
         ``scaling`` in ``{'none', 'gradient', 'equilibration'}``,
         ``finite_diff`` in ``{'forward', 'central', 'adaptive'}``,
-        ``barrier`` in ``{'monotone', 'adaptive', 'adaptive-then-monotone'}``.
+        ``barrier`` in ``{'monotone', 'adaptive', 'adaptive-then-monotone'}``,
+        ``fd_error_aware`` (bool, default True: stop at the accuracy the
+        finite-difference derivatives can support instead of chasing a tighter
+        tolerance).
 
     Returns
     -------
@@ -179,7 +182,7 @@ def minimize(
 
     opts = dict(options or {})
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
-                 "seed", "check_derivatives", "scaling", "finite_diff", "barrier"}
+                 "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; supported: {sorted(supported)}")

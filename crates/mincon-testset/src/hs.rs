@@ -767,6 +767,23 @@ pub fn all() -> Vec<TestProblem> {
     ));
 
     v.push(p(
+        "HS63",
+        &[2.0, 2.0, 2.0],
+        &[0.0; 3],
+        &[INF; 3],
+        &[0.0, 0.0],
+        &[0.0, 0.0],
+        |x| 1000.0 - x[0] * x[0] - 2.0 * x[1] * x[1] - x[2] * x[2] - x[0] * x[1] - x[0] * x[2],
+        |x, c| {
+            c[0] = 8.0 * x[0] + 14.0 * x[1] + 7.0 * x[2] - 56.0;
+            c[1] = x[0] * x[0] + x[1] * x[1] + x[2] * x[2] - 25.0;
+        },
+        Some(961.715_172_130_0),
+        Expect::Optimum,
+        "Nonconvex objective, one linear and one quadratic equality, bounds at zero. Added as \
+         the fixture on which the adaptive barrier schedule stalled (39 vs 8 iterations).",
+    ));
+    v.push(p(
         "HS71",
         &[1.0, 5.0, 5.0, 1.0],
         &[1.0; 4],

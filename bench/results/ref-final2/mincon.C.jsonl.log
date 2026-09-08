@@ -1,0 +1,16 @@
+TUBULAR_COLUMN         mincon             ok     status=1 f_model=8 c_model=8 wall=0.004s
+HS84                   mincon             ok     status=1 f_model=16 c_model=16 wall=0.001s
+CATENARY_10            mincon             ok     status=1 f_model=79 c_model=79 wall=0.004s
+HS56                   mincon             ok     status=1 f_model=41 c_model=41 wall=0.001s
+QUADSPHERE2_30         mincon             ok     status=1 f_model=106 c_model=106 wall=0.004s
+DISPATCH_5             mincon             ok     status=1 f_model=16 c_model=17 wall=0.001s
+EXPFIT2_CLEAN          mincon             ok     status=1 f_model=20 c_model=20 wall=0.002s
+HS25                   mincon             ok     status=1 f_model=4 c_model=0 wall=0.002s
+CATENARY_40            mincon             ok     status=1 f_model=764 c_model=764 wall=0.170s
+QUADSPHERE2_300        mincon             ok     status=6 f_model=212 c_model=213 wall=0.750s
+POLYQP_100             mincon             ok     status=1 f_model=26 c_model=26 wall=0.265s
+ELLIPSOID2_20          mincon             ok     status=1 f_model=151 c_model=151 wall=0.005s
+ELLIPSOID2_200         mincon             ok     status=1 f_model=2254 c_model=2254 wall=1.098s
+EXPFIT2_NOISY          mincon             ok     status=1 f_model=20 c_model=20 wall=0.003s
+DISPATCH_20            mincon             ok     status=1 f_model=47 c_model=48 wall=0.003s
+POLYQP_10              mincon             ok     status=1 f_model=15 c_model=15 wall=0.002s

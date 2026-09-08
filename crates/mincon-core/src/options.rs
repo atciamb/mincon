@@ -233,6 +233,12 @@ pub struct Options {
     pub fd_coloring: bool,
     /// Probe for Jacobian/Hessian sparsity when the model declares none.
     pub detect_sparsity: bool,
+    /// With finite-difference derivatives, estimate their error near
+    /// convergence (a few extra evaluations, at most every ten iterations)
+    /// and stop when the KKT residual is below that error rather than chasing
+    /// an optimality tolerance the derivatives cannot support; switch to
+    /// central differences first when forward ones are too inaccurate.
+    pub fd_error_aware: bool,
 
     /// Keep every iterate strictly inside the variable bounds.
     /// `fmincon`'s `HonorBounds`, default `true` there and here.
@@ -297,6 +303,7 @@ impl Default for Options {
             fd_respect_bounds: true,
             fd_coloring: true,
             detect_sparsity: true,
+            fd_error_aware: true,
 
             honor_bounds: true,
             bound_relax_factor: 1e-10,
