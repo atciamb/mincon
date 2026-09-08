@@ -1,0 +1,33 @@
+     Running unittests src\lib.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\mincon-7c13e4e4d1e22fc7.exe)
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+     Running unittests src\lib.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\mincon_core-93e7217a6c16e7f1.exe)
+test result::tests::acceptable_is_not_success ... ok
+test result::tests::exit_flags_match_fmincon_integers ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src\lib.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\mincon_diff-144802156455ec82.exe)
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests\retreat.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\retreat-aa1d82633f037fdd.exe)
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src\lib.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\mincon_ip-a23265d81f3b4c6e.exe)
+test result: ok. 39 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests\restoration.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\restoration-1416dc0ff1cf29c6.exe)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running unittests src\lib.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\mincon_linalg-0fb9a4fdb7729697.exe)
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src\lib.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\_mincon-de2c863310bb1018.exe)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src\lib.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\mincon_qp-d1cef928e35fa0ee.exe)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src\lib.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\mincon_sqp-ae4d6384cd120a84.exe)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src\lib.rs (C:\Users\<user>\AppData\Local\mincon-research-target\release\deps\mincon_testset-379e30ea8ce5fae1.exe)
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.40s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

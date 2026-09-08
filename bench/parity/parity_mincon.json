@@ -1,0 +1,230 @@
+{
+ "mincon_version": "0.1.0",
+ "python": "3.13.2 (tags/v3.13.2:4f8bb39, Feb  4 2025, 15:23:48) [MSC v.1942 64 bit (AMD64)]",
+ "runs": [
+  {
+   "problem": "P1_linear_ineq",
+   "algorithm": "mincon-auto",
+   "x": [
+    0.49999999874530787,
+    0.49999999874530787
+   ],
+   "fun": 0.5000000025093843,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 6,
+   "nfev": 24,
+   "maxcv": 0.0,
+   "optimality": 3.1612530371205594e-09,
+   "wall_seconds": 0.0005461999971885234,
+   "solver_time": 0.000172,
+   "notes": [
+    "Detected a Jacobian with 2 of 2 possible nonzeros (100.0% dense) using 6 probe evaluations.",
+    "Constraint Jacobian by finite differences: 2 model evaluations per Jacobian (dense would be 2).",
+    "Algorithm portfolio: 1 member(s) run on 1 thread(s); 'ip-default' produced the answer. Total objective evaluations across all members: 24."
+   ]
+  },
+  {
+   "problem": "P1_linear_ineq",
+   "algorithm": "mincon-interior-point",
+   "x": [
+    0.49999999874530787,
+    0.49999999874530787
+   ],
+   "fun": 0.5000000025093843,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 6,
+   "nfev": 24,
+   "maxcv": 0.0,
+   "optimality": 3.1612530371205594e-09,
+   "wall_seconds": 0.0001686000032350421,
+   "solver_time": 0.0001093,
+   "notes": [
+    "Detected a Jacobian with 2 of 2 possible nonzeros (100.0% dense) using 6 probe evaluations.",
+    "Constraint Jacobian by finite differences: 2 model evaluations per Jacobian (dense would be 2)."
+   ]
+  },
+  {
+   "problem": "P2_nonlinear_ineq",
+   "algorithm": "mincon-auto",
+   "x": [
+    -0.7071067775203108,
+    -0.7071067823456725
+   ],
+   "fun": -1.4142135598659833,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 12,
+   "nfev": 42,
+   "maxcv": 0.0,
+   "optimality": 3.560941541635998e-09,
+   "wall_seconds": 0.0004273999948054552,
+   "solver_time": 0.0003178,
+   "notes": [
+    "Detected a Jacobian with 2 of 2 possible nonzeros (100.0% dense) using 6 probe evaluations.",
+    "Constraint Jacobian by finite differences: 2 model evaluations per Jacobian (dense would be 2).",
+    "Algorithm portfolio: 1 member(s) run on 1 thread(s); 'ip-default' produced the answer. Total objective evaluations across all members: 42."
+   ]
+  },
+  {
+   "problem": "P2_nonlinear_ineq",
+   "algorithm": "mincon-interior-point",
+   "x": [
+    -0.7071067775203108,
+    -0.7071067823456725
+   ],
+   "fun": -1.4142135598659833,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 12,
+   "nfev": 42,
+   "maxcv": 0.0,
+   "optimality": 3.560941541635998e-09,
+   "wall_seconds": 0.0001984999980777502,
+   "solver_time": 0.0001184,
+   "notes": [
+    "Detected a Jacobian with 2 of 2 possible nonzeros (100.0% dense) using 6 probe evaluations.",
+    "Constraint Jacobian by finite differences: 2 model evaluations per Jacobian (dense would be 2)."
+   ]
+  },
+  {
+   "problem": "P3_nonlinear_eq",
+   "algorithm": "mincon-auto",
+   "x": [
+    0.9999999988768336,
+    1.0000000011231664
+   ],
+   "fun": 2.0,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 9,
+   "nfev": 39,
+   "maxcv": 0.0,
+   "optimality": 0.0,
+   "wall_seconds": 0.00025240000104531646,
+   "solver_time": 0.000172,
+   "notes": [
+    "Detected a Jacobian with 2 of 2 possible nonzeros (100.0% dense) using 6 probe evaluations.",
+    "Constraint Jacobian by finite differences: 2 model evaluations per Jacobian (dense would be 2).",
+    "1 of 9 BFGS updates were skipped for bad curvature; an exact Hessian would help this model.",
+    "Algorithm portfolio: 1 member(s) run on 1 thread(s); 'ip-default' produced the answer. Total objective evaluations across all members: 39."
+   ]
+  },
+  {
+   "problem": "P3_nonlinear_eq",
+   "algorithm": "mincon-interior-point",
+   "x": [
+    0.9999999988768336,
+    1.0000000011231664
+   ],
+   "fun": 2.0,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 9,
+   "nfev": 39,
+   "maxcv": 0.0,
+   "optimality": 0.0,
+   "wall_seconds": 0.00012419999984558672,
+   "solver_time": 8.93e-05,
+   "notes": [
+    "Detected a Jacobian with 2 of 2 possible nonzeros (100.0% dense) using 6 probe evaluations.",
+    "Constraint Jacobian by finite differences: 2 model evaluations per Jacobian (dense would be 2).",
+    "1 of 9 BFGS updates were skipped for bad curvature; an exact Hessian would help this model."
+   ]
+  },
+  {
+   "problem": "P4_bounds",
+   "algorithm": "mincon-auto",
+   "x": [
+    1.9999999987470483,
+    1.2529517790548148e-09
+   ],
+   "fun": 2.000000005011807,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 8,
+   "nfev": 30,
+   "maxcv": 0.0,
+   "optimality": 2.5059035596800618e-09,
+   "wall_seconds": 6.170000415295362e-05,
+   "solver_time": 2.86e-05,
+   "notes": [
+    "Algorithm portfolio: 1 member(s) run on 1 thread(s); 'ip-default' produced the answer. Total objective evaluations across all members: 30."
+   ]
+  },
+  {
+   "problem": "P4_bounds",
+   "algorithm": "mincon-interior-point",
+   "x": [
+    1.9999999987470483,
+    1.2529517790548148e-09
+   ],
+   "fun": 2.000000005011807,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 8,
+   "nfev": 30,
+   "maxcv": 0.0,
+   "optimality": 2.5059035596800618e-09,
+   "wall_seconds": 4.549999721348286e-05,
+   "solver_time": 2.58e-05,
+   "notes": []
+  },
+  {
+   "problem": "P5_ranged_linear",
+   "algorithm": "mincon-auto",
+   "x": [
+    1.000000003885072,
+    0.9999999958649279
+   ],
+   "fun": 8.000000001,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 11,
+   "nfev": 39,
+   "maxcv": 0.0,
+   "optimality": 1e-09,
+   "wall_seconds": 0.0034121000062441453,
+   "solver_time": 0.0001766,
+   "notes": [
+    "Detected a Jacobian with 4 of 4 possible nonzeros (100.0% dense) using 6 probe evaluations.",
+    "Constraint Jacobian by finite differences: 2 model evaluations per Jacobian (dense would be 2).",
+    "1 of 11 BFGS updates were skipped for bad curvature; an exact Hessian would help this model.",
+    "Algorithm portfolio: 1 member(s) run on 1 thread(s); 'ip-default' produced the answer. Total objective evaluations across all members: 39."
+   ]
+  },
+  {
+   "problem": "P5_ranged_linear",
+   "algorithm": "mincon-interior-point",
+   "x": [
+    1.000000003885072,
+    0.9999999958649279
+   ],
+   "fun": 8.000000001,
+   "status": 1,
+   "success": true,
+   "message": "First-order optimality and constraint tolerances satisfied.",
+   "nit": 11,
+   "nfev": 39,
+   "maxcv": 0.0,
+   "optimality": 1e-09,
+   "wall_seconds": 0.00018360000103712082,
+   "solver_time": 0.0001258,
+   "notes": [
+    "Detected a Jacobian with 4 of 4 possible nonzeros (100.0% dense) using 6 probe evaluations.",
+    "Constraint Jacobian by finite differences: 2 model evaluations per Jacobian (dense would be 2).",
+    "1 of 11 BFGS updates were skipped for bad curvature; an exact Hessian would help this model."
+   ]
+  }
+ ]
+}
