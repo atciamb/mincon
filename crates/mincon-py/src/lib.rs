@@ -324,6 +324,9 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
             }
         };
     }
+    if let Some(v) = get!("bfgs_scaling", bool) {
+        o.bfgs_guarded_scaling = v;
+    }
     if let Some(v) = get!("fd_error_aware", bool) {
         o.fd_error_aware = v;
     }

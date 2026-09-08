@@ -1198,7 +1198,13 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                 let y: Vec<f64> = (0..n)
                     .map(|j| (grad_f[j] + a_new[j] - z_l[j] + z_u[j]) - prev_lag_grad[j])
                     .collect();
-                b.update(&s, &y);
+                // Guarded initial scaling: only when the unit matrix has already
+                // forced the line search to cut the very first step hard.
+                let first_step_cut = self.opts.bfgs_guarded_scaling
+                    && b.updates() == 0
+                    && b.skipped() == 0
+                    && alpha_taken < 0.125;
+                b.update_guarded(&s, &y, first_step_cut);
             }
             prev_x.copy_from_slice(&v[..n]);
             point = new_point;

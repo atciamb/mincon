@@ -150,7 +150,8 @@ def minimize(
         ``barrier`` in ``{'monotone', 'adaptive', 'adaptive-then-monotone'}``,
         ``fd_error_aware`` (bool, default True: stop at the accuracy the
         finite-difference derivatives can support instead of chasing a tighter
-        tolerance).
+        tolerance), ``bfgs_scaling`` (bool, default True: rescale the initial
+        quasi-Newton matrix when the first step had to be cut hard).
 
     Returns
     -------
@@ -182,7 +183,7 @@ def minimize(
 
     opts = dict(options or {})
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
-                 "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware"}
+                 "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; supported: {sorted(supported)}")
