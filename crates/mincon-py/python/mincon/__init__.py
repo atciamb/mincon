@@ -146,7 +146,8 @@ def minimize(
         ``maxiter``, ``maxfev``, ``maxtime`` (seconds), ``ftol``, ``ctol``,
         ``threads``, ``seed``, ``check_derivatives``,
         ``scaling`` in ``{'none', 'gradient', 'equilibration'}``,
-        ``finite_diff`` in ``{'forward', 'central', 'adaptive'}``.
+        ``finite_diff`` in ``{'forward', 'central', 'adaptive'}``,
+        ``barrier`` in ``{'monotone', 'adaptive', 'adaptive-then-monotone'}``.
 
     Returns
     -------
@@ -178,7 +179,7 @@ def minimize(
 
     opts = dict(options or {})
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
-                 "seed", "check_derivatives", "scaling", "finite_diff"}
+                 "seed", "check_derivatives", "scaling", "finite_diff", "barrier"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; supported: {sorted(supported)}")

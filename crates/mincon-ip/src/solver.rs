@@ -613,6 +613,12 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         let mut stalled = 0usize;
         let mut exit = ExitFlag::MaxReached;
         let mut acceptable_streak = 0usize;
+        let mut adaptive_mode = matches!(
+            self.opts.barrier_update,
+            mincon_core::BarrierUpdate::Adaptive | mincon_core::BarrierUpdate::AdaptiveThenMonotone
+        );
+        let mut adaptive_stall = 0usize;
+        let mut best_e0 = f64::INFINITY;
         let mut iterations = 0usize;
         let mut restoration_work = 0usize;
         let mut last_delta_w = 0.0;
@@ -736,9 +742,41 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             }
 
             // --- barrier parameter ---
-            if e_mu <= self.barrier.kappa_eps * mu && mu > self.opts.tol.optimality / 10.0 {
-                mu = (self.opts.tol.optimality / 10.0)
-                    .max((self.barrier.kappa_mu * mu).min(mu.powf(self.barrier.theta_mu)));
+            let mu_min = self.opts.tol.optimality / 10.0;
+            if adaptive_mode {
+                // LOQO-style centrality rule (Vanderbei–Shanno; IPOPT's `mu_oracle loqo`):
+                // mu = sigma * (average complementarity), sigma from how far the least
+                // centred pair is from the average. Well-centred iterates drive mu down
+                // fast; badly centred ones hold it. Bounded below by the termination
+                // floor and above so a single iteration never re-inflates the barrier
+                // beyond its starting value.
+                let (avg, xi) = self.centrality(&point, &z_l, &z_u);
+                if avg > 0.0 {
+                    let sigma = 0.1 * (0.05 * (1.0 - xi) / xi.max(1e-12)).min(2.0).powi(3);
+                    let mu_new = (sigma * avg).clamp(mu_min, self.opts.mu_init.max(mu));
+                    if (mu_new - mu).abs() > 1e-3 * mu {
+                        mu = mu_new;
+                        filter = Filter::new(point.theta, FilterParams::default());
+                        point.phi = point.f + self.barrier_term(&point.v, mu);
+                    }
+                }
+                // Fall back to the monotone schedule when the adaptive iterates stop
+                // making progress on the KKT error (a bounded, transparent safeguard).
+                if e0 < best_e0 * 0.9 {
+                    best_e0 = e0;
+                    adaptive_stall = 0;
+                } else {
+                    adaptive_stall += 1;
+                    if adaptive_stall >= 5 {
+                        adaptive_mode = false;
+                        self.notes.push(format!(
+                            "Adaptive barrier update made no KKT progress for {adaptive_stall} iterations; \
+                             switched to the monotone schedule at iteration {iter}."
+                        ));
+                    }
+                }
+            } else if e_mu <= self.barrier.kappa_eps * mu && mu > mu_min {
+                mu = mu_min.max((self.barrier.kappa_mu * mu).min(mu.powf(self.barrier.theta_mu)));
                 filter = Filter::new(point.theta, FilterParams::default());
                 point.phi = point.f + self.barrier_term(&point.v, mu);
             }
@@ -978,6 +1016,21 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                         }
                     }
                 }
+                if adaptive_mode
+                    && matches!(
+                        self.opts.barrier_update,
+                        mincon_core::BarrierUpdate::AdaptiveThenMonotone
+                    )
+                {
+                    // A rejected line search under the adaptive schedule: give the
+                    // monotone schedule a turn before sharpening the derivatives.
+                    adaptive_mode = false;
+                    self.notes.push(format!(
+                        "Line search failed under the adaptive barrier update; switched to the \
+                         monotone schedule at iteration {iter}."
+                    ));
+                    continue;
+                }
                 // Before giving up, sharpen the derivatives: a failing line
                 // search is most often finite-difference noise, not geometry.
                 self.eval.escalate_accuracy();
@@ -1124,6 +1177,33 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             }
         }
         None
+    }
+
+    /// Average complementarity `d_j z_j` over the bounded coordinates and the
+    /// centrality measure `xi = min(d_j z_j) / average` in `(0, 1]`.
+    fn centrality(&self, point: &Point, z_l: &[f64], z_u: &[f64]) -> (f64, f64) {
+        let mut sum = 0.0;
+        let mut min = f64::INFINITY;
+        let mut count = 0usize;
+        for j in 0..self.nv {
+            if self.has_l[j] {
+                let p = (point.v[j] - self.v_l[j]) * z_l[j];
+                sum += p;
+                min = min.min(p);
+                count += 1;
+            }
+            if self.has_u[j] {
+                let p = (self.v_u[j] - point.v[j]) * z_u[j];
+                sum += p;
+                min = min.min(p);
+                count += 1;
+            }
+        }
+        if count == 0 || sum <= 0.0 {
+            return (0.0, 1.0);
+        }
+        let avg = sum / count as f64;
+        (avg, (min / avg).clamp(0.0, 1.0))
     }
 
     fn fraction_to_boundary(&self, v: &[f64], d: &[f64], tau: f64) -> f64 {
@@ -1385,6 +1465,23 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
 
         let mut notes = self.notes.clone();
         notes.extend(fixed_notes);
+        {
+            let x0n = self
+                .eval
+                .nlp()
+                .x0()
+                .iter()
+                .fold(0.0_f64, |a, v| a.max(v.abs()));
+            let xn = point.v[..n].iter().fold(0.0_f64, |a, v| a.max(v.abs()));
+            if xn > 1e6 * x0n.max(1.0) && exit.returned_usable_point() {
+                notes.push(format!(
+                    "The returned point is very far from the start (||x||_inf = {xn:.3e} versus \
+                     {x0n:.3e} at x0). The first-order conditions hold there, but an objective that \
+                     flattens out along some direction has stationary points at infinity; check \
+                     whether a bounded solution is what you wanted, and add bounds if so."
+                ));
+            }
+        }
         if let Hess::Bfgs(b) = &self.hess {
             if b.skipped() > 0 {
                 notes.push(format!(

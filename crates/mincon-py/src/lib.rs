@@ -25,8 +25,8 @@
 use std::sync::Mutex;
 
 use mincon_core::{
-    Algorithm, Capabilities, EvalError, ExitFlag, FdType, Nlp, NlpDims, Options, ScalingMode,
-    Sparsity, Tolerances, INF_BOUND,
+    Algorithm, BarrierUpdate, Capabilities, EvalError, ExitFlag, FdType, Nlp, NlpDims, Options,
+    ScalingMode, Sparsity, Tolerances, INF_BOUND,
 };
 use numpy::{PyArray1, PyReadonlyArray1, ToPyArray};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -322,6 +322,16 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
                     "unknown scaling '{other}'; use 'none', 'gradient' or 'equilibration'"
                 )))
             }
+        };
+    }
+    if let Some(v) = get!("barrier", String) {
+        o.barrier_update = match v.as_str() {
+            "monotone" => BarrierUpdate::Monotone,
+            "adaptive" => BarrierUpdate::Adaptive,
+            "adaptive-then-monotone" | "auto" => BarrierUpdate::AdaptiveThenMonotone,
+            other => return Err(PyValueError::new_err(format!(
+                "unknown barrier '{other}'; use 'monotone', 'adaptive' or 'adaptive-then-monotone'"
+            ))),
         };
     }
     if let Some(v) = get!("finite_diff", String) {

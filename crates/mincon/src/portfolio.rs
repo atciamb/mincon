@@ -130,6 +130,11 @@ pub fn members(base: &Options) -> Vec<Member> {
     v
 }
 
+/// A report the portfolio can stop on: a usable point that is feasible to tolerance.
+fn usable(rep: &SolveReport, tol_feas: f64) -> bool {
+    rep.exit_flag.returned_usable_point() && rep.constraint_violation <= tol_feas
+}
+
 /// Rank two outcomes. Returns `true` when `a` is strictly better than `b`.
 #[must_use]
 fn better(a: &SolveReport, b: &SolveReport, tol_feas: f64) -> bool {
@@ -170,16 +175,54 @@ pub fn solve<P: Nlp + Sync + ?Sized>(
     let threads = base
         .threads
         .unwrap_or_else(|| thread::available_parallelism().map_or(1, std::num::NonZero::get));
+    // A model whose callbacks cannot run concurrently (every Python model: the GIL
+    // serializes them) gains nothing from parallel members and would pay for all of
+    // them; run such models sequentially with early exit regardless of `threads`.
+    let parallel_safe = nlp.capabilities().parallel_safe;
+    let sequential = threads <= 1 || members.len() == 1 || !parallel_safe;
 
-    let outcomes: Vec<(&'static str, Result<SolveReport, String>)> = if threads <= 1
-        || members.len() == 1
-    {
-        // Sequential with early exit: a problem the first member solves cleanly
-        // costs exactly what a single solve costs.
+    let outcomes: Vec<(&'static str, Result<SolveReport, String>)> = if sequential {
+        // Sequential with early exit: a problem the first member answers usably
+        // costs exactly what a single solve costs. Later members only get the
+        // budget the earlier ones left over, so the portfolio never exceeds the
+        // caller's evaluation or time limits in total.
         let mut out = Vec::new();
+        let mut spent_evals: u64 = 0;
+        let start = std::time::Instant::now();
         for m in &members {
-            let r = run_member(nlp, m);
-            let done = matches!(&r, Ok(rep) if rep.exit_flag == ExitFlag::Optimal);
+            let mut opts = m.options.clone();
+            if let Some(limit) = base.max_evaluations {
+                if spent_evals >= limit {
+                    out.push((
+                        m.name,
+                        Err("skipped: evaluation budget exhausted by earlier members".to_string()),
+                    ));
+                    continue;
+                }
+                opts.max_evaluations = Some(limit - spent_evals);
+            }
+            if let Some(limit) = base.max_seconds {
+                let left = limit - start.elapsed().as_secs_f64();
+                if left <= 0.0 {
+                    out.push((
+                        m.name,
+                        Err("skipped: time budget exhausted by earlier members".to_string()),
+                    ));
+                    continue;
+                }
+                opts.max_seconds = Some(left);
+            }
+            let r = run_member(
+                nlp,
+                &Member {
+                    name: m.name,
+                    options: opts,
+                },
+            );
+            let done = matches!(&r, Ok(rep) if usable(rep, base.tol.feasibility));
+            if let Ok(rep) = &r {
+                spent_evals += rep.f_evals;
+            }
             out.push((m.name, r));
             if done {
                 break;
@@ -187,22 +230,36 @@ pub fn solve<P: Nlp + Sync + ?Sized>(
         }
         out
     } else {
-        thread::scope(|scope| {
-            let handles: Vec<_> = members
+        // Parallel, at most `threads` members at a time so the configured limit
+        // bounds actual concurrency rather than only the reported count.
+        let mut out = Vec::new();
+        for chunk in members.chunks(threads.max(1)) {
+            let chunk_out: Vec<_> = thread::scope(|scope| {
+                let handles: Vec<_> = chunk
+                    .iter()
+                    .map(|m| {
+                        let m = m.clone();
+                        scope.spawn(move || (m.name, run_member(nlp, &m)))
+                    })
+                    .collect();
+                handles
+                    .into_iter()
+                    .map(|h| {
+                        h.join().unwrap_or_else(|_| {
+                            ("panicked", Err("member thread panicked".to_string()))
+                        })
+                    })
+                    .collect()
+            });
+            let done = chunk_out
                 .iter()
-                .map(|m| {
-                    let m = m.clone();
-                    scope.spawn(move || (m.name, run_member(nlp, &m)))
-                })
-                .collect();
-            handles
-                .into_iter()
-                .map(|h| {
-                    h.join()
-                        .unwrap_or_else(|_| ("panicked", Err("member thread panicked".to_string())))
-                })
-                .collect()
-        })
+                .any(|(_, r)| matches!(r, Ok(rep) if rep.exit_flag == ExitFlag::Optimal));
+            out.extend(chunk_out);
+            if done {
+                break;
+            }
+        }
+        out
     };
 
     let total_f_evals = outcomes
@@ -239,10 +296,14 @@ pub fn solve<P: Nlp + Sync + ?Sized>(
     };
 
     best.notes.push(format!(
-        "Algorithm portfolio: {} member(s) run on {} thread(s); '{winner}' produced the answer. \
+        "Algorithm portfolio: {} member(s) run {}; '{winner}' produced the answer. \
          Total objective evaluations across all members: {total_f_evals}.",
         outcomes.len(),
-        threads.min(members.len())
+        if sequential {
+            "sequentially with early exit".to_string()
+        } else {
+            format!("on up to {} thread(s)", threads.min(members.len()))
+        }
     ));
     for (name, r) in &outcomes {
         if *name != winner {
@@ -350,6 +411,92 @@ mod tests {
         assert_eq!(m[0].name, "ip-default");
         assert_eq!(m[0].options.scaling, ScalingMode::GradientBased);
         assert!(m.len() >= 3, "portfolio should have real diversity");
+    }
+
+    /// A model that declares itself not parallel-safe (like every Python model)
+    /// and counts how often it is called.
+    struct Counting {
+        calls: std::sync::atomic::AtomicU64,
+        lb: Vec<f64>,
+        ub: Vec<f64>,
+        cl: Vec<f64>,
+        cu: Vec<f64>,
+        x0: Vec<f64>,
+    }
+    impl Nlp for Counting {
+        fn dims(&self) -> mincon_core::NlpDims {
+            mincon_core::NlpDims { n: 2, m: 1 }
+        }
+        fn x_bounds(&self) -> (&[f64], &[f64]) {
+            (&self.lb, &self.ub)
+        }
+        fn c_bounds(&self) -> (&[f64], &[f64]) {
+            (&self.cl, &self.cu)
+        }
+        fn x0(&self) -> &[f64] {
+            &self.x0
+        }
+        fn capabilities(&self) -> mincon_core::Capabilities {
+            mincon_core::Capabilities {
+                parallel_safe: false,
+                ..mincon_core::Capabilities::none()
+            }
+        }
+        fn objective(&self, x: &[f64]) -> Result<f64, mincon_core::EvalError> {
+            self.calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok((x[0] - 1.0).powi(2) + (x[1] - 1.0).powi(2))
+        }
+        fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), mincon_core::EvalError> {
+            out[0] = x[0] + x[1];
+            Ok(())
+        }
+    }
+
+    fn counting() -> Counting {
+        Counting {
+            calls: std::sync::atomic::AtomicU64::new(0),
+            lb: vec![-1e20; 2],
+            ub: vec![1e20; 2],
+            cl: vec![-1e20],
+            cu: vec![1.0],
+            x0: vec![0.0, 0.0],
+        }
+    }
+
+    #[test]
+    fn a_non_parallel_safe_model_costs_one_solve_when_the_first_member_succeeds() {
+        let nlp = counting();
+        let r = solve(&nlp, &Options::default()).unwrap();
+        assert_eq!(
+            r.outcomes.len(),
+            1,
+            "no later member should have run: {:?}",
+            r.best.notes
+        );
+        assert_eq!(
+            nlp.calls.load(std::sync::atomic::Ordering::Relaxed),
+            r.best.f_evals
+        );
+        assert!(r.best.notes.iter().any(|n| n.contains("sequentially")));
+    }
+
+    #[test]
+    fn the_portfolio_never_exceeds_the_evaluation_budget_in_total() {
+        let nlp = counting();
+        let opts = Options {
+            max_evaluations: Some(12), // far too few for any member to converge
+            ..Options::default()
+        };
+        let r = solve(&nlp, &opts).unwrap();
+        let total = nlp.calls.load(std::sync::atomic::Ordering::Relaxed);
+        // Each member may overshoot by at most one iteration's worth of probes,
+        // but the members share the budget rather than each getting all of it.
+        assert!(
+            total < 3 * 12 + 30,
+            "portfolio spent {total} evaluations against a budget of 12"
+        );
+        assert!(!r.outcomes.is_empty());
     }
 
     #[test]

@@ -51,11 +51,17 @@ def solve_mincon(model, track, budget, threads, variant, overrides=None):
     cons = []
     if p.m:
         if groups["eq"].size:
-            i = groups["eq"]; cons.append({"type": "eq", "fun": lambda x, i=i: model.c(x)[i] - p.cl[i]})
+            i = groups["eq"]; cons.append({"type": "eq", "fun": lambda x, i=i: model.c(x)[i] - p.cl[i],
+                                           "jac": lambda x, i=i: model.jac(x)[i]})
         if groups["lo"].size:
-            i = groups["lo"]; cons.append({"type": "ineq", "fun": lambda x, i=i: model.c(x)[i] - p.cl[i]})
+            i = groups["lo"]; cons.append({"type": "ineq", "fun": lambda x, i=i: model.c(x)[i] - p.cl[i],
+                                           "jac": lambda x, i=i: model.jac(x)[i]})
         if groups["hi"].size:
-            i = groups["hi"]; cons.append({"type": "ineq", "fun": lambda x, i=i: p.cu[i] - model.c(x)[i]})
+            i = groups["hi"]; cons.append({"type": "ineq", "fun": lambda x, i=i: p.cu[i] - model.c(x)[i],
+                                           "jac": lambda x, i=i: -model.jac(x)[i]})
+        if track != "C":
+            for d in cons:
+                d.pop("jac", None)
     bounds = [(None if not np.isfinite(lo) else float(lo), None if not np.isfinite(hi) else float(hi)) for lo, hi in zip(p.xl, p.xu)]
     opts = {"threads": threads}
     if budget.get("maxfev"):
@@ -72,8 +78,13 @@ def solve_mincon(model, track, budget, threads, variant, overrides=None):
             c = model.c(x)
             ineq = np.concatenate([c[groups["hi"]] - p.cu[groups["hi"]], p.cl[groups["lo"]] - c[groups["lo"]]])
             return ineq, c[groups["eq"]] - p.cl[groups["eq"]]
+
+        def nonlcon_jac(x):
+            J = model.jac(x)
+            return np.concatenate([J[groups["hi"]], -J[groups["lo"]]], axis=0), J[groups["eq"]]
         lb = np.where(np.isfinite(p.xl), p.xl, -np.inf); ub = np.where(np.isfinite(p.xu), p.xu, np.inf)
-        r = mincon.fmincon(model.f, p.x0, lb=lb, ub=ub, nonlcon=nonlcon if p.m else None, options=opts, jac=jac)
+        r = mincon.fmincon(model.f, p.x0, lb=lb, ub=ub, nonlcon=nonlcon if p.m else None, options=opts, jac=jac,
+                           nonlcon_jac=(nonlcon_jac if (p.m and track == "C") else None))
     else:
         r = mincon.minimize(model.f, p.x0, jac=jac, bounds=bounds, constraints=cons or None, method=method, options=opts)
     wall = time.perf_counter() - t0
