@@ -1,0 +1,116 @@
+{
+ "n_problems": 82,
+ "duplicates_overwritten": 0,
+ "solvers": {
+  "fmincon-interior-point": {
+   "attained": 76,
+   "scorable": 81,
+   "kkt": 54,
+   "kkt_recovered": 71,
+   "not_ok": 0,
+   "n": 82
+  },
+  "fmincon-sqp": {
+   "attained": 74,
+   "scorable": 81,
+   "kkt": 60,
+   "kkt_recovered": 73,
+   "not_ok": 0,
+   "n": 82
+  },
+  "mincon": {
+   "attained": 77,
+   "scorable": 81,
+   "kkt": 57,
+   "kkt_recovered": 66,
+   "not_ok": 0,
+   "n": 82
+  },
+  "mincon-ip": {
+   "attained": 77,
+   "scorable": 81,
+   "kkt": 57,
+   "kkt_recovered": 66,
+   "not_ok": 0,
+   "n": 82
+  },
+  "scipy-slsqp": {
+   "attained": 71,
+   "scorable": 81,
+   "kkt": 0,
+   "kkt_recovered": 37,
+   "not_ok": 0,
+   "n": 82
+  }
+ },
+ "paired": {
+  "fmincon-sqp": {
+   "both": 71,
+   "only_solver": 3,
+   "only_baseline": 5,
+   "neither": 2,
+   "diff_pp": -2.4691358024691357,
+   "diff_ci": [
+    -4.545454545454546,
+    12.5
+   ],
+   "geo_mean_ratio": 0.7265072286157307,
+   "ratio_ci": [
+    0.6918064229166367,
+    1.189372089803905
+   ],
+   "n_common": 71
+  },
+  "mincon": {
+   "both": 73,
+   "only_solver": 4,
+   "only_baseline": 3,
+   "neither": 1,
+   "diff_pp": 1.2345679012345678,
+   "diff_ci": [
+    -3.0303030303030303,
+    37.5
+   ],
+   "geo_mean_ratio": 0.9214804220057544,
+   "ratio_ci": [
+    0.6689561700943688,
+    1.085213930191884
+   ],
+   "n_common": 73
+  },
+  "mincon-ip": {
+   "both": 73,
+   "only_solver": 4,
+   "only_baseline": 3,
+   "neither": 1,
+   "diff_pp": 1.2345679012345678,
+   "diff_ci": [
+    -3.0303030303030303,
+    37.5
+   ],
+   "geo_mean_ratio": 0.9094683230735191,
+   "ratio_ci": [
+    0.6689561700943688,
+    1.085213930191884
+   ],
+   "n_common": 73
+  },
+  "scipy-slsqp": {
+   "both": 68,
+   "only_solver": 3,
+   "only_baseline": 8,
+   "neither": 2,
+   "diff_pp": -6.172839506172839,
+   "diff_ci": [
+    -11.494252873563218,
+    35.483870967741936
+   ],
+   "geo_mean_ratio": 0.6035067131872411,
+   "ratio_ci": [
+    0.5691298702763242,
+    0.674618349141471
+   ],
+   "n_common": 68
+  }
+ }
+}

@@ -1,0 +1,116 @@
+{
+ "n_problems": 82,
+ "duplicates_overwritten": 0,
+ "solvers": {
+  "fmincon-interior-point": {
+   "attained": 73,
+   "scorable": 81,
+   "kkt": 44,
+   "kkt_recovered": 62,
+   "not_ok": 0,
+   "n": 82
+  },
+  "fmincon-sqp": {
+   "attained": 70,
+   "scorable": 81,
+   "kkt": 53,
+   "kkt_recovered": 70,
+   "not_ok": 0,
+   "n": 82
+  },
+  "mincon": {
+   "attained": 76,
+   "scorable": 81,
+   "kkt": 53,
+   "kkt_recovered": 63,
+   "not_ok": 0,
+   "n": 82
+  },
+  "mincon-ip": {
+   "attained": 76,
+   "scorable": 81,
+   "kkt": 51,
+   "kkt_recovered": 63,
+   "not_ok": 0,
+   "n": 82
+  },
+  "scipy-slsqp": {
+   "attained": 72,
+   "scorable": 81,
+   "kkt": 0,
+   "kkt_recovered": 37,
+   "not_ok": 0,
+   "n": 82
+  }
+ },
+ "paired": {
+  "fmincon-sqp": {
+   "both": 68,
+   "only_solver": 2,
+   "only_baseline": 5,
+   "neither": 6,
+   "diff_pp": -3.7037037037037037,
+   "diff_ci": [
+    -25.0,
+    0.0
+   ],
+   "geo_mean_ratio": 0.7253916285938491,
+   "ratio_ci": [
+    0.6948270165598875,
+    1.129895591298484
+   ],
+   "n_common": 68
+  },
+  "mincon": {
+   "both": 71,
+   "only_solver": 5,
+   "only_baseline": 2,
+   "neither": 3,
+   "diff_pp": 3.7037037037037037,
+   "diff_ci": [
+    0.0,
+    37.5
+   ],
+   "geo_mean_ratio": 1.1637756411991327,
+   "ratio_ci": [
+    0.9504221909483548,
+    1.3523441756428463
+   ],
+   "n_common": 71
+  },
+  "mincon-ip": {
+   "both": 71,
+   "only_solver": 5,
+   "only_baseline": 2,
+   "neither": 3,
+   "diff_pp": 3.7037037037037037,
+   "diff_ci": [
+    0.0,
+    37.5
+   ],
+   "geo_mean_ratio": 1.122157141408755,
+   "ratio_ci": [
+    0.8834033852644002,
+    1.2611431731565723
+   ],
+   "n_common": 71
+  },
+  "scipy-slsqp": {
+   "both": 67,
+   "only_solver": 5,
+   "only_baseline": 6,
+   "neither": 3,
+   "diff_pp": -1.2345679012345678,
+   "diff_ci": [
+    -9.101731601731602,
+    48.38709677419355
+   ],
+   "geo_mean_ratio": 0.6086685432338752,
+   "ratio_ci": [
+    0.5990912721568994,
+    0.7266755677320785
+   ],
+   "n_common": 67
+  }
+ }
+}

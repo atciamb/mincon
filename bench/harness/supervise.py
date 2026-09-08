@@ -197,7 +197,10 @@ def main():
                                names=set(a.problems.split(",")) if a.problems else None,
                                exclude_tags=() if a.include_diagnostic else ("diagnostic",), max_n=a.max_n)
     with open(os.path.join(a.out, "experiment.json"), "a") as fh:
-        fh.write(json.dumps(dict(args=vars(a), problems=problems, started=time.time())) + "\n")
+        # Record the arguments without the machine's home directory (published logs must not carry private paths).
+        home = os.path.expanduser("~")
+        args = {k: (v.replace(home, "<home>") if isinstance(v, str) else v) for k, v in vars(a).items()}
+        fh.write(json.dumps(dict(args=args, problems=problems, started=time.time())) + "\n")
     for repeat in range(a.repeats):
         for solver in a.solvers.split(","):
             run_solver(solver, a.track, problems, a, man, repeat)
