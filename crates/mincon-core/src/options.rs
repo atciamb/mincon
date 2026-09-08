@@ -165,15 +165,20 @@ impl Default for Tolerances {
     fn default() -> Self {
         Self {
             // fmincon uses 1e-6 for both; IPOPT uses 1e-8 for the scaled KKT
-            // error and 1e-4 for constraint violation. We take IPOPT's
-            // optimality target (it is scaled, so it is not as tight as it
-            // looks) and fmincon's tighter feasibility target, because users
-            // read constraint violation directly and 1e-4 looks sloppy.
-            optimality: 1e-8,
+            // error and 1e-4 for constraint violation. The optimality target is
+            // 1e-6, like fmincon: with forward finite differences the
+            // stationarity residual cannot reliably fall below ~1e-7, and a
+            // 1e-8 target was measured (bench/results/s3-tolerance) to cost
+            // 1.6x the evaluations on the development corpus for no gain in
+            // independently verified accuracy, ending in "acceptable" exits
+            // after 15 wasted iterations. Users with exact derivatives can
+            // tighten it. Feasibility keeps fmincon's 1e-6 because users read
+            // constraint violation directly.
+            optimality: 1e-6,
             feasibility: 1e-6,
             complementarity: 1e-6,
             step: 1e-12,
-            acceptable_optimality: 1e-6,
+            acceptable_optimality: 1e-4,
             acceptable_feasibility: 1e-4,
             acceptable_iterations: 15,
             objective_limit: -1e20,

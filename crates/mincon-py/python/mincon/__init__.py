@@ -132,10 +132,14 @@ def minimize(
         iterate, including finite-difference probes, so a model that is
         undefined outside its box is safe.
     constraints : dict or sequence of dict, optional
-        Each is ``{'type': 'eq'|'ineq', 'fun': callable}``. ``'eq'`` means
-        ``fun(x) == 0``; ``'ineq'`` means ``fun(x) >= 0`` (SciPy's convention,
-        the opposite of ``fmincon``'s). ``fun`` may return a scalar or a
-        vector; the length is fixed by its value at ``x0``.
+        Each is ``{'type': 'eq'|'ineq', 'fun': callable, 'jac': callable}``
+        with ``'jac'`` optional. ``'eq'`` means ``fun(x) == 0``; ``'ineq'``
+        means ``fun(x) >= 0`` (SciPy's convention, the opposite of
+        ``fmincon``'s). ``fun`` may return a scalar or a vector; the length is
+        fixed by its value at ``x0``. ``jac(x)`` returns the ``(len, n)``
+        Jacobian of that block (or ``(n,)`` for a single row). Analytic
+        Jacobians are used only when **every** block supplies one; otherwise
+        all rows are estimated by finite differences.
     tol : float, optional
         Sets the optimality, feasibility and complementarity tolerances at once.
     options : dict, optional
@@ -194,7 +198,7 @@ def minimize(
 
 
 def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
-            nonlcon=None, options=None, *, jac=None, args=(), tol=None):
+            nonlcon=None, options=None, *, jac=None, nonlcon_jac=None, args=(), tol=None):
     """Minimize with MATLAB-style constraint inputs and automatic defaults.
 
     ``A @ x <= b``, ``Aeq @ x == beq``, ``lb <= x <= ub`` and
@@ -202,6 +206,13 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     Every constraint argument is optional. Bounds may be scalars or vectors.
     No derivatives or solver options are required. Options use the Python
     names documented by :func:`minimize`, not MATLAB option names.
+
+    ``jac(x, *args)`` optionally returns the objective gradient and
+    ``nonlcon_jac(x, *args)`` optionally returns ``(Jc, Jceq)`` with shapes
+    ``(len(c), n)`` and ``(len(ceq), n)`` (rows are constraints, unlike
+    MATLAB's transposed ``GC``); both are used only when supplied together
+    with the corresponding callback, and are checked against finite
+    differences when ``options={'check_derivatives': True}``.
 
     Returns an :class:`OptimizeResult`: use ``r.x``, ``r.fun``, ``r.success``
     and ``r.maxcv``. ``r.multipliers`` groups the MATLAB-sign multipliers as
@@ -253,12 +264,26 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     if nonlcon is not None:
         if not callable(nonlcon):
             raise TypeError("nonlcon must be callable and return (c, ceq)")
+        if nonlcon_jac is not None and not callable(nonlcon_jac):
+            raise TypeError("nonlcon_jac must be callable and return (Jc, Jceq)")
+
+        # Both components are evaluated from one nonlcon call per point: a
+        # single-entry cache keyed on the point avoids calling the model twice.
+        cache = {"x": None, "pair": None}
+
+        def pair_at(x):
+            xa = np.asarray(x, dtype=float)
+            if cache["x"] is not None and np.array_equal(xa, cache["x"]):
+                return cache["pair"]
+            pair = nonlcon(xa, *args)
+            if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+                raise ValueError("nonlcon must return (c, ceq), with c <= 0 and ceq == 0")
+            cache["x"], cache["pair"] = xa.copy(), pair
+            return pair
 
         def component(index):
             def evaluate(x):
-                pair = nonlcon(x, *args)
-                if not isinstance(pair, (tuple, list)) or len(pair) != 2:
-                    raise ValueError("nonlcon must return (c, ceq), with c <= 0 and ceq == 0")
+                pair = pair_at(x)
                 value = pair[index]
                 a = np.asarray([] if value is None else value, dtype=float)
                 if a.ndim > 1:
@@ -271,8 +296,21 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
                 return -a if index == 0 else a
             return evaluate
 
-        cons.extend([{"type": "ineq", "fun": component(0)},
-                     {"type": "eq", "fun": component(1)}])
+        blocks = [{"type": "ineq", "fun": component(0)}, {"type": "eq", "fun": component(1)}]
+        if nonlcon_jac is not None:
+            def jac_component(index):
+                def evaluate(x):
+                    pair = nonlcon_jac(x, *args)
+                    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+                        raise ValueError("nonlcon_jac must return (Jc, Jceq)")
+                    value = pair[index]
+                    a = np.asarray([] if value is None else value, dtype=float)
+                    a = a.reshape(-1, n) if a.size else np.zeros((0, n))
+                    return -a if index == 0 else a
+                return evaluate
+            blocks[0]["jac"] = jac_component(0)
+            blocks[1]["jac"] = jac_component(1)
+        cons.extend(blocks)
 
     # Bind user arguments here so linear constraints do not receive them.
     objective = (lambda x: fun(x, *args)) if args else fun
@@ -341,8 +379,15 @@ def _normalize_constraints(constraints, args):
         if not isinstance(c, Mapping):
             raise TypeError("each constraint must be a dict with 'type' and 'fun'")
         d = {"type": c["type"], "fun": c["fun"]}
+        jac = c.get("jac")
+        if jac is not None and not callable(jac):
+            raise TypeError("a constraint's 'jac' must be callable (a string estimator is not supported)")
+        if jac is not None:
+            d["jac"] = jac
         if args:
             _c = c["fun"]
             d["fun"] = lambda x, _c=_c: _c(x, *args)
+            if jac is not None:
+                d["jac"] = lambda x, _j=jac: _j(x, *args)
         out.append(d)
     return out

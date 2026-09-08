@@ -27,7 +27,10 @@ fn main() {
                 "{{\"x\":{:?},\"f\":{:e},\"c\":[{}]}}",
                 x,
                 f,
-                c.iter().map(|v| format!("{v:e}")).collect::<Vec<_>>().join(",")
+                c.iter()
+                    .map(|v| format!("{v:e}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
             ));
         }
         out.push(']');

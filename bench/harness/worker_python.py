@@ -26,7 +26,25 @@ from model import CountingModel  # noqa: E402
 import schema  # noqa: E402
 
 
-def solve_mincon(model, track, budget, threads, variant):
+def parse_overrides(spec_str):
+    """'mincon-ip@ftol=1e-6,scaling=none' -> ('mincon-ip', {'ftol': 1e-6, 'scaling': 'none'})"""
+    if "@" not in spec_str:
+        return spec_str, {}
+    base, tail = spec_str.split("@", 1)
+    over = {}
+    for kv in tail.split(","):
+        if not kv:
+            continue
+        k, v = kv.split("=", 1)
+        try:
+            v = int(v) if v.lstrip("-").isdigit() else float(v)
+        except ValueError:
+            v = {"true": True, "false": False}.get(v.lower(), v)
+        over[k] = v
+    return base, over
+
+
+def solve_mincon(model, track, budget, threads, variant, overrides=None):
     import mincon
     p = model.p
     groups = model.row_groups()
@@ -44,6 +62,7 @@ def solve_mincon(model, track, budget, threads, variant):
         opts["maxfev"] = int(budget["maxfev"])
     if budget.get("maxtime"):
         opts["maxtime"] = float(budget["maxtime"])
+    opts.update(overrides or {})
     jac = model.grad if track == "C" else None
     method = {"mincon": "auto", "mincon-ip": "interior-point"}.get(variant, "auto")
     t0 = time.perf_counter()
@@ -125,6 +144,13 @@ SOLVERS = {
 }
 
 
+def dispatch(solver, model, track, budget, threads):
+    base, over = parse_overrides(solver)
+    if base.startswith("mincon"):
+        return solve_mincon(model, track, budget, threads, base, over)
+    return SOLVERS[base](model, track, budget, threads)
+
+
 def run_one(name, solver, track, budget, threads, experiment, split_of, repeat):
     s = spec.get(name)
     rec = schema.new_record(experiment=experiment, track=track, problem=name, family=s.family, split=split_of.get(name),
@@ -135,7 +161,7 @@ def run_one(name, solver, track, budget, threads, experiment, split_of, repeat):
     model = CountingModel(p)
     rec["time"]["build"] = time.perf_counter() - t_build
     try:
-        out = SOLVERS[solver](model, track, budget, threads)
+        out = dispatch(solver, model, track, budget, threads)
         rec.update(x=out["x"], lam=out["lam"], zl=out["zl"], zu=out["zu"], native_status=out["native_status"],
                    native_message=out["native_message"], reported_success=out["reported_success"],
                    solver_version=out["solver_version"], options=out["options"], notes=out["notes"], outcome="ok")
@@ -150,7 +176,7 @@ def run_one(name, solver, track, budget, threads, experiment, split_of, repeat):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--solver", required=True, choices=sorted(SOLVERS))
+    ap.add_argument("--solver", required=True, help="one of %s, mincon* may carry @key=value overrides" % sorted(SOLVERS))
     ap.add_argument("--track", default="A", choices=["A", "B", "C"])
     ap.add_argument("--problems", required=True)
     ap.add_argument("--out", required=True)

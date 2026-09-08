@@ -60,6 +60,15 @@ pub fn minimize<P: Nlp + Sync + ?Sized>(
     nlp: &P,
     opts: &Options,
 ) -> Result<SolveReport, SolveError> {
+    if opts.check_derivatives {
+        // `fmincon`'s CheckGradients semantics: a failed check stops the solve. An
+        // inconclusive check (no analytic derivatives, or callbacks that failed) is
+        // also a stop, because "could not verify" must never read as "verified".
+        let report = check_derivatives(nlp, 1e-5, 3).map_err(SolveError::InitialPoint)?;
+        if !report.passed() {
+            return Err(SolveError::InvalidProblem(report.message()));
+        }
+    }
     match opts.algorithm {
         Algorithm::Auto => portfolio::solve(nlp, opts).map(|p| p.best),
         Algorithm::InteriorPoint => mincon_ip::solve(nlp, opts),
@@ -198,6 +207,34 @@ mod tests {
             solved * 100 >= total * 95,
             "Hock-Schittkowski pass rate regressed: {solved}/{total}"
         );
+    }
+
+    #[test]
+    fn check_derivatives_option_stops_a_solve_with_a_wrong_gradient() {
+        let p = Problem::new(2, |x| (x[0] - 1.0).powi(2) + (x[1] - 2.0).powi(2))
+            .start_at(&[0.0, 0.0])
+            .with_gradient(|x, g| {
+                g[0] = 2.0 * (x[0] - 1.0);
+                g[1] = 20.0 * (x[1] - 2.0); // wrong by a factor of 10
+            });
+        let opts = Options {
+            check_derivatives: true,
+            ..Options::default()
+        };
+        let err = minimize(&p, &opts).expect_err("a wrong gradient must be rejected");
+        assert!(err.to_string().contains("FAILED"), "{err}");
+    }
+
+    #[test]
+    fn check_derivatives_option_is_inconclusive_without_analytic_derivatives() {
+        let p =
+            Problem::new(2, |x| (x[0] - 1.0).powi(2) + (x[1] - 2.0).powi(2)).start_at(&[0.0, 0.0]);
+        let opts = Options {
+            check_derivatives: true,
+            ..Options::default()
+        };
+        let err = minimize(&p, &opts).expect_err("nothing to check must not pass silently");
+        assert!(err.to_string().contains("INCONCLUSIVE"), "{err}");
     }
 
     #[test]

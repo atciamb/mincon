@@ -85,3 +85,21 @@ def test_correct_gradient_survives_asymmetric_domain_retreat():
                         num_points=1, tol=1e-10)
     assert rejected  # Both nominal central probes must retreat.
     assert r.passed, r
+
+
+def test_constraint_jac_in_scipy_style_dicts_is_used():
+    import mincon
+    f = lambda x: (x[0] - 2.)**2 + (x[1] - 1.)**2
+    cons = [{"type": "ineq", "fun": lambda x: 1. - x[0] - x[1], "jac": lambda x: [-1., -1.]}]
+    r = mincon.minimize(f, [0., 0.], jac=lambda x: [2*(x[0]-2.), 2*(x[1]-1.)], constraints=cons,
+                        method="interior-point", options={"threads": 1})
+    assert r.success and r.ncjev > 0, r
+    np.testing.assert_allclose(r.x, [1., 0.], atol=1e-5)
+
+
+def test_check_gradients_reports_conclusiveness():
+    import mincon
+    r = mincon.check_gradients(lambda x: float(x[0]**2), [1.5], lambda x: [2*x[0]])
+    assert r.passed and r.conclusive and r.comparisons >= 1
+    bad = mincon.check_gradients(lambda x: float(x[0]**2), [1.5], lambda x: [float("nan")])
+    assert not bad.passed and not bad.conclusive  # the binding reports NaN as a failed callback

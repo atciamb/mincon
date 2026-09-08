@@ -1,0 +1,148 @@
+HS50                   fmincon-interior-point   ok     status=1 f_model=95 c_model=95 wall=2.157s
+HS2                    fmincon-interior-point   ok     status=1 f_model=50 c_model=0 wall=0.825s
+HS74                   fmincon-interior-point   ok     status=2 f_model=106 c_model=106 wall=0.558s
+HS8                    fmincon-interior-point   ok     status=1 f_model=23 c_model=23 wall=0.237s
+HS7                    fmincon-interior-point   ok     status=1 f_model=41 c_model=41 wall=0.799s
+HS24                   fmincon-interior-point   ok     status=1 f_model=49 c_model=49 wall=0.379s
+HS18                   fmincon-interior-point   ok     status=1 f_model=39 c_model=39 wall=0.091s
+CHAINROSEN_EQ_200      fmincon-interior-point   ok     status=0 f_model=3042 c_model=3042 wall=1.418s
+HS46                   fmincon-interior-point   ok     status=1 f_model=178 c_model=178 wall=0.127s
+HS100                  fmincon-interior-point   ok     status=1 f_model=147 c_model=147 wall=0.244s
+LQTRAJ_200             fmincon-interior-point   ok     status=0 f_model=3005 c_model=3005 wall=2.277s
+HS72                   fmincon-interior-point   ok     status=1 f_model=96 c_model=96 wall=0.050s
+HS26                   fmincon-interior-point   ok     status=1 f_model=137 c_model=137 wall=0.309s
+CHAINROSEN_BOX_200     fmincon-interior-point   ok     status=0 f_model=3051 c_model=0 wall=1.143s
+HS21                   fmincon-interior-point   ok     status=1 f_model=39 c_model=39 wall=0.344s
+HS28                   fmincon-interior-point   ok     status=1 f_model=41 c_model=41 wall=0.060s
+HS27                   fmincon-interior-point   ok     status=1 f_model=150 c_model=150 wall=0.158s
+EXPFIT_CLEAN_CON       fmincon-interior-point   ok     status=1 f_model=101 c_model=101 wall=0.122s
+HS30                   fmincon-interior-point   ok     status=1 f_model=28 c_model=28 wall=0.065s
+FIXEDVARS              fmincon-interior-point   ok     status=1 f_model=40 c_model=40 wall=0.199s
+HS13                   fmincon-interior-point   ok     status=2 f_model=375 c_model=375 wall=0.402s
+[Warning: Derivative finite-differencing step was artificially reduced to be within bound constraints. This may adversely affect convergence. Increasing distance between bound
+constraints, in dimension 2, to be at least 1.1e-08 may improve results.] 
+[> In fwdFinDiffInsideBnds
+In finitedifferences
+In computeFinDiffGradAndJac
+In OptimFunctions/computeGradAndJac (line 606)
+In barrier
+In fmincon (line 657)
+In worker_matlab>run_one (line 120)
+In worker_matlab (line 33)] 
+[Warning: Derivative finite-differencing step was artificially reduced to be within bound constraints. This may adversely affect convergence. Increasing distance between bound
+constraints, in dimension 2, to be at least 1.9945e-08 may improve results.] 
+[> In fwdFinDiffInsideBnds
+In finitedifferences
+In computeFinDiffGradAndJac
+In OptimFunctions/computeGradAndJac (line 606)
+In barrier
+In fmincon (line 657)
+In worker_matlab>run_one (line 120)
+In worker_matlab (line 33)] 
+[Warning: Derivative finite-differencing step was artificially reduced to be within bound constraints. This may adversely affect convergence. Increasing distance between bound
+constraints, in dimension 2, to be at least 1.9846e-08 may improve results.] 
+[> In fwdFinDiffInsideBnds
+In finitedifferences
+In computeFinDiffGradAndJac
+In OptimFunctions/computeGradAndJac (line 606)
+In barrier
+In fmincon (line 657)
+In worker_matlab>run_one (line 120)
+In worker_matlab (line 33)] 
+NARROWBOX              fmincon-interior-point   ok     status=1 f_model=9 c_model=0 wall=0.203s
+HS1                    fmincon-interior-point   ok     status=1 f_model=121 c_model=0 wall=0.319s
+HS106                  fmincon-interior-point   ok     status=1 f_model=493 c_model=493 wall=0.294s
+HS22                   fmincon-interior-point   ok     status=1 f_model=31 c_model=31 wall=0.047s
+HS49                   fmincon-interior-point   ok     status=1 f_model=153 c_model=153 wall=0.141s
+HS31                   fmincon-interior-point   ok     status=1 f_model=36 c_model=36 wall=0.175s
+HS36                   fmincon-interior-point   ok     status=1 f_model=32 c_model=32 wall=0.097s
+HS44                   fmincon-interior-point   ok     status=1 f_model=77 c_model=77 wall=0.089s
+EXPFIT_CLEAN           fmincon-interior-point   ok     status=1 f_model=77 c_model=0 wall=0.066s
+DOMAIN_LOG             fmincon-interior-point   ok     status=1 f_model=42 c_model=42 wall=0.041s
+CHAINROSEN_BOX_50      fmincon-interior-point   ok     status=0 f_model=3004 c_model=0 wall=0.552s
+HS29                   fmincon-interior-point   ok     status=1 f_model=55 c_model=55 wall=0.226s
+REDUNDANT_EQ           fmincon-interior-point   ok     status=1 f_model=16 c_model=16 wall=0.074s
+HS37                   fmincon-interior-point   ok     status=1 f_model=44 c_model=44 wall=0.060s
+CHAINROSEN_EQ_50       fmincon-interior-point   ok     status=0 f_model=3046 c_model=3046 wall=0.994s
+HS86                   fmincon-interior-point   ok     status=1 f_model=80 c_model=80 wall=0.058s
+CHAINROSEN_EQ_10       fmincon-interior-point   ok     status=2 f_model=431 c_model=431 wall=0.211s
+HS10                   fmincon-interior-point   ok     status=1 f_model=48 c_model=48 wall=0.061s
+HS20                   fmincon-interior-point   ok     status=1 f_model=24 c_model=24 wall=0.175s
+LQTRAJ_10              fmincon-interior-point   ok     status=1 f_model=248 c_model=248 wall=0.134s
+HS53                   fmincon-interior-point   ok     status=1 f_model=55 c_model=55 wall=0.143s
+EXPFIT_NOISY           fmincon-interior-point   ok     status=1 f_model=76 c_model=0 wall=0.121s
+HS83                   fmincon-interior-point   ok     status=1 f_model=78 c_model=78 wall=0.060s
+HS9                    fmincon-interior-point   ok     status=1 f_model=21 c_model=21 wall=0.068s
+HS39                   fmincon-interior-point   ok     status=1 f_model=65 c_model=65 wall=0.059s
+HS112                  fmincon-interior-point   ok     status=1 f_model=296 c_model=296 wall=0.141s
+HS113                  fmincon-interior-point   ok     status=1 f_model=178 c_model=178 wall=0.116s
+HS16                   fmincon-interior-point   ok     status=1 f_model=83 c_model=83 wall=0.100s
+HS6                    fmincon-interior-point   ok     status=1 f_model=34 c_model=34 wall=0.082s
+HS95                   fmincon-interior-point   ok     status=1 f_model=92 c_model=92 wall=0.092s
+[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  8.832666e-17.] 
+[> In backsolveSys
+In solveKKTsystem
+In computeTrialStep
+In barrier
+In fmincon (line 657)
+In worker_matlab>run_one (line 120)
+In worker_matlab (line 33)
+] 
+[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  1.442918e-17.] 
+[> In backsolveSys
+In solveKKTsystem
+In computeTrialStep
+In barrier
+In fmincon (line 657)
+In worker_matlab>run_one (line 120)
+In worker_matlab (line 33)
+] 
+[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  1.147135e-16.] 
+[> In backsolveSys
+In solveKKTsystem
+In computeTrialStep
+In barrier
+In fmincon (line 657)
+In worker_matlab>run_one (line 120)
+In worker_matlab (line 33)
+] 
+[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  1.224703e-16.] 
+[> In backsolveSys
+In solveKKTsystem
+In computeTrialStep
+In barrier
+In fmincon (line 657)
+In worker_matlab>run_one (line 120)
+In worker_matlab (line 33)
+] 
+HS55                   fmincon-interior-point   ok     status=1 f_model=98 c_model=98 wall=0.359s
+HS11                   fmincon-interior-point   ok     status=1 f_model=30 c_model=30 wall=0.043s
+HS19                   fmincon-interior-point   ok     status=1 f_model=55 c_model=55 wall=0.054s
+HS110                  fmincon-interior-point   ok     status=1 f_model=136 c_model=0 wall=0.092s
+HS33                   fmincon-interior-point   ok     status=1 f_model=57 c_model=57 wall=0.088s
+HS41                   fmincon-interior-point   ok     status=1 f_model=80 c_model=80 wall=0.188s
+HS40                   fmincon-interior-point   ok     status=1 f_model=35 c_model=35 wall=0.055s
+LQTRAJ_50              fmincon-interior-point   ok     status=1 f_model=1359 c_model=1359 wall=0.493s
+HS57                   fmincon-interior-point   ok     status=1 f_model=60 c_model=60 wall=0.099s
+HS4                    fmincon-interior-point   ok     status=1 f_model=21 c_model=0 wall=0.092s
+NEARDEP                fmincon-interior-point   ok     status=1 f_model=21 c_model=21 wall=0.036s
+HS34                   fmincon-interior-point   ok     status=1 f_model=75 c_model=75 wall=0.076s
+HS45                   fmincon-interior-point   ok     status=1 f_model=132 c_model=0 wall=0.193s
+HS66                   fmincon-interior-point   ok     status=1 f_model=56 c_model=56 wall=0.036s
+HS3                    fmincon-interior-point   ok     status=1 f_model=46 c_model=0 wall=0.097s
+HS32                   fmincon-interior-point   ok     status=1 f_model=53 c_model=53 wall=0.298s
+HS14                   fmincon-interior-point   ok     status=1 f_model=25 c_model=25 wall=0.144s
+HS43                   fmincon-interior-point   ok     status=1 f_model=67 c_model=67 wall=0.057s
+HS104                  fmincon-interior-point   ok     status=1 f_model=241 c_model=241 wall=0.125s
+HS5                    fmincon-interior-point   ok     status=1 f_model=35 c_model=0 wall=0.084s
+START_OUTSIDE          fmincon-interior-point   ok     status=1 f_model=33 c_model=33 wall=0.054s
+FLAT_BOUND             fmincon-interior-point   ok     status=1 f_model=19 c_model=0 wall=0.067s
+HS71                   fmincon-interior-point   ok     status=1 f_model=46 c_model=46 wall=0.253s
+HS38                   fmincon-interior-point   ok     status=1 f_model=176 c_model=0 wall=0.119s
+HS35                   fmincon-interior-point   ok     status=1 f_model=48 c_model=48 wall=0.054s
+CHAINROSEN_BOX_10      fmincon-interior-point   ok     status=1 f_model=882 c_model=0 wall=0.279s
+HS42                   fmincon-interior-point   ok     status=1 f_model=47 c_model=47 wall=0.108s
+HS61                   fmincon-interior-point   ok     status=1 f_model=541 c_model=541 wall=0.500s
+HS12                   fmincon-interior-point   ok     status=1 f_model=30 c_model=30 wall=0.088s
+HS15                   fmincon-interior-point   ok     status=1 f_model=34 c_model=34 wall=0.113s
+HS23                   fmincon-interior-point   ok     status=1 f_model=39 c_model=39 wall=0.072s

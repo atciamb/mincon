@@ -166,8 +166,51 @@ impl<P: Nlp + ?Sized> Solver<'_, P> {
         // A rejected soft trial may have installed its Jacobian. Restore it.
         self.refresh_jacobian(&state.point.v[..self.n], &state.point.c)?;
         if self.m == 0 || theta_r <= self.opts.tol.optimality {
-            self.notes.push("Restoration cannot reduce near-zero infeasibility; stationarity remains unverified.".into());
-            state.exit = Some(ExitFlag::NumericalFailure);
+            // Nothing for restoration to do: the iterate is (nearly) feasible and the line
+            // search could not improve the barrier objective any further. Classify the point
+            // honestly instead of calling every such case a numerical failure: an acceptable
+            // KKT residual at a feasible point is the "acceptable" exit; a feasible point whose
+            // stationarity is unverified is a step-tolerance exit ("local minimum possible");
+            // anything else really is a numerical failure.
+            let (e0, _, compl) = self.optimality(
+                &state.point,
+                &state.grad,
+                &state.lambda,
+                &state.zl,
+                &state.zu,
+                0.0,
+            );
+            let violation = self.user_violation(&state.point.v, &state.point.c);
+            let feasible = violation <= self.opts.tol.feasibility;
+            state.exit = Some(
+                if feasible
+                    && e0 <= self.opts.tol.acceptable_optimality
+                    && compl
+                        <= self
+                            .opts
+                            .tol
+                            .acceptable_optimality
+                            .max(self.opts.tol.complementarity)
+                {
+                    self.notes.push(format!(
+                    "The line search could not make further progress at a feasible point with scaled \
+                     KKT error {e0:.3e}; reported as acceptable (requested {:.1e}). With finite-difference \
+                     derivatives this usually means the requested optimality tolerance is below the \
+                     achievable derivative accuracy.",
+                    self.opts.tol.optimality
+                ));
+                    ExitFlag::Acceptable
+                } else if feasible {
+                    self.notes.push(format!(
+                    "The line search could not make further progress at a feasible point; scaled KKT \
+                     error {e0:.3e} is above the acceptable tolerance, so first-order optimality is unverified."
+                ));
+                    ExitFlag::StepTolerance
+                } else {
+                    self.notes.push("Restoration cannot reduce near-zero infeasibility; stationarity remains unverified.".into());
+                    ExitFlag::NumericalFailure
+                },
+            );
             return Ok(state);
         }
         self.robust_restoration(&mut state, mu, theta_r, filter, remaining, base_iter, trace)?;

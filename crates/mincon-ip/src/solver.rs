@@ -1228,6 +1228,81 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         norm
     }
 
+    /// True partial derivatives of `f` and every constraint row with respect to the fixed
+    /// variables `fixed`, at the user's point `x`. Analytic when the model provides them,
+    /// otherwise central probes off the pinned value (which the bound-honouring finite
+    /// differences deliberately never take).
+    fn fixed_variable_derivatives(
+        &self,
+        x: &[f64],
+        c_user: &[f64],
+        fixed: &[usize],
+    ) -> Result<(Vec<f64>, Vec<Vec<f64>>), EvalError> {
+        let nlp = self.eval.nlp();
+        let caps = nlp.capabilities();
+        let (n, m) = (self.n, self.m);
+        let mut gf = vec![0.0; fixed.len()];
+        let mut jcols = vec![vec![0.0; m]; fixed.len()];
+        if caps.gradient {
+            let mut g = vec![0.0; n];
+            nlp.gradient(x, &mut g)?;
+            for (k, &j) in fixed.iter().enumerate() {
+                gf[k] = g[j];
+            }
+        }
+        if m > 0 && caps.jacobian {
+            if let Some(pat) = nlp.jacobian_structure() {
+                let mut vals = vec![0.0; pat.nnz()];
+                nlp.jacobian(x, &mut vals)?;
+                for (k, &j) in fixed.iter().enumerate() {
+                    for pos in pat.col_ptr()[j]..pat.col_ptr()[j + 1] {
+                        jcols[k][pat.row_idx()[pos]] = vals[pos];
+                    }
+                }
+            }
+        }
+        let need_f = !caps.gradient;
+        let need_c = m > 0 && !(caps.jacobian && nlp.jacobian_structure().is_some());
+        if need_f || need_c {
+            let f0 = self.eval.f(x)?;
+            let mut xp = x.to_vec();
+            let mut cp = vec![0.0; m];
+            let mut cm = vec![0.0; m];
+            for (k, &j) in fixed.iter().enumerate() {
+                let h = mincon_core::EPS.powf(1.0 / 3.0) * x[j].abs().max(1.0);
+                xp[j] = x[j] + h;
+                let hp = xp[j] - x[j];
+                let fp = if need_f { self.eval.f(&xp)? } else { 0.0 };
+                if need_c {
+                    self.eval.c(&xp, &mut cp)?;
+                }
+                xp[j] = x[j] - h;
+                let hm = x[j] - xp[j];
+                let fm = if need_f { self.eval.f(&xp)? } else { 0.0 };
+                if need_c {
+                    self.eval.c(&xp, &mut cm)?;
+                }
+                xp[j] = x[j];
+                if need_f {
+                    gf[k] = (fp - fm) / (hp + hm);
+                    if !gf[k].is_finite() {
+                        return Err(EvalError::NonFinite(None));
+                    }
+                }
+                if need_c {
+                    for i in 0..m {
+                        jcols[k][i] = (cp[i] - cm[i]) / (hp + hm);
+                        if !jcols[k][i].is_finite() {
+                            return Err(EvalError::NonFinite(None));
+                        }
+                    }
+                }
+            }
+            let _ = (f0, c_user);
+        }
+        Ok((gf, jcols))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn finish(
         self,
@@ -1254,9 +1329,53 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             .zip(&self.d_c)
             .map(|(l, d)| l * d / self.d_f)
             .collect();
-        let z_l_user: Vec<f64> = z_l[..n].iter().map(|z| z / self.d_f).collect();
-        let z_u_user: Vec<f64> = z_u[..n].iter().map(|z| z / self.d_f).collect();
+        let mut z_l_user: Vec<f64> = z_l[..n].iter().map(|z| z / self.d_f).collect();
+        let mut z_u_user: Vec<f64> = z_u[..n].iter().map(|z| z / self.d_f).collect();
         let c_user: Vec<f64> = point.c.iter().zip(&self.d_c).map(|(c, d)| c / d).collect();
+
+        // A fixed variable (x_L == x_U) lives in a relaxed interval of width ~2e-10, where
+        // both barrier multipliers are huge and nearly equal; their difference carries no
+        // information, and the finite-difference engine gives pinned variables a zero
+        // derivative, so the solver never saw the true partial derivative. Reconstruct the
+        // net bound multiplier from stationarity in the user's problem,
+        // grad f + J^T lambda - z_L + z_U = 0, using analytic derivatives when the model has
+        // them and otherwise two probes off the pinned value (only when a usable point is
+        // being returned, so an aborted or budget-limited solve never calls the model again).
+        let mut fixed_notes: Vec<String> = Vec::new();
+        {
+            let (xl, xu) = self.eval.nlp().x_bounds();
+            let fixed: Vec<usize> = (0..n).filter(|&j| xl[j] == xu[j]).collect();
+            if !fixed.is_empty() && exit.returned_usable_point() {
+                let x_user = &point.v[..n];
+                match self.fixed_variable_derivatives(x_user, &c_user, &fixed) {
+                    Ok((gf, jcols)) => {
+                        for (k, &j) in fixed.iter().enumerate() {
+                            let jt_lambda: f64 =
+                                jcols[k].iter().zip(&lambda_user).map(|(a, l)| a * l).sum();
+                            let net = gf[k] + jt_lambda; // = z_L - z_U
+                            if net >= 0.0 {
+                                z_l_user[j] = net;
+                                z_u_user[j] = 0.0;
+                            } else {
+                                z_l_user[j] = 0.0;
+                                z_u_user[j] = -net;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        for &j in &fixed {
+                            z_l_user[j] = 0.0;
+                            z_u_user[j] = 0.0;
+                        }
+                        fixed_notes.push(format!(
+                            "Bound multipliers of the {} fixed variable(s) are reported as zero: the model \
+                             derivative at the pinned value could not be obtained ({e}).",
+                            fixed.len()
+                        ));
+                    }
+                }
+            }
+        }
 
         let timings = Timings {
             total: self.start.elapsed(),
@@ -1265,6 +1384,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         };
 
         let mut notes = self.notes.clone();
+        notes.extend(fixed_notes);
         if let Hess::Bfgs(b) = &self.hess {
             if b.skipped() > 0 {
                 notes.push(format!(
@@ -1353,5 +1473,68 @@ mod tests {
             assert!(z[i] + a * dz[i] >= 0.0);
         }
         assert!(a > 0.0 && a <= 1.0);
+    }
+
+    /// A fixed variable's bound multipliers must satisfy stationarity in the user's problem.
+    #[test]
+    fn fixed_variable_multipliers_satisfy_stationarity() {
+        use mincon_core::{Capabilities, NlpDims};
+        // min (x0 - 1)^2 + x1^2   s.t.  x0 + x1 = 5,  x1 fixed at 3  ->  x0 = 2, lambda = -2,
+        // stationarity at x1: 2*x1 + lambda - zL + zU = 0 -> zL - zU = 6 - 2 = 4.
+        struct P {
+            lb: Vec<f64>,
+            ub: Vec<f64>,
+            cl: Vec<f64>,
+            cu: Vec<f64>,
+            x0: Vec<f64>,
+        }
+        impl Nlp for P {
+            fn dims(&self) -> NlpDims {
+                NlpDims { n: 2, m: 1 }
+            }
+            fn x_bounds(&self) -> (&[f64], &[f64]) {
+                (&self.lb, &self.ub)
+            }
+            fn c_bounds(&self) -> (&[f64], &[f64]) {
+                (&self.cl, &self.cu)
+            }
+            fn x0(&self) -> &[f64] {
+                &self.x0
+            }
+            fn capabilities(&self) -> Capabilities {
+                Capabilities::none()
+            }
+            fn objective(&self, x: &[f64]) -> Result<f64, EvalError> {
+                Ok((x[0] - 1.0).powi(2) + x[1] * x[1])
+            }
+            fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+                out[0] = x[0] + x[1];
+                Ok(())
+            }
+        }
+        let p = P {
+            lb: vec![-1e20, 3.0],
+            ub: vec![1e20, 3.0],
+            cl: vec![5.0],
+            cu: vec![5.0],
+            x0: vec![0.0, 3.0],
+        };
+        let r = solve(&p, &Options::default()).unwrap();
+        assert!((r.solution.x[0] - 2.0).abs() < 1e-6, "{:?}", r.solution.x);
+        let lam = r.solution.lambda[0];
+        let g = [2.0 * (r.solution.x[0] - 1.0), 2.0 * r.solution.x[1]];
+        for j in 0..2 {
+            let res = g[j] + lam - r.solution.z_l[j] + r.solution.z_u[j];
+            assert!(
+                res.abs() < 1e-6,
+                "stationarity residual {res} at variable {j}: z_l={} z_u={}",
+                r.solution.z_l[j],
+                r.solution.z_u[j]
+            );
+        }
+        assert!(
+            r.solution.z_l[1].min(r.solution.z_u[1]) == 0.0,
+            "one side of a fixed variable must carry zero"
+        );
     }
 }

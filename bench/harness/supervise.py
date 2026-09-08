@@ -107,8 +107,9 @@ def timeout_record(problem, solver, track, a, repeat, seconds, man):
 
 
 def run_solver(solver, track, problems, a, man, repeat):
-    out_file = os.path.join(a.out, f"{solver}.{track}.jsonl")
-    progress_file = os.path.join(a.out, f"{solver}.{track}.progress")
+    tag = solver.replace("@", "_").replace(",", "_").replace("=", "-")
+    out_file = os.path.join(a.out, f"{tag}.{track}.jsonl")
+    progress_file = os.path.join(a.out, f"{tag}.{track}.progress")
     done = existing_keys(out_file)
     pending = [p for p in problems if (p, solver, track, repeat) not in done]
     rng = random.Random(f"{a.seed}-{solver}-{repeat}")

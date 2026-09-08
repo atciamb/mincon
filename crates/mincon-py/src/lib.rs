@@ -33,14 +33,19 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
 
+/// One constraint block: (callable, is_equality, block length, optional Jacobian callable).
+type Block = (Py<PyAny>, bool, usize, Option<Py<PyAny>>);
+
 /// A model whose pieces are Python callables.
 struct PyNlp {
     n: usize,
     m: usize,
     fun: Py<PyAny>,
     jac: Option<Py<PyAny>>,
-    /// One entry per constraint block: (callable, is_equality, block length).
-    blocks: Vec<(Py<PyAny>, bool, usize)>,
+    /// One entry per constraint block: (callable, is_equality, block length, optional Jacobian callable).
+    blocks: Vec<Block>,
+    /// Dense `m x n` structure, present only when every block supplied a Jacobian.
+    jac_structure: Option<Sparsity>,
     lb: Vec<f64>,
     ub: Vec<f64>,
     cl: Vec<f64>,
@@ -80,10 +85,77 @@ impl Nlp for PyNlp {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             gradient: self.jac.is_some(),
+            jacobian: self.jac_structure.is_some(),
             // Every call needs the GIL, so concurrent evaluation buys nothing.
             parallel_safe: false,
             ..Capabilities::none()
         }
+    }
+
+    fn jacobian_structure(&self) -> Option<&Sparsity> {
+        self.jac_structure.as_ref()
+    }
+
+    /// Dense Jacobian assembled block by block, written in the column-major
+    /// order of the dense structure. Each block's callable may return a
+    /// `(len, n)` array, an `(n,)` array for a single row, or nested lists.
+    fn jacobian(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+        let (n, m) = (self.n, self.m);
+        if m == 0 {
+            return Ok(());
+        }
+        Python::attach(|py| {
+            let arr = x.to_pyarray(py);
+            let mut row0 = 0usize;
+            for (_, _, len, jac) in &self.blocks {
+                let Some(jac) = jac else {
+                    return Err(EvalError::Failed("a constraint block has no jac".into()));
+                };
+                let v = jac.call1(py, (arr.clone(),)).map_err(|e| {
+                    self.record(&e);
+                    EvalError::Failed(e.to_string())
+                })?;
+                // Accept 2-D (len x n), or 1-D (n) when len == 1, via numpy's ravel of a float array.
+                let flat: Vec<f64> = match v.extract::<Vec<Vec<f64>>>(py) {
+                    Ok(rows) => rows.into_iter().flatten().collect(),
+                    Err(_) => match v.extract::<Vec<f64>>(py) {
+                        Ok(row) => row,
+                        Err(_) => {
+                            // numpy arrays: go through np.asarray(v, float).ravel()
+                            let np = py
+                                .import("numpy")
+                                .map_err(|e| EvalError::Failed(e.to_string()))?;
+                            let a = np
+                                .call_method1("asarray", (v.bind(py), "float64"))
+                                .and_then(|a| a.call_method0("ravel"))
+                                .map_err(|e| EvalError::Failed(e.to_string()))?;
+                            a.extract::<Vec<f64>>().map_err(|e| {
+                                EvalError::Failed(format!(
+                                    "constraint jac did not return numbers: {e}"
+                                ))
+                            })?
+                        }
+                    },
+                };
+                if flat.len() != len * n {
+                    return Err(EvalError::Failed(format!(
+                        "a constraint jac returned {} values; expected {len} x {n}",
+                        flat.len()
+                    )));
+                }
+                for i in 0..*len {
+                    for j in 0..n {
+                        out[j * m + row0 + i] = flat[i * n + j];
+                    }
+                }
+                row0 += len;
+            }
+            if out.iter().all(|v| v.is_finite()) {
+                Ok(())
+            } else {
+                Err(EvalError::NonFinite(None))
+            }
+        })
     }
 
     fn objective(&self, x: &[f64]) -> Result<f64, EvalError> {
@@ -149,7 +221,7 @@ impl Nlp for PyNlp {
         Python::attach(|py| {
             let arr = x.to_pyarray(py);
             let mut off = 0usize;
-            for (f, _, len) in &self.blocks {
+            for (f, _, len, _) in &self.blocks {
                 let v = f.call1(py, (arr.clone(),)).map_err(|e| {
                     self.record(&e);
                     EvalError::Failed(e.to_string())
@@ -350,7 +422,7 @@ fn minimize(
     // same physical box as the Rust setup and all subsequent evaluations.
     let probe: Vec<f64> = (0..n).map(|i| x0v[i].clamp(lb[i], ub[i])).collect();
     // --- constraints ---
-    let mut blocks: Vec<(Py<PyAny>, bool, usize)> = Vec::new();
+    let mut blocks: Vec<Block> = Vec::new();
     let mut cl: Vec<f64> = Vec::new();
     let mut cu: Vec<f64> = Vec::new();
     if let Some(c) = &constraints {
@@ -374,6 +446,17 @@ fn minimize(
                     .get_item("fun")?
                     .ok_or_else(|| PyValueError::new_err("constraint is missing 'fun'"))?
                     .unbind();
+                let jac_fn: Option<Py<PyAny>> = match d.get_item("jac")? {
+                    Some(j) if !j.is_none() => {
+                        if !j.is_callable() {
+                            return Err(PyValueError::new_err(
+                                "a constraint's 'jac' must be callable",
+                            ));
+                        }
+                        Some(j.unbind())
+                    }
+                    _ => None,
+                };
                 let len = block_length(py, &f, &probe)?;
                 let is_eq = match ty.as_str() {
                     "eq" => true,
@@ -394,7 +477,7 @@ fn minimize(
                         cu.push(INF_BOUND);
                     }
                 }
-                blocks.push((f, is_eq, len));
+                blocks.push((f, is_eq, len, jac_fn));
             }
         }
     }
@@ -402,6 +485,13 @@ fn minimize(
     let m = cl.len();
     let mut opts = parse_options(py, options.as_ref())?;
     opts.algorithm = parse_algorithm(method)?;
+    // Analytic Jacobian only when every block supplies one: a partial Jacobian
+    // would silently mix exact and approximate rows.
+    let jac_structure = if m > 0 && blocks.iter().all(|b| b.3.is_some()) {
+        Some(Sparsity::dense(m, n))
+    } else {
+        None
+    };
 
     let nlp = PyNlp {
         n,
@@ -409,6 +499,7 @@ fn minimize(
         fun,
         jac,
         blocks,
+        jac_structure,
         lb,
         ub,
         cl,
@@ -444,6 +535,8 @@ fn minimize(
     d.set_item("nit", report.iterations)?;
     d.set_item("nfev", report.f_evals)?;
     d.set_item("njev", report.g_evals)?;
+    d.set_item("ncev", report.c_evals)?;
+    d.set_item("ncjev", report.j_evals)?;
     d.set_item("maxcv", report.constraint_violation)?;
     d.set_item("optimality", report.optimality)?;
     d.set_item("usable", report.exit_flag.returned_usable_point())?;
@@ -477,6 +570,7 @@ fn check_gradients(
         fun,
         jac: Some(jac),
         blocks: Vec::new(),
+        jac_structure: None,
         lb: vec![-INF_BOUND; n],
         ub: vec![INF_BOUND; n],
         cl: Vec::new(),
@@ -490,6 +584,9 @@ fn check_gradients(
 
     let d = PyDict::new(py);
     d.set_item("passed", report.passed())?;
+    d.set_item("conclusive", report.conclusive())?;
+    d.set_item("comparisons", report.comparisons)?;
+    d.set_item("nonfinite", report.nonfinite)?;
     d.set_item("max_relative_error", report.max_relative)?;
     d.set_item("message", report.message())?;
     Ok(d.into_any().unbind())

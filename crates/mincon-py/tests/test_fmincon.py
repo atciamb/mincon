@@ -52,3 +52,41 @@ def test_invalid_input_is_rejected_before_callbacks(kwargs):
         pytest.fail("invalid setup evaluated the model")
     with pytest.raises(ValueError):
         mincon.fmincon(never, [0.], **kwargs)
+
+
+def test_nonlcon_is_called_once_per_point_and_jacobians_cut_evaluations():
+    calls = {"n": 0}
+
+    def nonlcon(x):
+        calls["n"] += 1
+        return ([x[0] * x[1] * x[2] * x[3] * -1 + 25.], [x @ x - 40.])
+
+    def nonlcon_jac(x):
+        return ([[-x[1]*x[2]*x[3], -x[0]*x[2]*x[3], -x[0]*x[1]*x[3], -x[0]*x[1]*x[2]]], [2*x])
+
+    f = lambda x: x[0]*x[3]*(x[0]+x[1]+x[2]) + x[2]
+    g = lambda x: np.array([x[3]*(2*x[0]+x[1]+x[2]), x[0]*x[3], x[0]*x[3]+1., x[0]*(x[0]+x[1]+x[2])])
+    r_fd = mincon.fmincon(f, [1., 5., 5., 1.], lb=1., ub=5., nonlcon=nonlcon, options={"threads": 1})
+    assert r_fd.success, r_fd
+    # one model call per distinct point: the ineq and eq components share it
+    assert calls["n"] <= r_fd.ncev + 2, (calls["n"], r_fd.ncev)
+    calls["n"] = 0
+    r = mincon.fmincon(f, [1., 5., 5., 1.], lb=1., ub=5., nonlcon=nonlcon, jac=g, nonlcon_jac=nonlcon_jac,
+                       options={"threads": 1, "check_derivatives": True})
+    assert r.success, r
+    np.testing.assert_allclose(r.x, [1., 4.7429996, 3.8211500, 1.3794083], atol=1e-4)
+    assert r.ncjev > 0 and r.ncev < r_fd.ncev / 2, (r.ncev, r_fd.ncev)
+    assert r.nfev < r_fd.nfev / 2
+
+
+def test_wrong_constraint_jacobian_is_rejected_when_checked():
+    with pytest.raises(RuntimeError, match="FAILED"):
+        mincon.fmincon(lambda x: (x[0]-1.)**2 + (x[1]-1.)**2, [0., 0.],
+                       nonlcon=lambda x: ([x[0] + x[1] - 1.], []),
+                       nonlcon_jac=lambda x: ([[3., 3.]], []),
+                       options={"check_derivatives": True})
+
+
+def test_check_derivatives_without_analytic_derivatives_is_inconclusive_not_silent():
+    with pytest.raises(RuntimeError, match="INCONCLUSIVE"):
+        mincon.fmincon(lambda x: (x[0]-1.)**2, [0.], options={"check_derivatives": True})

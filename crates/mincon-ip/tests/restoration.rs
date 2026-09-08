@@ -96,7 +96,10 @@ fn hs33_and_hs35_converge_with_independently_checked_kkt_residuals() {
         let x = &s.x;
         assert_eq!(r.exit_flag, ExitFlag::Optimal, "{name}: {}", r.summary());
         assert!(p.violation(x) <= opts.tol.feasibility);
-        assert!(((p.f)(x) - p.f_opt.unwrap()).abs() < 1e-7);
+        // Objective accuracy consistent with the requested 1e-6 optimality tolerance
+        // (an interior-point method leaves an O(mu) objective gap at termination).
+        let f_opt = p.f_opt.unwrap();
+        assert!(((p.f)(x) - f_opt).abs() < 1e-6 * f_opt.abs().max(1.0));
         // Algebraic derivatives, never the finite-difference engine or its
         // reported residual. Jacobian convention is grad f + J^T lambda-zl+zu.
         let mut residual = if name == "HS33" {
