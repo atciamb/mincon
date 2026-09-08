@@ -1,0 +1,3 @@
+UNBOUNDED_PAR          fmincon-interior-point   ok     status=0 f_model=3000 c_model=3000 wall=1.253s
+INFEASIBLE_LIN         fmincon-interior-point   ok     status=-2 f_model=46 c_model=46 wall=0.199s
+INFEASIBLE_NL          fmincon-interior-point   ok     status=0 f_model=3001 c_model=3001 wall=0.977s

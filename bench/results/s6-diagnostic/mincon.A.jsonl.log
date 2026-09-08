@@ -1,0 +1,6 @@
+UNBOUNDED_PAR          mincon             ok     status=1 f_model=4195 c_model=4209 wall=0.033s
+INFEASIBLE_LIN         mincon             ok     status=-4 f_model=228 c_model=366 wall=0.002s
+INFEASIBLE_NL          mincon             ok     status=0 f_model=16875 c_model=21885 wall=0.149s
+UNBOUNDED_PAR          mincon             ok     status=-3 f_model=10695 c_model=10737 wall=0.098s
+INFEASIBLE_LIN         mincon             ok     status=-4 f_model=228 c_model=366 wall=0.003s
+INFEASIBLE_NL          mincon             ok     status=0 f_model=16875 c_model=21885 wall=0.174s

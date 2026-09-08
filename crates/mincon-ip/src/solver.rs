@@ -162,6 +162,8 @@ struct Solver<'a, P: Nlp + ?Sized> {
 
     notes: Vec<String>,
     start: Instant,
+    /// Unscaled objective at the starting point, for the divergence diagnosis.
+    f0_user: f64,
 }
 
 /// Everything evaluated at a point.
@@ -290,6 +292,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             correction: CorrectionParams::default(),
             notes,
             start: Instant::now(),
+            f0_user: f64::NAN,
         })
     }
 
@@ -610,6 +613,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
 
         let x0_norm = v[..n].iter().fold(0.0_f64, |a, x| a.max(x.abs()));
         let f0_value = point.f / self.d_f;
+        self.f0_user = f0_value;
         let mut stalled = 0usize;
         let mut exit = ExitFlag::MaxReached;
         let mut acceptable_streak = 0usize;
@@ -1386,7 +1390,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
     #[allow(clippy::too_many_arguments)]
     fn finish(
         self,
-        exit: ExitFlag,
+        mut exit: ExitFlag,
         iterations: usize,
         point: Point,
         grad_f: &[f64],
@@ -1473,7 +1477,22 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                 .iter()
                 .fold(0.0_f64, |a, v| a.max(v.abs()));
             let xn = point.v[..n].iter().fold(0.0_f64, |a, v| a.max(v.abs()));
-            if xn > 1e6 * x0n.max(1.0) && exit.returned_usable_point() {
+            let f0 = self.f0_user;
+            let fell_far = f_unscaled < f0 - 1e6 * f0.abs().max(1.0);
+            if xn > 1e6 * x0n.max(1.0) && exit.returned_usable_point() && fell_far {
+                // The first-order conditions can be satisfied to tolerance at an
+                // enormous point because the multipliers shrink with the iterates
+                // (min -x1 s.t. x2 = x1^2 is the textbook case). A usable exit that
+                // far away with an objective that has dropped by a factor 1e6 is an
+                // unbounded diagnosis, not a solution.
+                notes.push(format!(
+                    "Reported as unbounded below: the iterate ran to ||x||_inf = {xn:.3e} (from \
+                     {x0n:.3e}) while the objective fell from {f0:.3e} to {f_unscaled:.3e} and the \
+                     first-order conditions still held to tolerance. This is a growth heuristic; \
+                     add bounds if a finite solution is expected."
+                ));
+                exit = ExitFlag::Unbounded;
+            } else if xn > 1e6 * x0n.max(1.0) && exit.returned_usable_point() {
                 notes.push(format!(
                     "The returned point is very far from the start (||x||_inf = {xn:.3e} versus \
                      {x0n:.3e} at x0). The first-order conditions hold there, but an objective that \
@@ -1632,6 +1651,64 @@ mod tests {
         assert!(
             r.solution.z_l[1].min(r.solution.z_u[1]) == 0.0,
             "one side of a fixed variable must carry zero"
+        );
+    }
+
+    /// min -x1 s.t. x2 = x1^2: the first-order conditions hold to tolerance at any
+    /// far-away point because the multiplier shrinks with x1. That must be reported
+    /// as unbounded, never as optimal.
+    #[test]
+    fn unbounded_along_a_parabola_is_not_reported_optimal() {
+        use mincon_core::{Capabilities, NlpDims};
+        struct P {
+            lb: Vec<f64>,
+            ub: Vec<f64>,
+            cl: Vec<f64>,
+            cu: Vec<f64>,
+            x0: Vec<f64>,
+        }
+        impl Nlp for P {
+            fn dims(&self) -> NlpDims {
+                NlpDims { n: 2, m: 1 }
+            }
+            fn x_bounds(&self) -> (&[f64], &[f64]) {
+                (&self.lb, &self.ub)
+            }
+            fn c_bounds(&self) -> (&[f64], &[f64]) {
+                (&self.cl, &self.cu)
+            }
+            fn x0(&self) -> &[f64] {
+                &self.x0
+            }
+            fn capabilities(&self) -> Capabilities {
+                Capabilities::none()
+            }
+            fn objective(&self, x: &[f64]) -> Result<f64, EvalError> {
+                Ok(-x[0])
+            }
+            fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+                out[0] = x[1] - x[0] * x[0];
+                Ok(())
+            }
+        }
+        let p = P {
+            lb: vec![-1e20; 2],
+            ub: vec![1e20; 2],
+            cl: vec![0.0],
+            cu: vec![0.0],
+            x0: vec![0.0, 0.0],
+        };
+        let r = solve(&p, &Options::default()).unwrap();
+        assert!(
+            !r.exit_flag.is_success(),
+            "reported {:?} at x = {:?}",
+            r.exit_flag,
+            r.solution.x
+        );
+        assert!(
+            matches!(r.exit_flag, ExitFlag::Unbounded | ExitFlag::MaxReached),
+            "{:?}",
+            r.exit_flag
         );
     }
 }

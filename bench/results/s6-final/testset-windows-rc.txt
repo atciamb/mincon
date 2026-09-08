@@ -1,0 +1,59 @@
+problem               n    m  iters f-evals        opt status             verdict outcome
+------------------------------------------------------------------------------------------------------------------------
+HS1                   2    0     18      70    1.00e-7 Optimal PASS  f = 1.21569285e-11  (rel err 1.2e-11)
+HS2                   2    0     11      48    1.00e-7 Optimal PASS  f = 5.04281818e-2  (rel err 2.0e-6)
+HS3                   2    0     10      36    1.00e-7 Optimal PASS  f = 9.99999984e-8  (rel err 1.0e-7)
+HS4                   2    0      6      24    1.00e-7 Optimal PASS  f = 2.66666687e0  (rel err 7.5e-8)
+HS5                   2    0      8      30    3.81e-7 Optimal PASS  f = -1.91322295e0  (rel err 7.5e-15)
+HS38                  4    0     50     270    2.98e-7 Optimal PASS  f = 4.90425279e-11  (rel err 4.9e-11)
+HS45                  5    0     16     110    8.61e-7 Optimal PASS  f = 1.00000430e0  (rel err 4.3e-6)
+HS110                10    0     12     157    2.67e-7 Optimal PASS  f = -4.57784697e1  (rel err 1.5e-8)
+HS6                   2    1     10      41    8.13e-9 Optimal PASS  f = 5.40636700e-17  (rel err 5.4e-17)
+HS7                   2    1     11      39    1.68e-8 Optimal PASS  f = -1.73205081e0  (rel err 5.9e-14)
+HS8                   2    2      6      24   9.33e-13 Optimal PASS  f = -1.00000000e0  (rel err 0.0e0)
+HS9                   2    1      6      24    2.08e-9 Optimal PASS  f = -5.00000000e-1  (rel err 4.1e-14)
+HS26                  3    1     22     107    5.14e-8 Optimal PASS  f = 3.49419473e-15  (rel err 3.5e-15)
+HS27                  3    1     30     138    1.18e-7 Optimal PASS  f = 4.00000000e-2  (rel err 1.8e-14)
+HS28                  3    1      9      48    8.17e-9 Optimal PASS  f = 1.45185949e-15  (rel err 1.5e-15)
+HS39                  4    2     12      70    5.78e-7 Optimal PASS  f = -1.00000000e0  (rel err 8.1e-10)
+HS40                  4    3      6      40    4.27e-7 Optimal PASS  f = -2.50000000e-1  (rel err 1.4e-11)
+HS42                  4    2     10      63    1.79e-7 Optimal PASS  f = 1.38578644e1  (rel err 3.8e-13)
+HS10                  2    1     11      39    1.00e-7 Optimal PASS  f = -9.99999900e-1  (rel err 1.0e-7)
+HS11                  2    1      8      30    2.60e-7 Optimal PASS  f = -8.49846412e0  (rel err 1.2e-8)
+HS12                  2    1     10      36    1.00e-7 Optimal PASS  f = -2.99999999e1  (rel err 3.3e-9)
+HS13                  2    1     80     249    3.85e-1 StepTolerance PASS  f = 1.00000069e0, feasible degenerate solution (StepTolerance)
+HS14                  2    2      6      24    1.00e-7 Optimal PASS  f = 1.39346508e0  (rel err 3.3e-7)
+HS15                  2    2      9      35    1.00e-7 Optimal PASS  f = 3.06500005e2  (rel err 1.6e-8)
+HS16                  2    2     15      51    5.62e-7 Optimal PASS  f = 3.98206954e0, feasible with a usable-point status
+HS18                  2    2     13      50    1.77e-7 Optimal PASS  f = 5.00000010e0  (rel err 2.0e-8)
+HS21                  2    1      8      30    6.66e-7 Optimal PASS  f = -9.99599996e1  (rel err 4.4e-9)
+HS22                  2    2      7      27    1.00e-7 Optimal PASS  f = 1.00000020e0  (rel err 2.0e-7)
+HS23                  2    5     10      38    1.00e-7 Optimal PASS  f = 2.00000020e0  (rel err 1.0e-7)
+HS24                  2    3     10      37    1.00e-7 Optimal PASS  f = -9.99999800e-1  (rel err 2.0e-7)
+HS29                  3    1     10      48    2.92e-7 Optimal PASS  f = -2.26274169e1  (rel err 4.4e-9)
+HS30                  3    1      7      36    6.56e-7 Optimal PASS  f = 1.00000020e0  (rel err 2.0e-7)
+HS31                  3    1     13      64    5.56e-7 Optimal PASS  f = 6.00000010e0  (rel err 1.7e-8)
+HS32                  3    2     17      78    3.32e-7 Optimal PASS  f = 1.00000027e0  (rel err 2.7e-7)
+HS33                  3    2     14      64    1.00e-7 Optimal PASS  f = -4.58578614e0  (rel err 6.5e-8)
+HS34                  3    2     11      52    1.00e-7 Optimal PASS  f = -8.34032145e-1  (rel err 3.0e-7)
+HS35                  3    1      9      44    1.39e-7 Optimal PASS  f = 1.11111211e-1  (rel err 1.0e-7)
+HS36                  3    1      8      40    1.98e-7 Optimal PASS  f = -3.30000000e3  (rel err 1.2e-10)
+HS37                  3    2     15      81    1.00e-7 Optimal PASS  f = -3.45600000e3  (rel err 2.9e-11)
+HS41                  4    1     15      85    1.00e-7 Optimal PASS  f = 1.92592603e0  (rel err 5.2e-8)
+HS43                  4    3     15      87    5.16e-7 Optimal PASS  f = -4.39999998e1  (rel err 4.5e-9)
+HS44                  4    6     21     115    1.19e-7 Optimal PASS  f = -1.49999996e1  (rel err 2.7e-8)
+HS71                  4    2     10      60    1.18e-7 Optimal PASS  f = 1.70140175e1  (rel err 1.1e-8)
+HS100                 7    4     34     330    1.53e-5 Acceptable PASS  f = 6.80630058e2  (rel err 4.0e-10)
+TORTURE_SCALING       2    1      1       9   2.58e-26 Optimal PASS  f = 0.00000000e0, feasible with a usable-point status
+TORTURE_DOMAIN        2    1      8      30    2.38e-7 Optimal PASS  f = -9.77153645e-1, feasible with a usable-point status
+TORTURE_NAN_POCKET    2    0      5      21    1.00e-7 Optimal PASS  f = 1.43302501e-16, feasible with a usable-point status
+TORTURE_INFEASIBLE    2    2     10     100     1.00e0 LocallyInfeasible PASS  correctly reported infeasible
+TORTURE_UNBOUNDED     2    1     16      54     1.00e0 Unbounded PASS  correctly reported unbounded
+TORTURE_DEGENERATE    2    2      8      30    1.07e-7 Optimal PASS  f = 3.00001135e-7, feasible with a usable-point status
+TORTURE_REDUNDANT     2   20      7      27    1.13e-7 Optimal PASS  f = 2.20016301e-12, feasible with a usable-point status
+TORTURE_PINNED        2    0      0       7   3.00e-10 Optimal PASS  f = 5.00000000e0  (rel err 0.0e0)
+TORTURE_FLAT          2    0     25      86    6.82e-7 Optimal PASS  f = 3.24977900e-8, feasible with a usable-point status
+TORTURE_NOISY         2    1      8      42    1.00e-7 Optimal PASS  f = 7.87240741e-9, feasible with a usable-point status
+------------------------------------------------------------------------------------------------------------------------
+50/54 reported strict Optimal; fixture PASS also covers usable points and expected failure diagnostics.
+54/54 pass, 0 fail, 0 soft-fail (did not converge but did not lie), 0 LIES

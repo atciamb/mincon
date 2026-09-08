@@ -1,0 +1,3 @@
+INFEASIBLE_LIN         fmincon-sqp              ok     status=-2 f_model=10 c_model=10 wall=0.299s
+UNBOUNDED_PAR          fmincon-sqp              ok     status=0 f_model=201 c_model=201 wall=0.048s
+INFEASIBLE_NL          fmincon-sqp              ok     status=0 f_model=200 c_model=200 wall=0.046s

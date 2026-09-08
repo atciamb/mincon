@@ -1,0 +1,3 @@
+UNBOUNDED_PAR          scipy-slsqp        ok     status=9 f_model=11662 c_model=11663 wall=0.243s
+INFEASIBLE_LIN         scipy-slsqp        ok     status=4 f_model=235 c_model=236 wall=0.005s
+INFEASIBLE_NL          scipy-slsqp        ok     status=8 f_model=1722 c_model=1723 wall=0.039s

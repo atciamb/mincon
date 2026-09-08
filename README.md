@@ -30,13 +30,20 @@ let p = Problem::new(2, |x| 100.0*(x[1]-x[0]*x[0]).powi(2) + (1.0-x[0]).powi(2))
 let r = minimize(&p, &Options::default())?;
 ```
 
-> **Status: early.** The development gate now passes all 54 expected outcomes
-> using independent objective/feasibility checks. This includes usable points
-> and expected failure diagnostics; it does not mean 54 certified optima.
-> Currently 40/54 report strict Optimal; 151 Rust tests and 18 Python tests pass locally.
-> Soft and reduced-elastic restoration are implemented. CUTEst qualification,
-> SQP and large sparse work remain. **No superiority claim against fmincon.**
-> [Measurements and limitations](bench/results/restoration-stopping/README.md).
+> **Status: experimental, measured.** Matched against the installed MATLAB
+> R2025b `fmincon` on a 133-problem single-source corpus with an independent
+> KKT oracle (`docs/15_BENCHMARK_PROTOCOL_V2.md`). At defaults, on the
+> held-out split, mincon attained 19/22 targets vs 18/22 for
+> `fmincon-interior-point` (not statistically separable), used **1.4×** its
+> model evaluations there (1.06× on the development split, 0.91× on the
+> validation split), and returned **30–100× faster** in wall-clock time on
+> problems up to a few hundred variables (same laptop, single thread).
+> `fmincon-sqp` and SciPy SLSQP need 0.6–0.8× the evaluations of any
+> interior-point code on small dense problems; mincon has no SQP yet.
+> **The preregistered superiority contract is not met**; see
+> `bench/results/s6-final/README.md` and `docs/16_FAILURE_ATLAS.md` for
+> exactly where fmincon wins. Development gate: 160 Rust tests, 54/54
+> fixtures with independent checks (50 strict `Optimal`), 23 Python tests.
 
 `fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
@@ -58,27 +65,39 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   **No HSL, no MUMPS, no Fortran** — which is what makes the wheel possible.
 * **Derivatives** — bounds-aware finite differences with realized retreat
   displacements and second-order inward boundary stencils, graph coloring,
-  sparsity detection, a multi-point derivative checker.
+  sparsity detection, a multi-point derivative checker that cannot pass
+  without evidence; exact objective gradients and constraint Jacobians from
+  Python (`jac` in SciPy-style constraint dicts, `nonlcon_jac` in `fmincon`).
 * **Gradient-based scaling**, on by default.
-* **Algorithm portfolio** with deterministic ranking.
+* **Adaptive barrier update** (LOQO centrality rule) with a bounded fallback
+  to the monotone schedule; **algorithm portfolio** with deterministic
+  ranking, sequential early exit for models that cannot evaluate concurrently
+  (every Python model) and shared member budgets.
 * **Python bindings** — `abi3` wheel, SciPy-compatible `minimize`.
 * **Test set** — 44 Hock–Schittkowski problems plus 10 torture problems with
   independent feasibility/reference-value checks and explicit failure fixtures.
-* **Benchmark harness** — 1075 CUTEst problems via S2MPJ, Dolan–Moré
-  performance profiles, Moré–Wild data profiles, and a MATLAB script to
-  generate the `fmincon` baseline.
+* **Benchmark corpus and harness** — 133 problems defined once in SymPy
+  (89 Hock–Schittkowski, adversarial closed-form cases, scalable structured
+  families, engineering designs), generated NumPy and MATLAB models that agree
+  at 2,660 probe quantities, an independent KKT oracle, supervised MATLAB and
+  Python workers with hard timeouts, and paired family-bootstrap analysis
+  (`bench/harness/README.md`).
 
-### Known gaps, in priority order
+### Known gaps, in priority order (measured, see `docs/16_FAILURE_ATLAS.md`)
 
-1. **Restoration qualification.** The local gates pass; the required CUTEst
-   improvement remains unmeasured. Inertia-free acceptance is still pending.
-2. **Automatic differentiation.** Finite differences cap achievable accuracy at
-   `sqrt(eps)` and cost `n` evaluations per gradient.
-3. **AMD ordering.** `Ordering::Amd` falls back to RCM.
-4. **Limited-memory BFGS.** Dense BFGS caps usable `n` at a couple of thousand.
-5. **SQP.** Specified, not built. Measured: we use ~5x more evaluations per
-   portfolio member than SciPy's SLSQP on small dense problems — that regime
-   belongs to SQP.
+1. **SQP.** Specified, not built. `fmincon-sqp`/SLSQP use 0.6–0.8× the
+   evaluations of every interior-point code on small dense problems.
+2. **Finite-difference accuracy on sensitive models** (HS62: 13 evaluations
+   with exact derivatives, 250–500 with forward differences); pass `jac` and
+   constraint `jac` when you can.
+3. **Adaptive barrier stalls** on a few problems (HS63, HS100) before the
+   monotone fallback fires.
+4. **Quasi-Newton on long curved valleys** (chained Rosenbrock, n ≥ 50):
+   hundreds of iterations for every BFGS-based solver; dense BFGS also caps
+   usable `n` at a couple of thousand and costs ~25 ms/iteration at n = 200.
+5. **Nonlinear infeasibility is not always diagnosed** (INFEASIBLE_NL runs to
+   the iteration limit; so do fmincon and SLSQP).
+6. **AMD ordering** falls back to RCM; inertia-free acceptance is not wired.
 
 ---
 
