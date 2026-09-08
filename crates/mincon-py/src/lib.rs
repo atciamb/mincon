@@ -329,9 +329,11 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
             "monotone" => BarrierUpdate::Monotone,
             "adaptive" => BarrierUpdate::Adaptive,
             "adaptive-then-monotone" | "auto" => BarrierUpdate::AdaptiveThenMonotone,
-            other => return Err(PyValueError::new_err(format!(
+            other => {
+                return Err(PyValueError::new_err(format!(
                 "unknown barrier '{other}'; use 'monotone', 'adaptive' or 'adaptive-then-monotone'"
-            ))),
+            )))
+            }
         };
     }
     if let Some(v) = get!("finite_diff", String) {

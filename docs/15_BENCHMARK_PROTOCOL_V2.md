@@ -133,4 +133,12 @@ or budgets after the fact.
 
 ## Revisions
 
-(none)
+* 2026-09-07 23:20 — harness bug, no protocol change: `worker_matlab.m` crashed
+  when fmincon returned an empty `lambda` after the cooperative deadline
+  stopped a run (fmincon-sqp on QUADSPHERE_1000, validation split). The
+  record is now a normal exitflag −1 result with the point returned at the
+  deadline; the two affected validation records were re-run before any
+  `final` record existed.
+* 2026-09-07 22:45 — harness bug, no protocol change: the Python worker did
+  not pass constraint Jacobians to mincon in track C (the API gained them in
+  C1); mincon's track-C records were re-run.

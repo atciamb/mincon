@@ -123,12 +123,18 @@ try
     % canonical multipliers: upper rows +ineq, lower rows -ineq, equality rows eqnonlin (fmincon Lagrangian sign)
     lam = zeros(m, 1);
     nh = numel(hiRows);
-    if m > 0
-        lam(hiRows) = lam(hiRows) + lambda.ineqnonlin(1:nh);
-        lam(loRows) = lam(loRows) - lambda.ineqnonlin(nh+1:end);
-        lam(eqRows) = lambda.eqnonlin;
+    if isstruct(lambda)
+        if m > 0
+            lam(hiRows) = lam(hiRows) + lambda.ineqnonlin(1:nh);
+            lam(loRows) = lam(loRows) - lambda.ineqnonlin(nh+1:end);
+            lam(eqRows) = lambda.eqnonlin;
+        end
+        rec.lam = lam(:)'; rec.zl = lambda.lower(:)'; rec.zu = lambda.upper(:)';
+    else
+        % fmincon returns an empty lambda when an OutputFcn stops the run (exitflag -1).
+        rec.lam = []; rec.zl = []; rec.zu = [];
+        rec.notes{end+1} = 'no multipliers: run stopped by the cooperative deadline';
     end
-    rec.lam = lam(:)'; rec.zl = lambda.lower(:)'; rec.zu = lambda.upper(:)';
     rec.native_status = exitflag; rec.native_message = output.message; rec.reported_success = exitflag > 0;
     rec.nit = output.iterations; rec.funcCount_native = output.funcCount;
     rec.firstorderopt_native = output.firstorderopt; rec.constrviolation_native = output.constrviolation;

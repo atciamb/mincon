@@ -1,0 +1,91 @@
+{
+ "n_problems": 24,
+ "duplicates_overwritten": 0,
+ "solvers": {
+  "fmincon-interior-point": {
+   "attained": 21,
+   "scorable": 24,
+   "kkt": 8,
+   "kkt_recovered": 18,
+   "not_ok": 0,
+   "n": 24
+  },
+  "fmincon-sqp": {
+   "attained": 21,
+   "scorable": 24,
+   "kkt": 10,
+   "kkt_recovered": 18,
+   "not_ok": 0,
+   "n": 24
+  },
+  "mincon": {
+   "attained": 23,
+   "scorable": 24,
+   "kkt": 13,
+   "kkt_recovered": 18,
+   "not_ok": 0,
+   "n": 24
+  },
+  "scipy-slsqp": {
+   "attained": 22,
+   "scorable": 24,
+   "kkt": 0,
+   "kkt_recovered": 12,
+   "not_ok": 0,
+   "n": 24
+  }
+ },
+ "paired": {
+  "fmincon-sqp": {
+   "both": 20,
+   "only_solver": 1,
+   "only_baseline": 1,
+   "neither": 2,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    -11.11111111111111,
+    16.666666666666664
+   ],
+   "geo_mean_ratio": 0.6093561127094135,
+   "ratio_ci": [
+    0.41035842123770366,
+    0.7294731108310661
+   ],
+   "n_common": 20
+  },
+  "mincon": {
+   "both": 20,
+   "only_solver": 3,
+   "only_baseline": 1,
+   "neither": 0,
+   "diff_pp": 8.333333333333334,
+   "diff_ci": [
+    0.0,
+    40.0
+   ],
+   "geo_mean_ratio": 0.9067469419125634,
+   "ratio_ci": [
+    0.7459748282685306,
+    0.9583881011902768
+   ],
+   "n_common": 20
+  },
+  "scipy-slsqp": {
+   "both": 20,
+   "only_solver": 2,
+   "only_baseline": 1,
+   "neither": 1,
+   "diff_pp": 4.166666666666667,
+   "diff_ci": [
+    -14.285714285714285,
+    40.0
+   ],
+   "geo_mean_ratio": 0.5398854223326295,
+   "ratio_ci": [
+    0.3620233734482231,
+    0.6811026718434803
+   ],
+   "n_common": 20
+  }
+ }
+}
