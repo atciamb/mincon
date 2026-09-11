@@ -292,3 +292,21 @@ its place on validation it is not shipped in `auto`.
 6. Round-3 held-out set generated, sealed, run; docs; commit; push (report: G5).
 
 Each step is small enough to report on before the next begins.
+
+---
+
+## 8. Outcome (September 11, 2026)
+
+| gate | result | where |
+|---|---|---|
+| G1 SQP member alone, dev | met: 134/143 vs 135/143 for the IP member; evaluations 0.78× [0.70, 0.86], 0.72× on n ≤ 5 | `bench/results/abl-sqp1` |
+| G2 portfolio, validation | met on development material: 137/143 vs 135 and 134 for the members alone; 0.775× [0.71, 0.84] the previous candidate | `bench/results/abl-sqp2` |
+| G3 budget policy | H3 falsified; policy = no default cap + progress verdict; D10 fixed (INFEASIBLE_NL 9784 → 105 evaluations); fmincon at 15k/100k attains 9/13 of its 17 cap-ended problems vs mincon's 14 | `bench/results/r4-budget` |
+| G4 basins | every non-attainment classified; D9 found and fixed (+1 attained, 1.014× evaluations); HS33 saddle handled in SQP | `bench/results/r3-basins`, `abl-i0` |
+| G5 round-3 held-out | 12/12 vs fmincon-ip 10/12 and fmincon-sqp 12/12; evaluations 0.81 [0.53, 1.05] vs ip, 1.13 [0.97, 1.38] vs sqp; wall 0.077 / 0.35; contract intervals not met at n = 12 | `bench/results/s6v3-final3`, `s6v3-timing` |
+
+Hypotheses: H1 confirmed (0.78×, interval excludes 1); H2 confirmed on
+development material; H3 falsified; H4 resolved (strict local minima except
+BADSTART_DISC = D9); H5 confirmed (multi-start not a default); H6 partly:
+the SQP member is cheaper than the IP member on HS63 (57 vs 303) and HS38
+(174 vs 243), the stall question is resolved by routing for n ≤ 20.

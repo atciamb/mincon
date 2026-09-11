@@ -98,13 +98,49 @@ The genuine stalls in the corpus are of a different kind:
    that; exact/AD Hessians from Python or a limited-memory/structured update
    would. Recorded, not addressed in this phase.
 
-## 4. Pending: fmincon at raised caps
+## 4. fmincon at raised caps (`fmincon-caps/`, run September 11 on the benchmark host)
 
-Whether fmincon-ip itself would attain its 15 capped problems given 15 000
-or 100 000 evaluations is a MATLAB experiment (solver tags
-`fmincon-interior-point@MaxFunctionEvaluations=15000` and `=100000`, with
-`MaxIterations=10000`; diagnostic, non-default). The MATLAB worker now accepts
-such overrides; the run needs the Windows job runner, which is not alive at
-the time of writing. It is scheduled for the next runner session and its
-result goes in this directory as `fmincon-cap15k.A.jsonl` /
-`fmincon-cap100k.A.jsonl`.
+`fmincon-interior-point` with `MaxFunctionEvaluations` raised to 15 000 and to
+100 000 (`MaxIterations` 10 000; everything else default) on the 17 problems
+where its default cap had ended the solve, compared with its default-cap
+records and with mincon C6 (no cap, defaults):
+
+| problem | n | fmincon 3000 | fmincon 15 000 | fmincon 100 000 | mincon C6 |
+|---|---:|---|---|---|---|
+| QUADSPHERE2_30 | 30 | ✓ 3013 (cap) | ✓ 3786 | ✓ 3786 | ✓ 1271 |
+| ELLIPSOID_50 | 50 | ✗ | ✓ 5173 | ✓ 5173 | ✓ 6928 |
+| CHAINROSEN_BOX_50 | 50 | ✗ | ✗ (cap) | ✗ 15 379, exit 1 at f = 3.99 (local minimum) | ✓ 27 378 |
+| CHAINROSEN_EQ_50 | 50 | ✗ | ✓ 6599 | ✓ 6599 | ✓ 3472 |
+| CATENARY_40 | 78 | ✗ | ✓ 15 007 | ✓ 15 007 | ✓ 19 102 |
+| POLYQP_100 | 100 | ✓ 3030 (cap) | ✓ 4242 | ✓ 4242 | ✓ 2833 |
+| QUADSPHERE_100 | 100 | ✗ | ✓ 11 672 | ✓ 11 672 | ✓ 1414 |
+| PORTFOLIO_100 | 100 | ✗ | ✗ exit 1 | ✗ exit 1 | ✗ exit 1 (every solver: the target is a different local minimum) |
+| NNLS_SIMPLEX_120 | 120 | ✗ | ✗ (cap) | ✓ 16 128 | ✓ 7264 |
+| ELLIPSOID2_200 | 200 | ✗ | ✗ (cap) | ✓ 91 494 | ✓ 85 561 |
+| MAXENT_200 | 200 | ✗ | ✓ 15 069 (cap, inside tolerance) | ✓ 18 137 | ✓ 80 059 |
+| CHAINROSEN_EQ_200 | 200 | ✗ | ✗ (cap) | ✗ 86 820, exit 1 (local minimum) | ✓ 15 280 |
+| CHAINROSEN_BOX_200 | 200 | ✗ | ✗ (cap) | ✗ (cap) | ✗ (budget, steady progress) |
+| QUADSPHERE2_300 | 300 | ✗ | ✓ 15 079 (cap, inside tolerance) | ✓ 45 503 | ✓ 13 245 |
+| ELLIPSOID_500 | 500 | ✗ | ✗ (cap) | ✓ 100 478 (cap, inside tolerance) | ✗ (budget, steady progress) |
+| LQTRAJ_200 | 600 | ✓ 3005 (cap) | ✓ 6010 | ✓ 6010 | ✓ 6598 |
+| QUADSPHERE_1000 | 1000 | ✗ | ✗ (cap) | ✓ 100 172 (cap, inside tolerance) | ✓ 16 016 |
+| **attained** | | **3 / 17** | **9 / 17** | **13 / 17** | **14 / 17** |
+
+**Answer to Q2, part 2.** fmincon's default cap is most of its failure count
+on this corpus: given 15 000 evaluations it attains 9 of these 17 instead of 3,
+and given 100 000 it attains 13. mincon at defaults attains 14. The two
+problems fmincon-ip cannot attain even with 100 000 evaluations
+(CHAINROSEN_BOX_50, CHAINROSEN_EQ_200) end at a different local minimum with
+exit flag 1 — a basin effect, not a budget effect; the one mincon cannot
+(ELLIPSOID_500) is steady slow progress of its dense BFGS model, where
+fmincon's BFGS reaches the tolerance band at the 100 000 cap. Evaluation
+counts on the jointly attained problems go both ways (QUADSPHERE_100: 1414 vs
+11 672; MAXENT_200: 80 059 vs 18 137).
+
+So the honest statement is: at defaults mincon is more reliable than
+fmincon-ip mainly because fmincon's default budget is too small for
+finite-difference problems above n ≈ 50; a user who raises
+`MaxFunctionEvaluations` recovers most of that gap. mincon's default policy —
+no cap, a progress verdict on exit — is what a user gets without knowing to
+change anything, which is the comparison the protocol makes, and it is stated
+that way in `docs/17_CLAIM_AUDIT.md`.
