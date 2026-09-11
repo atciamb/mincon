@@ -1,6 +1,11 @@
 # Specification: sequential quadratic programming
 
-Not implemented. `crates/mincon-sqp` holds the interface; this is the plan.
+Implemented September 2026 (`crates/mincon-sqp`, `crates/mincon-qp`); the
+derivations and the decisions actually taken are in `docs/20_SQP_MATHEMATICS.md`
+and the measurements in `bench/results/abl-sqp1`, `abl-sqp2`. This file is the
+original plan, kept for the record; where it and `docs/20` differ, `docs/20` is
+what was built (single penalty parameter shared with the elastic QP instead of
+per-row Han–Powell penalties; second-order probe at termination).
 
 ---
 

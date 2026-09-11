@@ -1,6 +1,6 @@
 [package]
 name = "mincon-sqp"
-description = "Sequential quadratic programming for mincon (specification and scaffolding)"
+description = "Sequential quadratic programming (l1 merit, damped BFGS, elastic QP) for mincon"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,6 +12,10 @@ mincon-core.workspace = true
 mincon-linalg.workspace = true
 mincon-diff.workspace = true
 mincon-qp.workspace = true
+mincon-ip.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+mincon-testset.workspace = true

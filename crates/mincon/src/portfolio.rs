@@ -75,28 +75,38 @@ pub struct PortfolioReport {
 /// configuration we would ship as a single solver, so a one-thread run is never
 /// worse than no portfolio at all. Later members trade different risks.
 #[must_use]
-pub fn members(base: &Options) -> Vec<Member> {
+pub fn members(base: &Options, n: usize) -> Vec<Member> {
     let mut v = Vec::new();
 
-    // 1. The default. Everything we believe in, all at once.
-    v.push(Member {
+    let ip_default = Member {
         name: "ip-default",
         options: Options {
             algorithm: Algorithm::InteriorPoint,
             ..base.clone()
         },
-    });
+    };
+    let sqp = Member {
+        name: "sqp",
+        options: Options {
+            algorithm: Algorithm::Sqp,
+            ..base.clone()
+        },
+    };
 
-    // 2. SQP, when it exists. Fails on a different set of problems than
-    //    interior point does, which is the whole reason for the portfolio.
-    if mincon_sqp::is_available() {
-        v.push(Member {
-            name: "sqp",
-            options: Options {
-                algorithm: Algorithm::Sqp,
-                ..base.clone()
-            },
-        });
+    // 1 and 2. Interior point and SQP, in the order the measurements favour
+    //    (`bench/results/abl-sqp1`): on problems with at most SQP_FIRST_MAX_N
+    //    variables SQP attains at least as often as interior point and uses
+    //    0.72-0.88x its evaluations, while above that the dense quasi-Newton
+    //    QP falls behind (1.1-3x at n >= 50). They fail on different problems,
+    //    which is the reason for the portfolio.
+    if mincon_sqp::is_available() && n <= SQP_FIRST_MAX_N {
+        v.push(sqp);
+        v.push(ip_default);
+    } else {
+        v.push(ip_default);
+        if mincon_sqp::is_available() {
+            v.push(sqp);
+        }
     }
 
     // 3. Interior point from a much larger barrier parameter, with central
@@ -130,9 +140,16 @@ pub fn members(base: &Options) -> Vec<Member> {
     v
 }
 
-/// A report the portfolio can stop on: a usable point that is feasible to tolerance.
+/// Problems with at most this many variables run the SQP member first.
+pub const SQP_FIRST_MAX_N: usize = 20;
+
+/// A report the portfolio can stop on: converged (to the requested or the
+/// acceptable tolerances) at a point feasible to tolerance. A step-tolerance
+/// or otherwise unverified point is kept as a candidate but the next member
+/// still runs, since a different method often finishes what this one could not.
 fn usable(rep: &SolveReport, tol_feas: f64) -> bool {
-    rep.exit_flag.returned_usable_point() && rep.constraint_violation <= tol_feas
+    matches!(rep.exit_flag, ExitFlag::Optimal | ExitFlag::Acceptable)
+        && rep.constraint_violation <= tol_feas
 }
 
 /// Rank two outcomes. Returns `true` when `a` is strictly better than `b`.
@@ -151,6 +168,16 @@ fn better(a: &SolveReport, b: &SolveReport, tol_feas: f64) -> bool {
     let b_conv = b.exit_flag.is_success();
     if a_conv != b_conv {
         return a_conv;
+    }
+    // "Acceptable" is a certificate (relaxed KKT tolerances met); a step-tolerance
+    // or function-tolerance exit is only a usable point with unverified
+    // optimality, so it ranks below even when its objective happens to be lower
+    // (degenerate problems: the unverified point can sit past the optimum
+    // inside the constraint tolerance).
+    let a_acc = a.exit_flag == ExitFlag::Acceptable;
+    let b_acc = b.exit_flag == ExitFlag::Acceptable;
+    if a_acc != b_acc {
+        return a_acc;
     }
     let a_usable = a.exit_flag.returned_usable_point();
     let b_usable = b.exit_flag.returned_usable_point();
@@ -171,7 +198,7 @@ pub fn solve<P: Nlp + Sync + ?Sized>(
     nlp: &P,
     base: &Options,
 ) -> Result<PortfolioReport, SolveError> {
-    let members = members(base);
+    let members = members(base, nlp.dims().n);
     let threads = base
         .threads
         .unwrap_or_else(|| thread::available_parallelism().map_or(1, std::num::NonZero::get));
@@ -407,10 +434,13 @@ mod tests {
 
     #[test]
     fn the_first_member_is_the_shippable_default() {
-        let m = members(&Options::default());
+        let m = members(&Options::default(), 100);
         assert_eq!(m[0].name, "ip-default");
         assert_eq!(m[0].options.scaling, ScalingMode::GradientBased);
         assert!(m.len() >= 3, "portfolio should have real diversity");
+        let small = members(&Options::default(), 5);
+        assert_eq!(small[0].name, "sqp");
+        assert_eq!(small[1].name, "ip-default");
     }
 
     /// A model that declares itself not parallel-safe (like every Python model)
@@ -500,11 +530,11 @@ mod tests {
     }
 
     #[test]
-    fn unimplemented_algorithms_are_not_enlisted() {
-        let m = members(&Options::default());
-        assert!(
-            !m.iter().any(|x| x.name == "sqp"),
-            "SQP is not implemented, so it must not be in the portfolio yet"
-        );
+    fn both_algorithms_are_enlisted_in_every_size_class() {
+        for n in [1, 20, 21, 1000] {
+            let m = members(&Options::default(), n);
+            assert!(m.iter().any(|x| x.name == "sqp"), "n = {n}");
+            assert!(m.iter().any(|x| x.name == "ip-default"), "n = {n}");
+        }
     }
 }

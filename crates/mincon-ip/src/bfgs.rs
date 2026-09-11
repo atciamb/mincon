@@ -122,6 +122,12 @@ impl DenseBfgs {
         }
     }
 
+    /// The full matrix, row-major `n * n`.
+    #[must_use]
+    pub fn dense(&self) -> Vec<f64> {
+        self.b.clone()
+    }
+
     /// `out <- B * v`.
     pub fn multiply(&self, v: &[f64], out: &mut [f64]) {
         for i in 0..self.n {

@@ -118,10 +118,12 @@ def minimize(
         Starting point.
     args : tuple, optional
         Extra arguments passed to ``fun``, ``jac`` and every constraint.
-    method : {'auto', 'interior-point'}, optional
+    method : {'auto', 'interior-point', 'sqp'}, optional
         ``'auto'`` (the default) races several configurations and returns the
         best answer. On a single thread it runs them in sequence and stops at
-        the first success. SQP is not implemented in this release.
+        the first success. ``'sqp'`` is the sequential quadratic programming
+        member (l1 merit function, damped BFGS, elastic QP): usually the cheapest
+        in function evaluations on small dense problems.
     jac : callable, optional
         ``jac(x, *args) -> array_like``. Without it the gradient is estimated
         by finite differences, which is supported and tested but costs

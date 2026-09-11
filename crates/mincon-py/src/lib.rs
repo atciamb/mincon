@@ -576,6 +576,9 @@ fn minimize(
         row.set_item("alpha", t.alpha)?;
         row.set_item("mu", t.mu)?;
         row.set_item("in_restoration", t.in_restoration)?;
+        row.set_item("delta_w", t.delta_w)?;
+        row.set_item("delta_c", t.delta_c)?;
+        row.set_item("soc", t.soc_count)?;
         trace.append(row)?;
     }
     d.set_item("trace", trace)?;

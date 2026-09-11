@@ -186,10 +186,18 @@ pub fn solve_dense(
     }
 
     // ---- constraints as n^T x >= b ------------------------------------------
+    // Equalities first (rows with a_l == a_u, and fixed variables x_l == x_u, the
+    // latter entered as `BoundLower` with a free multiplier); they are added to
+    // the working set before anything else and never dropped.
     let mut cons: Vec<Constraint> = Vec::new();
     for i in 0..m {
         if qp.a_l[i] == qp.a_u[i] {
             cons.push(Constraint::RowEquality(i));
+        }
+    }
+    for j in 0..n {
+        if qp.x_l[j] == qp.x_u[j] {
+            cons.push(Constraint::BoundLower(j));
         }
     }
     let n_eq = cons.len();
@@ -204,11 +212,13 @@ pub fn solve_dense(
         }
     }
     for j in 0..n {
-        if qp.x_l[j].is_finite() {
-            cons.push(Constraint::BoundLower(j));
-        }
-        if qp.x_u[j].is_finite() {
-            cons.push(Constraint::BoundUpper(j));
+        if qp.x_l[j] != qp.x_u[j] {
+            if qp.x_l[j].is_finite() {
+                cons.push(Constraint::BoundLower(j));
+            }
+            if qp.x_u[j].is_finite() {
+                cons.push(Constraint::BoundUpper(j));
+            }
         }
     }
     let p = cons.len();
@@ -470,6 +480,11 @@ pub fn solve_dense(
             Constraint::RowEquality(i) => lambda[i] = -ui,
             Constraint::RowLower(i) => lambda[i] = -ui.max(0.0),
             Constraint::RowUpper(i) => lambda[i] = ui.max(0.0),
+            Constraint::BoundLower(j) if k < n_eq => {
+                // fixed variable: free multiplier split by sign
+                z_l[j] = ui.max(0.0);
+                z_u[j] = (-ui).max(0.0);
+            }
             Constraint::BoundLower(j) => z_l[j] = ui.max(0.0),
             Constraint::BoundUpper(j) => z_u[j] = ui.max(0.0),
         }

@@ -2,7 +2,7 @@
 
     python worker_python.py --solver mincon --track A --problems HS71,HS100 --out r.jsonl --progress p.txt
 
-Solvers: mincon (Algorithm auto, the shipped default), mincon-ip, mincon-fmincon (fmincon facade),
+Solvers: mincon (Algorithm auto, the shipped default), mincon-ip, mincon-sqp, mincon-fmincon (fmincon facade),
 scipy-slsqp, scipy-trust-constr. Track A: no derivatives supplied; track C: exact objective gradient
 and (where the API allows) exact constraint Jacobian.
 The supervisor watches `--progress`; each record is flushed before the next problem starts.
@@ -70,7 +70,7 @@ def solve_mincon(model, track, budget, threads, variant, overrides=None):
         opts["maxtime"] = float(budget["maxtime"])
     opts.update({k: v for k, v in (overrides or {}).items() if not k.startswith("_")})  # "_tag=..." keys only label the run
     jac = model.grad if track == "C" else None
-    method = {"mincon": "auto", "mincon-ip": "interior-point"}.get(variant, "auto")
+    method = {"mincon": "auto", "mincon-ip": "interior-point", "mincon-sqp": "sqp"}.get(variant, "auto")
     t0 = time.perf_counter()
     if variant == "mincon-fmincon":
         # the MATLAB-style facade: nonlcon returns (c <= 0, ceq == 0)

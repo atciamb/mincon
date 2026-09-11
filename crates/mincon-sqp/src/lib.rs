@@ -1,11 +1,8 @@
 //! Sequential quadratic programming.
 //!
-//! # Status: specified, not implemented
-//!
-//! [`solve`] returns [`mincon_core::SolveError::InvalidOptions`] today. This
-//! crate exists so that the interface, the portfolio wiring and the benchmark
-//! harness are all in place before the algorithm lands, and so that the
-//! specification lives next to the code that will implement it.
+//! # Status: implemented (`solver`), qualified against the interior-point
+//! member on the benchmark corpus; see `docs/20_SQP_MATHEMATICS.md` for the
+//! derivations and `docs/19_SQP_RD_PLAN.md` for the measurements.
 //!
 //! # Why SQP is worth building even though interior point works
 //!
@@ -71,60 +68,47 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-use mincon_core::{Nlp, Options, SolveError, SolveReport};
+pub mod solver;
 
-/// Run SQP.
-///
-/// # Errors
-/// Always, for now: [`SolveError::InvalidOptions`] explaining that the
-/// algorithm is not implemented. Callers should treat this as "this portfolio
-/// member is unavailable", not as a problem with the model.
-pub fn solve<P: Nlp + ?Sized>(_nlp: &P, _opts: &Options) -> Result<SolveReport, SolveError> {
-    Err(SolveError::InvalidOptions(
-        "the SQP algorithm is not implemented yet; see docs/03_SPEC_SQP.md and \
-         Use Algorithm::InteriorPoint."
-            .into(),
-    ))
-}
+pub use solver::solve;
 
-/// Whether this algorithm is available. The portfolio uses this rather than
-/// calling and discarding the error, so that an unimplemented member costs
-/// nothing.
+/// Whether this algorithm is available to the portfolio.
 #[must_use]
 pub fn is_available() -> bool {
-    false
+    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mincon_core::{ExitFlag, Options};
 
     #[test]
-    fn reports_itself_unavailable_rather_than_pretending() {
-        assert!(!is_available());
+    fn reports_itself_available() {
+        assert!(is_available());
     }
 
     #[test]
-    fn the_error_points_at_the_specification() {
-        struct Dummy;
-        impl Nlp for Dummy {
+    fn solves_a_bound_constrained_quadratic_in_one_step() {
+        struct Q;
+        impl mincon_core::Nlp for Q {
             fn dims(&self) -> mincon_core::NlpDims {
-                mincon_core::NlpDims { n: 1, m: 0 }
+                mincon_core::NlpDims { n: 2, m: 0 }
             }
             fn x_bounds(&self) -> (&[f64], &[f64]) {
-                (&[f64::NEG_INFINITY], &[f64::INFINITY])
+                (&[0.0, 0.0], &[1.0, 1.0])
             }
             fn c_bounds(&self) -> (&[f64], &[f64]) {
                 (&[], &[])
             }
             fn x0(&self) -> &[f64] {
-                &[0.0]
+                &[0.5, 0.5]
             }
             fn capabilities(&self) -> mincon_core::Capabilities {
                 mincon_core::Capabilities::none()
             }
             fn objective(&self, x: &[f64]) -> Result<f64, mincon_core::EvalError> {
-                Ok(x[0])
+                Ok((x[0] - 2.0).powi(2) + (x[1] - 0.25).powi(2))
             }
             fn constraints(
                 &self,
@@ -134,7 +118,46 @@ mod tests {
                 Ok(())
             }
         }
-        let e = solve(&Dummy, &Options::default()).unwrap_err();
-        assert!(e.to_string().contains("03_SPEC_SQP.md"));
+        let r = solve(&Q, &Options::default()).unwrap();
+        assert_eq!(
+            r.exit_flag,
+            ExitFlag::Optimal,
+            "{:?} {:?}",
+            r.exit_flag,
+            r.notes
+        );
+        assert!(
+            (r.solution.x[0] - 1.0).abs() < 1e-8 && (r.solution.x[1] - 0.25).abs() < 1e-6,
+            "{:?}",
+            r.solution.x
+        );
+        assert!(r.solution.z_u[0] > 1.9, "{:?}", r.solution.z_u);
+    }
+}
+
+#[cfg(test)]
+mod diag {
+    #[test]
+    #[ignore]
+    fn fixture_details() {
+        let name = std::env::var("MINCON_FIXTURE").unwrap_or_else(|_| "HS13".into());
+        let p = mincon_testset::by_name(&name).unwrap();
+        let r = super::solve(&p.as_nlp(), &mincon_core::Options::default()).unwrap();
+        eprintln!(
+            "{:?} x={:?} f={} lam={:?} zl={:?} zu={:?} e0={}",
+            r.exit_flag,
+            r.solution.x,
+            r.solution.f,
+            r.solution.lambda,
+            r.solution.z_l,
+            r.solution.z_u,
+            r.optimality
+        );
+        for n in &r.notes {
+            eprintln!("  {n}");
+        }
+        for t in r.trace.iter() {
+            eprintln!("  {t:?}");
+        }
     }
 }
