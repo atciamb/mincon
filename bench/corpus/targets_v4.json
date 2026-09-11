@@ -1,0 +1,959 @@
+{
+ "version": "v4",
+ "created": "2026-09-11",
+ "rel_tol": 0.0001,
+ "feas_tol": 1e-06,
+ "targets": {
+  "BADSTART_DISC": {
+   "target": 0.045674808,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "BIGMULT": {
+   "target": 1.0,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "CANTILEVER": {
+   "target": 1.33995636,
+   "kind": "best-known-published",
+   "source": "Chickermane & Gea cantilever beam; best-known 1.33995636"
+  },
+  "CATENARY_10": {
+   "target": -2.578069605635999,
+   "kind": "best-known-verified",
+   "source": "reference run mincon 3b79007d0b9945c49b2cf27574b3cbeb"
+  },
+  "CATENARY_40": {
+   "target": -10.348875031421256,
+   "kind": "best-known-verified",
+   "source": "reference run fmincon-interior-point e4a32fd463b24c799610dfd2a8edc6d7"
+  },
+  "CHAINROSEN_BOX_10": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "CHAINROSEN_BOX_200": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "CHAINROSEN_BOX_50": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "CHAINROSEN_EQ_10": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "CHAINROSEN_EQ_200": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "CHAINROSEN_EQ_50": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "DEGEN_LICQ": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "DISPATCH_20": {
+   "target": 3255.6671468116656,
+   "kind": "best-known-verified",
+   "source": "reference run fmincon-sqp 50e49929d4574c3a817156b29da6e2b4"
+  },
+  "DISPATCH_5": {
+   "target": 656.661177062286,
+   "kind": "best-known-verified",
+   "source": "reference run scipy-slsqp 9a51bc3b14e342b5859635e945dfa1cb"
+  },
+  "DOMAIN_LOG": {
+   "target": 2.0,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "DOMAIN_SQRT": {
+   "target": 0.5,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "ELLIPSOID2_20": {
+   "target": 128.32552772008117,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "ELLIPSOID2_200": {
+   "target": 1215.199923891227,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "ELLIPSOID_5": {
+   "target": 13.611148127699442,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "ELLIPSOID_50": {
+   "target": 206.40785773667062,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "ELLIPSOID_500": {
+   "target": 2034.1314516171158,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "EQQP6": {
+   "target": 0.25,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "EXPFIT2_CLEAN": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "EXPFIT2_NOISY": {
+   "target": 0.0017698385059296792,
+   "kind": "best-known-verified",
+   "source": "reference run fmincon-sqp f50b19ed7d9e426aba83b66070a8a7e0"
+  },
+  "EXPFIT_CLEAN": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "EXPFIT_CLEAN_CON": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "EXPFIT_NOISY": {
+   "target": null,
+   "kind": "best-known-pending",
+   "source": "bench/corpus/structured.py"
+  },
+  "FIXEDVARS": {
+   "target": 7.0,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "FLAT_BOUND": {
+   "target": 9e-08,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "HS1": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS10": {
+   "target": -1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS100": {
+   "target": 680.6300573,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS104": {
+   "target": 3.9511634396,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS106": {
+   "target": 7049.330923,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; heat exchanger design"
+  },
+  "HS108": {
+   "target": -0.8660254038,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; hexagon; degenerate"
+  },
+  "HS11": {
+   "target": -8.4984642232,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS110": {
+   "target": -45.77847,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; objective undefined outside the box"
+  },
+  "HS111": {
+   "target": -47.76109026,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; chemical equilibrium"
+  },
+  "HS112": {
+   "target": -47.707579,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; chemical equilibrium"
+  },
+  "HS113": {
+   "target": 24.30620907,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; Wong #2"
+  },
+  "HS117": {
+   "target": 32.348679,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; Colville #2"
+  },
+  "HS118": {
+   "target": 664.82045,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; transcription of the difference rows as one-sided pairs; verify against published optimum before use as target"
+  },
+  "HS12": {
+   "target": -30.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS13": {
+   "target": 1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; MFCQ fails at the solution"
+  },
+  "HS14": {
+   "target": 1.3934646209,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS15": {
+   "target": 306.5,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS16": {
+   "target": 0.25,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; local method from x0 reaches f=3.98206 (verified local minimum)"
+  },
+  "HS17": {
+   "target": 1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS18": {
+   "target": 5.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS19": {
+   "target": -6961.81381,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS2": {
+   "target": 0.0504261879,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS20": {
+   "target": 38.19872,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS21": {
+   "target": -99.96,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; x0 violates a bound"
+  },
+  "HS22": {
+   "target": 1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS23": {
+   "target": 2.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS24": {
+   "target": -1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS25": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; 99-term data fit; (u_i - x2)^x3 needs u_i > x2, guaranteed by the box"
+  },
+  "HS26": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS27": {
+   "target": 0.04,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS28": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS29": {
+   "target": -22.627416997969522,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS3": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS30": {
+   "target": 1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS31": {
+   "target": 6.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS32": {
+   "target": 1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS33": {
+   "target": -4.585786437626905,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS34": {
+   "target": -0.8340324459,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS35": {
+   "target": 0.1111111111111111,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS36": {
+   "target": -3300.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS37": {
+   "target": -3456.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS38": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS39": {
+   "target": -1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS4": {
+   "target": 2.6666666666666665,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS40": {
+   "target": -0.25,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS41": {
+   "target": 1.9259259259259258,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS42": {
+   "target": 13.857864376269049,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS43": {
+   "target": -44.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; Rosen-Suzuki"
+  },
+  "HS44": {
+   "target": -15.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; local minimum f=-13 exists"
+  },
+  "HS45": {
+   "target": 1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS46": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS47": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS48": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS49": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS5": {
+   "target": -1.913222954981,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS50": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS51": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS52": {
+   "target": 5.326647564469914,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS53": {
+   "target": 4.093023255813954,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS55": {
+   "target": 6.333333333333333,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; rank-deficient equality set (rank 5 of 6)"
+  },
+  "HS56": {
+   "target": -3.456,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS57": {
+   "target": 0.02845966,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; least squares data fit"
+  },
+  "HS6": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS60": {
+   "target": 0.03256820025,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS61": {
+   "target": -143.6461422,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS62": {
+   "target": -26272.51448,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS63": {
+   "target": 961.7151721,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS64": {
+   "target": 6299.842428,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS65": {
+   "target": 0.9535288567,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; x0 outside the box"
+  },
+  "HS66": {
+   "target": 0.5181632741,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS7": {
+   "target": -1.7320508075688772,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS71": {
+   "target": 17.0140172935,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS72": {
+   "target": 727.67937,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS73": {
+   "target": 29.894378,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS74": {
+   "target": 5126.4981,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS75": {
+   "target": 5174.4127,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS76": {
+   "target": -4.681818181,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS77": {
+   "target": 0.24150513,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS78": {
+   "target": -2.91970041,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS79": {
+   "target": 0.0787768209,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS8": {
+   "target": -1.0,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; constant objective, feasibility only"
+  },
+  "HS80": {
+   "target": 0.0539498478,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS81": {
+   "target": 0.0539498478,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS83": {
+   "target": -30665.53867,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS84": {
+   "target": -5280335.133,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS86": {
+   "target": -32.34867897,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; Colville #1"
+  },
+  "HS9": {
+   "target": -0.5,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; infinitely many minimizers x=(12k-3, 16k-4)"
+  },
+  "HS93": {
+   "target": 135.075961,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; transformer design"
+  },
+  "HS95": {
+   "target": 0.015619525,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS96": {
+   "target": 0.015619525,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS97": {
+   "target": 3.1358091,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "HS98": {
+   "target": 3.1358091,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981"
+  },
+  "INFEASIBLE_LIN": {
+   "target": null,
+   "kind": "diagnostic",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "INFEASIBLE_NL": {
+   "target": null,
+   "kind": "diagnostic",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "LQTRAJ_10": {
+   "target": 12.121212121212139,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "LQTRAJ_200": {
+   "target": 12.000300007500185,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "LQTRAJ_50": {
+   "target": 12.004801920768323,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "MANY_INEQ": {
+   "target": -5.0,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "NARROWBOX": {
+   "target": 3.9999999600000002,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "NEARDEP": {
+   "target": -1.0,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "POLYQP_10": {
+   "target": -1.3307319893913616,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "POLYQP_100": {
+   "target": -8.34349012023698,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "PORTFOLIO_100": {
+   "target": null,
+   "kind": "best-known-pending",
+   "source": "bench/corpus/structured.py"
+  },
+  "PORTFOLIO_20": {
+   "target": null,
+   "kind": "best-known-pending",
+   "source": "bench/corpus/structured.py"
+  },
+  "PRESSURE_VESSEL": {
+   "target": 5885.3327736,
+   "kind": "best-known-published",
+   "source": "Sandgren 1990 continuous relaxation; best-known 5885.3327736"
+  },
+  "QUADSPHERE2_30": {
+   "target": 0.327666449368758,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "QUADSPHERE2_300": {
+   "target": 0.03777324609690312,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "QUADSPHERE_10": {
+   "target": 0.5360899475501582,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "QUADSPHERE_100": {
+   "target": 0.0674595661339359,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "QUADSPHERE_1000": {
+   "target": 0.006897668763199153,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "RANKLOSS_JAC": {
+   "target": 1.0,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "REDUNDANT_EQ": {
+   "target": 8.333333333333334,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "SPEED_REDUCER": {
+   "target": 2994.4711,
+   "kind": "best-known-published",
+   "source": "Golinski speed reducer, continuous relaxation; best-known 2994.4711"
+  },
+  "SPRING": {
+   "target": 0.012665,
+   "kind": "best-known-published",
+   "source": "Arora / Belegundu tension-compression spring; best-known 0.012665"
+  },
+  "START_OUTSIDE": {
+   "target": 0.5,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "THREEBAR_TRUSS": {
+   "target": 263.8958434,
+   "kind": "best-known-published",
+   "source": "Nowcki three-bar truss; best-known 263.8958434"
+  },
+  "TUBULAR_COLUMN": {
+   "target": 26.499496747068722,
+   "kind": "best-known-published+revised",
+   "source": "Rao tubular column; best-known 26.5313; revised by scipy-slsqp 1603e135de0f4167b715b8745bd480e9"
+  },
+  "UNBOUNDED_PAR": {
+   "target": null,
+   "kind": "diagnostic",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "UNITS": {
+   "target": 0.5,
+   "kind": "closed-form-or-published",
+   "source": "closed form, bench/corpus/adversarial.py"
+  },
+  "WELDED_BEAM": {
+   "target": 1.724852,
+   "kind": "best-known-published",
+   "source": "Rao / Coello welded beam; best-known 1.724852"
+  },
+  "HS114": {
+   "target": -1768.80696,
+   "kind": "closed-form-or-published",
+   "source": "Hock & Schittkowski 1981; alkylation process (Bracken\u2013McCormick); published value re-verified at generation"
+  },
+  "LOGSUMEXP_10": {
+   "target": 3.841495327434342,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "LOGSUMEXP_20": {
+   "target": 4.517249875217512,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "MAXENT_10": {
+   "target": -2.2915992878048765,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "MAXENT_200": {
+   "target": -5.776444523404009,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "MAXENT_50": {
+   "target": -4.159829793100031,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "NNLS_SIMPLEX_120": {
+   "target": 0.18781670468142275,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "NNLS_SIMPLEX_30": {
+   "target": 0.05737475295566519,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "NNLS_SIMPLEX_6": {
+   "target": 0.008222714659223307,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "ROSEN_SPHERE_10": {
+   "target": 2.986819310519194,
+   "kind": "best-known-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "ROSEN_SPHERE_4": {
+   "target": 0.709197705452478,
+   "kind": "best-known-published",
+   "source": "bench/corpus/structured.py"
+  },
+  "SINFIT_CLEAN": {
+   "target": 0.0,
+   "kind": "closed-form-or-published",
+   "source": "bench/corpus/structured.py"
+  }
+ },
+ "revisions": [
+  {
+   "version": "v2",
+   "action": "add",
+   "problems": [
+    "CATENARY_10",
+    "CATENARY_40",
+    "DISPATCH_20",
+    "DISPATCH_5",
+    "ELLIPSOID2_20",
+    "ELLIPSOID2_200",
+    "EXPFIT2_CLEAN",
+    "EXPFIT2_NOISY",
+    "HS25",
+    "HS56",
+    "HS84",
+    "POLYQP_10",
+    "POLYQP_100",
+    "QUADSPHERE2_30",
+    "QUADSPHERE2_300",
+    "TUBULAR_COLUMN"
+   ],
+   "reason": "round-2 held-out set added; round-1 entries unchanged"
+  },
+  {
+   "version": "v3",
+   "problem": "CATENARY_10",
+   "action": "set",
+   "value": -2.578069605635999,
+   "by": "mincon",
+   "run_id": "3b79007d0b9945c49b2cf27574b3cbeb"
+  },
+  {
+   "version": "v3",
+   "problem": "CATENARY_40",
+   "action": "set",
+   "value": -10.348875031421256,
+   "by": "fmincon-interior-point",
+   "run_id": "e4a32fd463b24c799610dfd2a8edc6d7"
+  },
+  {
+   "version": "v3",
+   "problem": "DISPATCH_20",
+   "action": "set",
+   "value": 3255.6671468116656,
+   "by": "fmincon-sqp",
+   "run_id": "50e49929d4574c3a817156b29da6e2b4"
+  },
+  {
+   "version": "v3",
+   "problem": "DISPATCH_5",
+   "action": "set",
+   "value": 656.661177062286,
+   "by": "scipy-slsqp",
+   "run_id": "9a51bc3b14e342b5859635e945dfa1cb"
+  },
+  {
+   "version": "v3",
+   "problem": "EXPFIT2_NOISY",
+   "action": "set",
+   "value": 0.0017698385059296792,
+   "by": "fmincon-sqp",
+   "run_id": "f50b19ed7d9e426aba83b66070a8a7e0"
+  },
+  {
+   "version": "v3",
+   "problem": "TUBULAR_COLUMN",
+   "action": "revise",
+   "old": 26.5313,
+   "value": 26.499496747068722,
+   "by": "scipy-slsqp",
+   "run_id": "1603e135de0f4167b715b8745bd480e9"
+  },
+  {
+   "version": "v4",
+   "problem": "HS114",
+   "action": "add",
+   "value": -1768.80696
+  },
+  {
+   "version": "v4",
+   "problem": "LOGSUMEXP_10",
+   "action": "add",
+   "value": 3.841495327434342
+  },
+  {
+   "version": "v4",
+   "problem": "LOGSUMEXP_20",
+   "action": "add",
+   "value": 4.517249875217512
+  },
+  {
+   "version": "v4",
+   "problem": "MAXENT_10",
+   "action": "add",
+   "value": -2.2915992878048765
+  },
+  {
+   "version": "v4",
+   "problem": "MAXENT_200",
+   "action": "add",
+   "value": -5.776444523404009
+  },
+  {
+   "version": "v4",
+   "problem": "MAXENT_50",
+   "action": "add",
+   "value": -4.159829793100031
+  },
+  {
+   "version": "v4",
+   "problem": "NNLS_SIMPLEX_120",
+   "action": "add",
+   "value": 0.18781670468142275
+  },
+  {
+   "version": "v4",
+   "problem": "NNLS_SIMPLEX_30",
+   "action": "add",
+   "value": 0.05737475295566519
+  },
+  {
+   "version": "v4",
+   "problem": "NNLS_SIMPLEX_6",
+   "action": "add",
+   "value": 0.008222714659223307
+  },
+  {
+   "version": "v4",
+   "problem": "ROSEN_SPHERE_10",
+   "action": "add",
+   "value": 2.986819310519194
+  },
+  {
+   "version": "v4",
+   "problem": "ROSEN_SPHERE_4",
+   "action": "add",
+   "value": 0.709197705452478
+  },
+  {
+   "version": "v4",
+   "problem": "SINFIT_CLEAN",
+   "action": "add",
+   "value": 0.0
+  }
+ ]
+}

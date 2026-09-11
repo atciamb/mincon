@@ -20,10 +20,14 @@ EXPOSED_HS = {"HS1", "HS2", "HS3", "HS4", "HS5", "HS38", "HS45", "HS110", "HS6",
 # material that is reported separately. Round 2 held-out families (heldout2.py) are "final2".
 FAMILY_SPLIT = {"chainrosen": "dev", "lqtraj": "dev", "expfit": "dev", "quadsphere": "validation", "ellipsoid": "final1-dev",
                 "portfolio": "final1-dev", "polyqp": "final2", "dispatch": "final2", "catenary": "final2", "ellipsoid2": "final2",
-                "quadsphere2": "final2", "expfit2": "final2", "engineering2": "final2"}
+                "quadsphere2": "final2", "expfit2": "final2", "engineering2": "final2",
+                # Round 3 held-out families (heldout3.py), generated after candidate C6 was frozen.
+                "nnls_simplex": "final3", "maxent": "final3", "logsumexp": "final3", "rosen_sphere": "final3",
+                "sinfit": "final3"}
 ENGINEERING = {"SPRING": "validation", "THREEBAR_TRUSS": "validation", "CANTILEVER": "validation",
                "PRESSURE_VESSEL": "final1-dev", "WELDED_BEAM": "final1-dev", "SPEED_REDUCER": "final1-dev"}
 NEW_HS = {"HS25", "HS56", "HS84"}   # added after round 1: never seen by tuning
+ROUND3_HS = {"HS114"}               # added after candidate C6 was frozen
 
 
 def _u(name):
@@ -34,6 +38,8 @@ def assign(name, family, tags):
     if "diagnostic" in tags:
         return "diagnostic"
     if family == "hs":
+        if name in ROUND3_HS:
+            return "final3"
         if name in NEW_HS:
             return "final2"
         if name in EXPOSED_HS:

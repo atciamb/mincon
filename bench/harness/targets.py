@@ -83,9 +83,36 @@ def update(version, files, base="v1", stat_tol=1e-6):
     print(f"wrote {path(version)}: {len([1 for r in revisions if r['version']==version])} changes")
 
 
+def extend(version, base):
+    """Add entries for problems that exist in the corpus but not in `base` (a new held-out round),
+    with the same kinds as `init`; existing entries are copied unchanged."""
+    import spec, families  # noqa: F401
+    T = load(base)
+    added = []
+    for s in spec.all_specs():
+        if s.name in T["targets"]:
+            continue
+        if "diagnostic" in s.tags:
+            T["targets"][s.name] = dict(target=None, kind="diagnostic", source=s.source)
+        elif s.ref_f is not None and "best-known" not in s.tags:
+            T["targets"][s.name] = dict(target=float(s.ref_f), kind="closed-form-or-published", source=s.source)
+        elif s.ref_f is not None:
+            T["targets"][s.name] = dict(target=float(s.ref_f), kind="best-known-published", source=s.source)
+        else:
+            T["targets"][s.name] = dict(target=None, kind="best-known-pending", source=s.source)
+        added.append(s.name)
+        T["revisions"].append(dict(version=version, problem=s.name, action="add", value=T["targets"][s.name]["target"]))
+    T.update(version=version, created=time.strftime("%Y-%m-%d"))
+    json.dump(T, open(path(version), "w"), indent=1)
+    print(f"wrote {path(version)}: added {len(added)}: {', '.join(added)}")
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "init":
         init()
+    elif sys.argv[1] == "extend":
+        # python targets.py extend v4 --base v3
+        extend(sys.argv[2], sys.argv[sys.argv.index("--base") + 1])
     else:
         args = sys.argv[3:]
         base = "v1"
