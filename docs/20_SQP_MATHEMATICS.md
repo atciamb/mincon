@@ -719,3 +719,78 @@ MathWorks (read September 11, 2026, Optimization Toolbox R2025b):
   (option defaults per algorithm, exit flags).
 * "Choosing the Algorithm" —
   https://www.mathworks.com/help/optim/ug/choosing-the-algorithm.html.
+
+---
+
+## 11. As built (September 11, 2026) — what the corpus added to the textbook
+
+The implementation in `crates/mincon-sqp/src/solver.rs` follows §§1–6 and §9.
+Running it on the 149-problem corpus and the 55 fixtures forced six additions,
+each recorded here with the problem that demanded it and the mechanism; none
+of them changes the theory above, they close gaps the theory leaves open.
+
+**11.1 Curvature rescale of the unit initial matrix (UNITS).** With
+`B₀ = I` on a problem whose Hessian is 10⁸, the unit QP step is absurd and
+every backtracking trial fails; escalating to central differences and
+resetting `B` (both to the same unit matrix) cannot help. The rejected trials
+themselves measure the curvature along `d`: with `q(α) = f(x + αd) − f(x) −
+α gᵀd ≈ ½ α² dᵀHd`, the widest trial that still evaluated gives
+`dᵀHd ≈ 2q/α²`, and `B ← (dᵀHd / dᵀd) I` once, at no extra evaluation. This is
+the one-step analogue of the guarded diagonal scaling of §4.3, triggered by a
+*failed* first line search instead of a cut one.
+
+**11.2 Adaptive step bound on the QP (HS106).** A step 2700 long in
+variables of size 5000 was accepted at α = 3·10⁻⁵ for 300 iterations, each
+costing fifteen halvings. The QP gains a box `|d_j| ≤ Δ·max(1, |x_j|)` with
+`Δ = ∞` until a line search fails (then `Δ ← ¼·α_widest·‖d‖_rel`) or cuts the
+step below ¼ (then `Δ ← 2α‖d‖_rel`), and `Δ ← 4Δ` after a full step at the
+bound (back to ∞ above 10³). It is SNOPT's major step limit with a trust-region
+update instead of a fixed radius. Multipliers of bounds that came from Δ rather
+than from the problem are zeroed before any KKT test, since they are not
+multipliers of the NLP (this omission produced a false `Optimal` on HS13
+before it was found).
+
+**11.3 Penalty rule guard (HS13).** From a point with violation 5·10⁻¹² the
+rule (5.4) produced ρ = 2.5·10⁹ and the next step traded objective for a
+violation the merit could no longer see. The rule is applied only when
+`v(x_k) > tol_feas` and the model reduction of the violation is at least
+10⁻³ v, and ρ may grow by at most 100× per iteration. The multiplier floor
+`ρ ≥ 1.5‖λ‖_∞` is unconditional.
+
+**11.4 Repeated second-order corrections (HS46).** One correction left a
+third-order violation `O(‖d‖³)` that the penalty term still outweighed; up to
+four corrections are taken while the violation keeps falling by at least half
+(IPOPT's `kappa_soc` rule). On HS46 this turned a 7000-evaluation crawl at
+α = 2⁻⁹ into 229 evaluations.
+
+**11.5 Zero-step re-test.** When the QP returns `d = 0` its multipliers are
+the ones the termination test must see; the loop adopts them and re-tests
+once before classifying the point (vertex problems went from `Acceptable` to
+`Optimal` in one iteration).
+
+**11.6 Second-order probe and saddle escape (HS33, HS25).** With a
+positive-definite `B` the QP cannot see negative curvature, so SQP converges
+happily to saddle points — `fmincon`'s `sqp` and SLSQP both stop at f = −4 on
+HS33 (the basin study, `bench/results/r3-basins`). At a KKT candidate with a
+null space of dimension `k ≤ 6` (strongly active gradients removed, Gram–
+Schmidt), the Lagrangian `f + λᵀc` is probed by second differences along an
+orthonormal basis (`k(k+1)/2` probes, two evaluations each, one-sided at a
+weakly active bound), its `k × k` projected Hessian diagonalized (Jacobi),
+and if the smallest eigenvalue is below −10⁻³ of the matrix scale the solve
+leaves the saddle along that eigenvector (sign chosen feasible for the weakly
+active constraints), each trial followed by one Newton restoration step onto
+the strongly active constraints — moving along the tangent alone bends off
+the active surface and the penalty swamps the second-order decrease, the
+Maratos effect in another guise. HS33 now reaches −4.5858 and HS25 (gradient
+10⁻⁸ at x₀, every other solver stops there) reaches its minimum. The probe
+costs 2–42 evaluations once per candidate and is skipped for `k > 6` with a
+note that second-order conditions were not verified.
+
+**11.7 Degenerate multipliers.** If the multipliers at a point passing the
+tolerances exceed 10⁸(1 + ‖g‖) in the user's units, no constraint
+qualification holds there and the point is reported `Acceptable` with a
+degeneracy note rather than as a certified KKT point (HS13: λ = 2·10¹⁰).
+
+**Measured** (`bench/results/abl-sqp1`, `abl-sqp2`): SQP alone 134/143 at
+0.78× [0.70, 0.86] the interior-point member's evaluations; portfolio (SQP
+first for n ≤ 20) 137/143 at 0.775× [0.71, 0.84] the previous candidate's.
