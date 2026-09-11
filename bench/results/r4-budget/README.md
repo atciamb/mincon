@@ -9,7 +9,7 @@ problems); (2) a fresh run of the current build (C5, master `8a2d3f8` plus the
 `trace` field in the Python result) over the whole corpus with per-iteration
 traces, on the cloud host (`mincon-trace.A.jsonl`, `scored-A.jsonl`; wall times
 are not comparable to the benchmark host and are not used); (3) fmincon at
-raised caps — pending the Windows runner (§4).
+raised caps (§4).
 
 ## 1. Attainment as a function of the cap (mincon, current build, track A)
 
