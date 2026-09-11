@@ -23,13 +23,13 @@ for i = 1:numel(manifest.problems)
     if iscell(pr), pr = pr{1}; end
     if isfield(pr, 'split') && ~isempty(pr.split), splitOf(pr.name) = pr.split; else, splitOf(pr.name) = ''; end
 end
-% 'fmincon-interior-point@MaxFunctionEvaluations=15000,MaxIterations=10000' carries option overrides
+% 'fmincon-interior-point@MaxFunctionEvaluations=15000;MaxIterations=10000' carries option overrides
 % (diagnostic runs only; track-A defaults otherwise). Keys starting with '_' only label the run.
 overrides = struct();
 at = strfind(solver, '@');
 if ~isempty(at)
     tail = solver(at(1)+1:end); solver_base = solver(1:at(1)-1);
-    kvs = strsplit(tail, ',');
+    kvs = strsplit(strrep(tail, ';', ','), ',');
     for q = 1:numel(kvs)
         if isempty(kvs{q}), continue; end
         eqp = strfind(kvs{q}, '=');

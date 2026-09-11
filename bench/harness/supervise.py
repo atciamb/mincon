@@ -71,7 +71,7 @@ def kill_tree(proc):
 
 def launch(solver, track, problems, out_file, progress_file, a, repeat):
     plist = ",".join(problems)
-    if solver in MATLAB_SOLVERS:
+    if solver.split('@', 1)[0] in MATLAB_SOLVERS:  # '@key=value;key=value' overrides pass through to the worker
         cmd = [a.matlab, "-batch",
                f"worker_matlab('{solver}','{track}','{plist}','{out_file}','{progress_file}',{a.maxtime},{a.maxfev},'{a.experiment}',{repeat},{a.threads})"]
         cwd = HERE
@@ -107,7 +107,7 @@ def timeout_record(problem, solver, track, a, repeat, seconds, man):
 
 
 def run_solver(solver, track, problems, a, man, repeat):
-    tag = solver.replace("@", "_").replace(",", "_").replace("=", "-")
+    tag = solver.replace("@", "_").replace(",", "_").replace(";", "_").replace("=", "-")
     out_file = os.path.join(a.out, f"{tag}.{track}.jsonl")
     progress_file = os.path.join(a.out, f"{tag}.{track}.progress")
     done = existing_keys(out_file)

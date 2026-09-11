@@ -27,12 +27,14 @@ import schema  # noqa: E402
 
 
 def parse_overrides(spec_str):
-    """'mincon-ip@ftol=1e-6,scaling=none' -> ('mincon-ip', {'ftol': 1e-6, 'scaling': 'none'})"""
+    """'mincon-ip@ftol=1e-6;scaling=none' -> ('mincon-ip', {'ftol': 1e-6, 'scaling': 'none'}).
+    Options are separated by ';' (',' also accepted when the string is not going through the
+    supervisor, which splits solvers on ',')."""
     if "@" not in spec_str:
         return spec_str, {}
     base, tail = spec_str.split("@", 1)
     over = {}
-    for kv in tail.split(","):
+    for kv in tail.replace(";", ",").split(","):
         if not kv:
             continue
         k, v = kv.split("=", 1)
