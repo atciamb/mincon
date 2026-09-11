@@ -223,6 +223,15 @@ pub struct Options {
     /// rescale, guarded or not, was measured as a wash; the guarded diagonal
     /// form was measured at 0.94× evaluations with one more problem attained.
     pub bfgs_guarded_scaling: bool,
+    /// Rebuild the quasi-Newton matrix from the per-coordinate curvature
+    /// quotients of the latest pair whenever the model's curvature along the
+    /// accepted step is off by more than this factor in either direction and
+    /// the quotients say so consistently (see `DenseBfgs::set_curvature_rescale`
+    /// in `mincon-ip`). The trace study `bench/results/r5-large-n` found both
+    /// members spending hundreds of iterations repairing one direction per
+    /// update on problems whose curvature grows by two orders of magnitude
+    /// along the path. `f64::INFINITY` disables the rule.
+    pub bfgs_curvature_rescale: f64,
 
     /// Finite-difference flavour.
     pub fd_type: FdType,
@@ -304,6 +313,7 @@ impl Default for Options {
             hessian: HessianMode::Auto,
             lbfgs_history: 10,
             bfgs_guarded_scaling: true,
+            bfgs_curvature_rescale: 10.0,
 
             fd_type: FdType::Adaptive,
             fd_step: None,
@@ -398,6 +408,11 @@ impl Options {
         }
         if self.mu_init <= 0.0 {
             return Err("mu_init must be positive".into());
+        }
+        if self.bfgs_curvature_rescale.is_nan() || self.bfgs_curvature_rescale <= 1.0 {
+            return Err(
+                "bfgs_curvature_rescale must exceed 1 (use infinity to disable the rule)".into(),
+            );
         }
         if self.lbfgs_history == 0 && matches!(self.hessian, HessianMode::LimitedMemoryBfgs) {
             return Err("lbfgs_history must be positive for limited-memory BFGS".into());

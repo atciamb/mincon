@@ -249,13 +249,19 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                         "Limited-memory BFGS is not implemented yet; using dense BFGS.".into(),
                     );
                 }
-                Hess::Bfgs(Box::new(DenseBfgs::new(n)))
+                Hess::Bfgs(Box::new(DenseBfgs::with_curvature_rescale(
+                    n,
+                    opts.bfgs_curvature_rescale,
+                )))
             }
             (HessianMode::FiniteDifference, _) => {
                 notes.push(
                     "Finite-difference Hessians are not implemented yet; using dense BFGS.".into(),
                 );
-                Hess::Bfgs(Box::new(DenseBfgs::new(n)))
+                Hess::Bfgs(Box::new(DenseBfgs::with_curvature_rescale(
+                    n,
+                    opts.bfgs_curvature_rescale,
+                )))
             }
         };
 
@@ -1698,6 +1704,13 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                     "{} of {} BFGS updates were skipped for bad curvature; an exact Hessian would help this model.",
                     b.skipped(),
                     b.skipped() + b.updates()
+                ));
+            }
+            if b.rebuilds() > 0 {
+                notes.push(format!(
+                    "The quasi-Newton model was rebuilt from per-coordinate curvature quotients {} time(s): its curvature along an accepted step was off by more than {:.0}x.",
+                    b.rebuilds(),
+                    self.opts.bfgs_curvature_rescale
                 ));
             }
         }

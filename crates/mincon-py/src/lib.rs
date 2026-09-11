@@ -327,6 +327,9 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
     if let Some(v) = get!("bfgs_scaling", bool) {
         o.bfgs_guarded_scaling = v;
     }
+    if let Some(v) = get!("bfgs_rescale", f64) {
+        o.bfgs_curvature_rescale = if v > 1.0 { v } else { f64::INFINITY };
+    }
     if let Some(v) = get!("fd_error_aware", bool) {
         o.fd_error_aware = v;
     }

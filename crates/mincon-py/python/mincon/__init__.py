@@ -153,7 +153,10 @@ def minimize(
         ``fd_error_aware`` (bool, default True: stop at the accuracy the
         finite-difference derivatives can support instead of chasing a tighter
         tolerance), ``bfgs_scaling`` (bool, default True: rescale the initial
-        quasi-Newton matrix when the first step had to be cut hard).
+        quasi-Newton matrix when the first step had to be cut hard),
+        ``bfgs_rescale`` (float, default 10: rebuild the quasi-Newton matrix
+        from per-coordinate curvature quotients whenever its curvature along an
+        accepted step is off by more than this factor; 0 disables).
 
     Returns
     -------
@@ -188,7 +191,8 @@ def minimize(
 
     opts = dict(options or {})
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
-                 "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling"}
+                 "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
+                 "bfgs_rescale"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; supported: {sorted(supported)}")

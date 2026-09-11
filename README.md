@@ -48,7 +48,12 @@ let r = minimize(&p, &Options::default())?;
 > interior-point member's evaluations. **The preregistered superiority
 > contract's evaluation interval is still not met at these sample sizes**;
 > see `bench/results/s6v3-final3/README.md`, `docs/17_CLAIM_AUDIT.md` and
-> `docs/16_FAILURE_ATLAS.md` for exactly where fmincon wins. Development
+> `docs/16_FAILURE_ATLAS.md` for exactly where fmincon wins. A
+> development-validated increment since that round (a curvature-tracking
+> rebuild of the quasi-Newton model, `docs/21`) cuts the large-n evaluations
+> that drove the gap — MAXENT_200 to 0.157× its former cost, the whole-corpus
+> portfolio to 0.94× [0.78, 0.97] with one more problem attained — and awaits
+> a round-4 held-out qualification before any claim is updated. Development
 > gate: Rust tests, 55/55 fixtures with independent checks for the portfolio
 > and each member (SQP alone: 54/55, HS13 within 4e-4), 23 Python tests.
 
@@ -73,9 +78,11 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   QP (so every step is a descent direction even when the linearization is
   inconsistent), damped BFGS with a curvature rescale of the unit start,
   Goldfarb–Idnani dual active-set QP with a hinted warm start, up to four
-  second-order corrections, an adaptive step bound, and a second-order probe
-  at termination that leaves saddle points. Runs first in the portfolio for
-  n ≤ 20 (`docs/20_SQP_MATHEMATICS.md`).
+  second-order corrections, an adaptive step bound, a curvature-tracking
+  rebuild of the model when it drifts an order of magnitude from the measured
+  curvature at large n, and a second-order probe at termination that leaves
+  saddle points. Runs first in the portfolio for n ≤ 20
+  (`docs/20_SQP_MATHEMATICS.md`, `docs/21_LARGE_N_CURVATURE_PLAN.md`).
 * **Termination you can trust** — the scaled KKT test is guarded by the
   stationarity relative to the gradient in your units (the same measure the
   benchmark's independent oracle uses), budget exits say whether the solve
@@ -105,12 +112,16 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
 
 ### Known gaps, in priority order (measured, see `docs/16_FAILURE_ATLAS.md`)
 
-1. **Dense BFGS at n ≳ 100** (MAXENT_200: 80 000 evaluations; ELLIPSOID2_200
+1. **Dense BFGS at n ≳ 100 on non-separable problems** (ELLIPSOID2_200
    ~400 iterations; CHAINROSEN_BOX_200 not solved within 100 000
    evaluations): hundreds of iterations on long curved valleys for every
-   BFGS-based solver, and the SQP member's dense QP makes it worse there.
-   Pass exact derivatives; a structured or limited-memory curvature model is
-   the next candidate.
+   BFGS-based solver. The curvature-tracking rebuild (C7,
+   `docs/21_LARGE_N_CURVATURE_PLAN.md`) fixed the *separable* large-n cost
+   (MAXENT_200 from 80 000 to ~12 500 evaluations, and it newly attains
+   ELLIPSOID_500, QUADSPHERE2_300, QUADSPHERE_1000) on development material;
+   the non-separable problems, whose curvature is genuinely coupled, need a
+   structured or exact Hessian, which is the next candidate. Pass exact
+   derivatives where you have them.
 2. **Evaluations against `fmincon-sqp`** are even, not better (1.13×
    [0.97, 1.38] on the last held-out round; 1.05× on n ≤ 50). `fmincon-sqp`'s
    `100·n` evaluation cap stops it inside the target tolerance on the large

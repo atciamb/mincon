@@ -791,6 +791,25 @@ tolerances exceed 10⁸(1 + ‖g‖) in the user's units, no constraint
 qualification holds there and the point is reported `Acceptable` with a
 degeneracy note rather than as a certified KKT point (HS13: λ = 2·10¹⁰).
 
+**11.8 Curvature-tracking rebuild at large n (C7, September 11).** The
+damped BFGS matrix (shared with the interior-point member,
+`crates/mincon-ip/src/bfgs.rs`) starts and stays 20–1000× under-curved on
+problems whose Hessian of the Lagrangian grows one to two orders of magnitude
+along the path (entropy terms `x log x`; a constraint multiplier climbing from
+0 to 100). A rank-two update repairs one direction per iteration, so the SQP
+member's step bound never grows (α = 1 keeps failing) and the method
+degenerates into a box-limited gradient descent for hundreds of iterations
+(`bench/results/r5-large-n`). When the curvature the model predicts along an
+accepted step is more than 10× from the measured `sᵀy`, the matrix is rebuilt
+from the per-coordinate quotients `yᵢ/sᵢ` — gated so it only fires when the
+diagonal is demonstrably the better model (its scale is wrong, or its
+off-diagonal is) and only for `n ≥ 10`. On QUADSPHERE_100 this turns 178
+iterations into 2; the plan, mechanism and whole-corpus ablation are
+`docs/21_LARGE_N_CURVATURE_PLAN.md` and `bench/results/abl-c7` (SQP member
+0.88× [0.58, 0.96] evaluations, +3 attained, no loss).
+
 **Measured** (`bench/results/abl-sqp1`, `abl-sqp2`): SQP alone 134/143 at
 0.78× [0.70, 0.86] the interior-point member's evaluations; portfolio (SQP
 first for n ≤ 20) 137/143 at 0.775× [0.71, 0.84] the previous candidate's.
+With C7 the SQP member attains 148/158 on the current corpus at 0.88× its own
+rule-off evaluations.

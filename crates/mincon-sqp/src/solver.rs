@@ -133,7 +133,10 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                     shift: 0.0,
                 }
             }
-            _ => Hess::Bfgs(Box::new(DenseBfgs::new(n))),
+            _ => Hess::Bfgs(Box::new(DenseBfgs::with_curvature_rescale(
+                n,
+                opts.bfgs_curvature_rescale,
+            ))),
         };
         let jac_nnz = eval.jacobian_pattern().nnz();
         Ok(Self {
@@ -818,6 +821,15 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
         trace: Vec<IterationRecord>,
     ) -> SolveReport {
         let (n, m) = (self.n, self.m);
+        if let Hess::Bfgs(b) = &self.hess {
+            if b.rebuilds() > 0 {
+                self.notes.push(format!(
+                    "The quasi-Newton model was rebuilt from per-coordinate curvature quotients {} time(s): its curvature along an accepted step was off by more than {:.0}x.",
+                    b.rebuilds(),
+                    self.opts.bfgs_curvature_rescale
+                ));
+            }
+        }
         let (e0, compl, _) = self.kkt(p, lambda, z_l, z_u);
         let violation = self.user_violation(&p.x, &p.c);
         let f_user = p.f / self.d_f;
@@ -1238,7 +1250,10 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                     self.notes.push(format!(
                         "Hessian evaluation failed: {e}; falling back to BFGS."
                     ));
-                    self.hess = Hess::Bfgs(Box::new(DenseBfgs::new(n)));
+                    self.hess = Hess::Bfgs(Box::new(DenseBfgs::with_curvature_rescale(
+                        n,
+                        self.opts.bfgs_curvature_rescale,
+                    )));
                     match self.hessian_dense(&p, &lambda) {
                         Ok(h) => h,
                         Err(e) => return Err(SolveError::Internal(format!("Hessian: {e}"))),

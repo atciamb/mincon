@@ -38,7 +38,44 @@ pub struct DenseBfgs {
     updates: usize,
     /// Updates skipped because the curvature was hopeless.
     skipped: usize,
+    /// Curvature-tracking rebuild threshold (`f64::INFINITY` disables it):
+    /// when the model's curvature along an accepted step is off by more than
+    /// this factor and the per-coordinate quotients `y_i / s_i` say so
+    /// consistently, the matrix is rebuilt from those quotients.
+    rescale_factor: f64,
+    /// Accepted updates required before another rebuild; doubles after each.
+    rescale_cooldown: usize,
+    since_rebuild: usize,
+    rebuilds: usize,
 }
+
+/// Per-coordinate curvature quotients `y_i / s_i` (a diagonal model), clamped
+/// to four orders of magnitude around the scalar estimate `gamma` and falling
+/// back to `gamma` where the step component is negligible or the quotient is
+/// not a positive finite number. A scalar rescale was measured to help chained
+/// Rosenbrock and hurt diagonally ill-conditioned quadratics in equal measure;
+/// the diagonal form keeps both (`bench/results/s5-bfgs-guarded-diagonal`).
+fn diagonal_from_pair(s: &[f64], y: &[f64], gamma: f64) -> Vec<f64> {
+    s.iter()
+        .zip(y)
+        .map(|(&si, &yi)| {
+            let q = if si.abs() > 1e-12 * (1.0 + si.abs()) {
+                yi / si
+            } else {
+                gamma
+            };
+            if q.is_finite() && q > 0.0 {
+                q.clamp(gamma / 1e4, 1e4 * gamma)
+            } else {
+                gamma
+            }
+        })
+        .collect()
+}
+
+/// Curvature-tracking rebuilds are enabled only for problems with at least
+/// this many variables (see [`DenseBfgs::with_curvature_rescale`]).
+const CURVATURE_RESCALE_MIN_N: usize = 10;
 
 impl DenseBfgs {
     /// A fresh approximation, initialized to the identity.
@@ -64,7 +101,148 @@ impl DenseBfgs {
             upper: vec![0.0; nnz],
             updates: 0,
             skipped: 0,
+            rescale_factor: f64::INFINITY,
+            rescale_cooldown: 5,
+            since_rebuild: 5,
+            rebuilds: 0,
         }
+    }
+
+    /// As [`DenseBfgs::new`] with the curvature-tracking rebuild of
+    /// [`DenseBfgs::set_curvature_rescale`] enabled at `factor`.
+    #[must_use]
+    pub fn with_curvature_rescale(n: usize, factor: f64) -> Self {
+        let mut b = Self::new(n);
+        // The repair pathology the rule targets costs of order `n` iterations
+        // (one direction fixed per rank-two update), so it only dominates once
+        // `n` exceeds the handful of updates a dense BFGS needs to build useful
+        // curvature. Below that a mid-course diagonal rebuild only perturbs a
+        // path that is about to converge, and on a *coupled* small problem the
+        // diagonal it rebuilds to is simply wrong (HS97, HS98 at n = 6 lost an
+        // attainment to it in `bench/results/abl-c7`). Gate it on `n`; the
+        // smallest problem the rule helps on this corpus is QUADSPHERE_10.
+        if n < CURVATURE_RESCALE_MIN_N {
+            b.set_curvature_rescale(f64::INFINITY);
+        } else {
+            b.set_curvature_rescale(factor);
+        }
+        b
+    }
+
+    /// Enable (factor > 1) or disable (`f64::INFINITY`) the curvature-tracking
+    /// rebuild: whenever the curvature the model predicts along an accepted
+    /// step, `s^T B s`, is off from the measured `s^T y` by more than `factor`
+    /// in either direction, and either the per-coordinate quotients
+    /// `y_i / s_i` disagree with the model's diagonal in the same direction on
+    /// at least 80 % of the pair's weight `|s_i y_i|` (the scale is wrong) or
+    /// the model's own diagonal explains the pair at least twice as well as
+    /// the full matrix (its off-diagonal part is wrong), the matrix is
+    /// replaced by a diagonal built from those quotients before the ordinary
+    /// update (see [`DenseBfgs::rebuild_diagonal`]). A rank-two
+    /// update can repair one direction per iteration; on problems whose
+    /// curvature grows by two orders of magnitude along the path (entropy
+    /// terms `x log x`, a constraint multiplier climbing from 0 to 100) both
+    /// members were spending hundreds of iterations on that repair
+    /// (`bench/results/r5-large-n`). Rebuilds are rate-limited: a cooldown of
+    /// five accepted updates that doubles after each rebuild.
+    pub fn set_curvature_rescale(&mut self, factor: f64) {
+        self.rescale_factor = if factor.is_nan() || factor <= 1.0 {
+            f64::INFINITY
+        } else {
+            factor
+        };
+    }
+
+    /// Number of curvature-tracking rebuilds performed.
+    #[must_use]
+    pub fn rebuilds(&self) -> usize {
+        self.rebuilds
+    }
+
+    /// Replace the matrix by a diagonal.
+    fn set_diagonal(&mut self, d: &[f64]) {
+        self.b.fill(0.0);
+        for (i, &v) in d.iter().enumerate() {
+            self.b[i * self.n + i] = v;
+        }
+    }
+
+    /// The diagonal the curvature-tracking rule rebuilds from, when the pair
+    /// says the model is off by more than the factor along `s` (`under`: the
+    /// model underestimates the curvature) and one of two things holds:
+    ///
+    /// * **scale**: the per-coordinate quotients `y_i / s_i` disagree with the
+    ///   model's diagonal in the same direction on at least 80 % of the pair's
+    ///   weight `|s_i y_i|` — the diagonal itself is wrong (a unit matrix on a
+    ///   problem with curvature 1000; curvature that grew 100× along the path);
+    /// * **shape**: the model's own diagonal explains the pair at least twice
+    ///   as well (in log terms) as the full matrix does — the off-diagonal part
+    ///   accumulated from earlier, inconsistent pairs cancels the curvature
+    ///   along the directions the step now takes (MAXENT_200: the full model
+    ///   15× off along every step for 300 iterations, its diagonal within 2×).
+    ///
+    /// The rebuilt diagonal is the quotient where the step component is
+    /// significant and the quotient is a positive finite number, clamped to
+    /// four orders of magnitude around the scalar estimate; elsewhere the
+    /// model's own diagonal entry, clamped the same way.
+    fn rebuild_diagonal(&self, s: &[f64], y: &[f64], tau: f64, under: bool) -> Option<Vec<f64>> {
+        let n = self.n;
+        let f = self.rescale_factor;
+        let s_y: f64 = s.iter().zip(y).map(|(a, b)| a * b).sum();
+        let y_y: f64 = y.iter().map(|v| v * v).sum();
+        if s_y.is_nan() || s_y <= 0.0 {
+            return None;
+        }
+        let gamma = y_y / s_y;
+        if !gamma.is_finite() || gamma <= 0.0 {
+            return None;
+        }
+        let mut w_total = 0.0;
+        let mut w_consistent = 0.0;
+        let mut s_diag_s = 0.0;
+        for i in 0..n {
+            let bii = self.b[i * n + i];
+            s_diag_s += bii * s[i] * s[i];
+            let w = (s[i] * y[i]).abs();
+            w_total += w;
+            if s[i] * y[i] > 0.0 && s[i].abs() > 1e-12 * (1.0 + s[i].abs()) {
+                let q = y[i] / s[i];
+                let ok = if under { q > f * bii } else { q < bii / f };
+                if ok {
+                    w_consistent += w;
+                }
+            }
+        }
+        if w_total.is_nan() || w_total <= 0.0 {
+            return None;
+        }
+        let scale_route = w_consistent >= 0.8 * w_total;
+        let shape_route = s_diag_s.is_finite()
+            && s_diag_s > 0.0
+            && (s_y / s_diag_s).ln().abs() <= 0.5 * tau.ln().abs();
+        if !(scale_route || shape_route) {
+            return None;
+        }
+        let lo = gamma / 1e4;
+        let hi = 1e4 * gamma;
+        Some(
+            (0..n)
+                .map(|i| {
+                    let bii = self.b[i * n + i];
+                    let q = if s[i].abs() > 1e-12 * (1.0 + s[i].abs()) {
+                        y[i] / s[i]
+                    } else {
+                        bii
+                    };
+                    let q = if q.is_finite() && q > 0.0 { q } else { bii };
+                    if q.is_finite() && q > 0.0 {
+                        q.clamp(lo, hi)
+                    } else {
+                        gamma
+                    }
+                })
+                .collect(),
+        )
     }
 
     /// The upper-triangular sparsity of the approximation (dense).
@@ -164,12 +342,39 @@ impl DenseBfgs {
 
         let mut bs = vec![0.0; n];
         self.multiply(s, &mut bs);
-        let s_bs: f64 = s.iter().zip(&bs).map(|(a, b)| a * b).sum();
+        let mut s_bs: f64 = s.iter().zip(&bs).map(|(a, b)| a * b).sum();
         let s_y: f64 = s.iter().zip(y).map(|(a, b)| a * b).sum();
 
         if !s_bs.is_finite() || !s_y.is_finite() || s_bs <= 0.0 {
             self.skipped += 1;
             return false;
+        }
+
+        // Curvature-tracking rebuild (see `set_curvature_rescale`). The raw
+        // `y` is used: the damped `r` below is bounded away from zero relative
+        // to `s^T B s` and would hide the size of an underestimate.
+        let first_update_scaling = scale_initial && self.updates == 0;
+        if !first_update_scaling
+            && self.rescale_factor.is_finite()
+            && s_y > 0.0
+            && self.since_rebuild >= self.rescale_cooldown
+        {
+            let tau = s_y / s_bs;
+            let f = self.rescale_factor;
+            if tau > f || tau < 1.0 / f {
+                if let Some(d) = self.rebuild_diagonal(s, y, tau, tau > f) {
+                    self.set_diagonal(&d);
+                    self.rebuilds += 1;
+                    self.since_rebuild = 0;
+                    self.rescale_cooldown = self.rescale_cooldown.saturating_mul(2);
+                    self.multiply(s, &mut bs);
+                    s_bs = s.iter().zip(&bs).map(|(a, b)| a * b).sum();
+                    if !s_bs.is_finite() || s_bs <= 0.0 {
+                        self.skipped += 1;
+                        return false;
+                    }
+                }
+            }
         }
 
         // Powell damping: theta = 1 keeps the plain BFGS update.
@@ -210,20 +415,7 @@ impl DenseBfgs {
                 // scalar rescale was measured to help chained Rosenbrock and hurt
                 // diagonally ill-conditioned quadratics in equal measure; the diagonal
                 // form keeps both (0.94x evaluations on 143 problems, one more attained).
-                self.reset(gamma);
-                for i in 0..n {
-                    let q = if s[i].abs() > 1e-12 * (1.0 + s[i].abs()) {
-                        r[i] / s[i]
-                    } else {
-                        gamma
-                    };
-                    let q = if q.is_finite() && q > 0.0 {
-                        q.clamp(gamma / 1e4, 1e4 * gamma)
-                    } else {
-                        gamma
-                    };
-                    self.b[i * n + i] = q;
-                }
+                self.set_diagonal(&diagonal_from_pair(s, &r, gamma));
                 let mut bs2 = vec![0.0; n];
                 self.multiply(s, &mut bs2);
                 let s_bs2: f64 = s.iter().zip(&bs2).map(|(a, b)| a * b).sum();
@@ -259,6 +451,7 @@ impl DenseBfgs {
             return false;
         }
         self.updates += 1;
+        self.since_rebuild += 1;
         true
     }
 
@@ -365,6 +558,139 @@ mod tests {
         b.reset(2.5);
         assert_eq!(b.get(1, 1), 2.5);
         assert_eq!(b.get(0, 2), 0.0);
+    }
+
+    #[test]
+    fn curvature_rescale_rebuilds_the_diagonal_of_a_separable_quadratic() {
+        // A full first step on a separable problem whose curvature is 1..1000
+        // times the unit matrix: the guarded first-update scaling does not fire
+        // (no cut), the curvature-tracking rule does, and because the quotients
+        // are the exact diagonal the ordinary update that follows leaves it
+        // unchanged: the model IS the Hessian after one pair.
+        let h = [1.0, 10.0, 100.0, 1000.0];
+        let s = [0.3, -0.2, 0.5, 0.1];
+        let y: Vec<f64> = (0..4).map(|i| h[i] * s[i]).collect();
+        let mut off = DenseBfgs::new(4);
+        assert!(off.update(&s, &y));
+        assert_eq!(off.rebuilds(), 0);
+        assert!(
+            (off.get(3, 3) - 1000.0).abs() > 100.0,
+            "plain BFGS cannot learn the diagonal from one pair"
+        );
+
+        let mut b = DenseBfgs::new(4);
+        b.set_curvature_rescale(10.0); // bypass the n gate: this tests the rebuild mechanism
+        assert!(b.update(&s, &y));
+        assert_eq!(b.rebuilds(), 1);
+        for i in 0..4 {
+            for j in 0..4 {
+                let expect = if i == j { h[i] } else { 0.0 };
+                assert!(
+                    (b.get(i, j) - expect).abs() <= 1e-9 * 1000.0,
+                    "entry ({i},{j}) = {} vs {expect}",
+                    b.get(i, j)
+                );
+            }
+        }
+        // The cooldown doubled: the same pair straight away is not rebuilt again
+        // (it does not need to be: the model now explains it).
+        assert!(b.update(&s, &y));
+        assert_eq!(b.rebuilds(), 1);
+    }
+
+    #[test]
+    fn curvature_rescale_is_gated_on_problem_size() {
+        // The same separable pair that rebuilds at n = 10 does nothing below the
+        // gate, because `with_curvature_rescale` disables the rule for small n
+        // (small problems a dense BFGS handles in a handful of updates; a
+        // mid-course rebuild there only perturbs them - HS97/HS98).
+        let h = [1.0, 10.0, 100.0, 1000.0];
+        let s4 = [0.3, -0.2, 0.5, 0.1];
+        let y4: Vec<f64> = (0..4).map(|i| h[i] * s4[i]).collect();
+        let mut small = DenseBfgs::with_curvature_rescale(4, 10.0);
+        assert!(small.update(&s4, &y4));
+        assert_eq!(
+            small.rebuilds(),
+            0,
+            "the rule must be off below the size gate"
+        );
+
+        // At n = 10 it is on: a separable pair with curvature far from the unit
+        // matrix rebuilds.
+        let mut s10 = vec![0.0; 10];
+        let mut y10 = vec![0.0; 10];
+        for i in 0..10 {
+            let hi = 10f64.powi(i as i32 % 4);
+            s10[i] = 0.1 * ((i % 3) as f64 - 1.0).abs().max(0.1);
+            y10[i] = hi * s10[i];
+        }
+        let mut big = DenseBfgs::with_curvature_rescale(10, 10.0);
+        assert!(big.update(&s10, &y10));
+        assert_eq!(big.rebuilds(), 1, "the rule must be on at the size gate");
+    }
+
+    #[test]
+    fn curvature_rescale_keeps_the_matrix_when_the_quotients_disagree() {
+        // Dense, strongly coupled Hessian 1000 * [[1, 0.95], [0.95, 1]] and a
+        // step for which the model is off by 55x along s, but the per-coordinate
+        // quotients carry opposite signs (24 % of the weight is inconsistent):
+        // the diagonal would be a lie, so the matrix is kept and updated.
+        let s = [1.0, -0.9];
+        let y = [1000.0 * (1.0 - 0.855), 1000.0 * (0.95 - 0.9)];
+        let mut b = DenseBfgs::new(2);
+        b.set_curvature_rescale(10.0);
+        assert!(b.update(&s, &y));
+        assert_eq!(b.rebuilds(), 0);
+        assert_eq!(b.updates(), 1);
+        assert!(
+            b.get(0, 1).abs() > 1e-6,
+            "the ordinary update produced an off-diagonal entry"
+        );
+        // The secant condition still holds.
+        let mut bs = vec![0.0; 2];
+        b.multiply(&s, &mut bs);
+        for i in 0..2 {
+            assert!((bs[i] - y[i]).abs() < 1e-9 * 1000.0);
+        }
+    }
+
+    #[test]
+    fn curvature_rescale_drops_off_diagonals_that_cancel_the_curvature() {
+        // One update from a pair along (1, -1) with curvature 199 leaves
+        // B = [[100, -99], [-99, 100]]: the right diagonal, but only curvature 1
+        // along (1, 1). The true Hessian is diag(100, 100). The scale route does
+        // not fire (quotients equal the diagonal); the shape route does, because
+        // the diagonal alone explains the pair exactly while the full model is
+        // 100x off; the rebuilt model is the true Hessian.
+        let mut b = DenseBfgs::new(2);
+        assert!(b.update(&[1.0, -1.0], &[199.0, -199.0]));
+        assert!((b.get(0, 0) - 100.0).abs() < 1e-9 && (b.get(0, 1) + 99.0).abs() < 1e-9);
+        b.set_curvature_rescale(10.0);
+        assert!(b.update(&[1.0, 1.0], &[100.0, 100.0]));
+        assert_eq!(b.rebuilds(), 1);
+        for (i, j, expect) in [(0, 0, 100.0), (1, 1, 100.0), (0, 1, 0.0), (1, 0, 0.0)] {
+            assert!(
+                (b.get(i, j) - expect).abs() < 1e-9,
+                "entry ({i},{j}) = {}",
+                b.get(i, j)
+            );
+        }
+    }
+
+    #[test]
+    fn curvature_rescale_requires_an_order_of_magnitude_error() {
+        // Curvature 3x the model along every coordinate: within the factor, no
+        // rebuild; the ordinary update handles it.
+        let s = [0.5, 0.5, 0.5];
+        let y = [1.5, 1.5, 1.5];
+        let mut b = DenseBfgs::new(3);
+        b.set_curvature_rescale(10.0);
+        assert!(b.update(&s, &y));
+        assert_eq!(b.rebuilds(), 0);
+        let mut nan_safe = DenseBfgs::new(3);
+        nan_safe.set_curvature_rescale(f64::NAN);
+        assert!(nan_safe.update(&s, &[150.0, 150.0, 150.0]));
+        assert_eq!(nan_safe.rebuilds(), 0, "NaN disables the rule");
     }
 
     #[test]
