@@ -564,6 +564,21 @@ fn minimize(
     d.set_item("z_l", report.solution.z_l.to_pyarray(py))?;
     d.set_item("z_u", report.solution.z_u.to_pyarray(py))?;
     d.set_item("notes", PyList::new(py, &report.notes)?)?;
+    let trace = PyList::empty(py);
+    for t in &report.trace {
+        let row = PyDict::new(py);
+        row.set_item("iter", t.iter)?;
+        row.set_item("nfev", t.f_count)?;
+        row.set_item("f", t.f)?;
+        row.set_item("maxcv", t.constraint_violation)?;
+        row.set_item("optimality", t.optimality)?;
+        row.set_item("step_norm", t.step_norm)?;
+        row.set_item("alpha", t.alpha)?;
+        row.set_item("mu", t.mu)?;
+        row.set_item("in_restoration", t.in_restoration)?;
+        trace.append(row)?;
+    }
+    d.set_item("trace", trace)?;
     d.set_item("time", report.timings.total.as_secs_f64())?;
     d.set_item("model_time", report.timings.model.as_secs_f64())?;
     Ok(d.into_any().unbind())

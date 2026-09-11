@@ -632,6 +632,10 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         let approximate = self.opts.fd_error_aware
             && (self.eval.gradient_is_approximate() || self.eval.jacobian_is_approximate());
         let mut tol_eff = self.opts.tol.optimality;
+        let mut progress: Vec<(f64, f64)> = Vec::new();
+        let mut rescales = 0usize;
+        let mut guard_blocked = 0usize;
+        let mu_floor = self.opts.tol.optimality / 10.0;
         let mut error_checked_at: Option<usize> = None;
         let mut near_convergence_iters = 0usize;
         let mut iterations = 0usize;
@@ -734,11 +738,79 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                     );
                 }
             }
-            if e0 <= tol_eff
+            let scaled_pass = e0 <= tol_eff
                 && violation <= self.opts.tol.feasibility
                 && compl <= self.opts.tol.complementarity
-                && self.stationarity_inf(&grad_f, &lambda, &z_l, &z_u) <= tol_eff
-            {
+                && self.stationarity_inf(&grad_f, &lambda, &z_l, &z_u) <= tol_eff;
+            // D9 guard: the scaled test above is only meaningful if the objective
+            // scale factor still describes the problem where the iterate now is.
+            // `stationarity_rel` is the unscaled residual relative to the unscaled
+            // gradient terms, invariant to `d_f`; a point may not be called
+            // converged while it exceeds the acceptable tolerance, and when the
+            // scaled test passes anyway the factor is stale: rescale and go on.
+            let stat_rel = self.stationarity_rel(&grad_f, &lambda, &z_l, &z_u);
+            let rel_ok = stat_rel <= self.opts.tol.acceptable_optimality;
+            let acceptable_level = e0 <= self.opts.tol.acceptable_optimality
+                && violation <= self.opts.tol.acceptable_feasibility;
+            if (scaled_pass || acceptable_level) && !rel_ok && rescales < 3 {
+                let g_unscaled_norm = grad_f.iter().fold(0.0_f64, |a, g| a.max(g.abs())) / self.d_f;
+                let gmax = self.opts.scaling_max_gradient;
+                let d_f_new = if g_unscaled_norm > gmax {
+                    gmax / g_unscaled_norm
+                } else {
+                    1.0
+                };
+                let k = d_f_new / self.d_f;
+                if k.is_finite() && k > 10.0 {
+                    rescales += 1;
+                    self.notes.push(format!(
+                        "Objective rescaled at iteration {iter}: the gradient norm fell from {:.2e} (where the scale factor {:.2e} was chosen) to {:.2e}; new factor {:.2e}. The scaled KKT test had passed while the stationarity relative to the gradient was {stat_rel:.1e}.",
+                        gmax / self.d_f,
+                        self.d_f,
+                        g_unscaled_norm,
+                        d_f_new
+                    ));
+                    self.d_f = d_f_new;
+                    point.f *= k;
+                    point.phi = point.f
+                        + self.barrier_term(&point.v, (mu * k).clamp(mu_floor, self.opts.mu_init));
+                    for g in &mut grad_f {
+                        *g *= k;
+                    }
+                    for l in &mut lambda {
+                        *l *= k;
+                    }
+                    for z in z_l.iter_mut().chain(z_u.iter_mut()) {
+                        *z *= k;
+                    }
+                    for g in &mut prev_lag_grad {
+                        *g *= k;
+                    }
+                    if let Hess::Bfgs(b) = &mut self.hess {
+                        b.scale(k);
+                    }
+                    mu = (mu * k).clamp(mu_floor, self.opts.mu_init);
+                    filter.reset_and_tighten(point.theta);
+                    best_e0 = f64::INFINITY;
+                    stalled = 0;
+                    acceptable_streak = 0;
+                    guard_blocked = 0;
+                    continue;
+                }
+            }
+            if scaled_pass && !rel_ok {
+                guard_blocked += 1;
+                if guard_blocked >= self.opts.tol.acceptable_iterations {
+                    self.notes.push(format!(
+                        "Stopped with the scaled KKT error {e0:.2e} below tolerance but the stationarity relative to the gradient terms at {stat_rel:.1e}, above the acceptable tolerance, for {guard_blocked} iterations (very large multipliers or a degenerate active set)."
+                    ));
+                    exit = ExitFlag::Acceptable;
+                    break;
+                }
+            } else {
+                guard_blocked = 0;
+            }
+            if scaled_pass && rel_ok {
                 if tol_eff > self.opts.tol.optimality {
                     self.notes.push(format!(
                         "Converged to the accuracy of the finite-difference derivatives: scaled KKT error \
@@ -750,11 +822,14 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                 exit = ExitFlag::Optimal;
                 break;
             }
-            if e0 <= self.opts.tol.acceptable_optimality
-                && violation <= self.opts.tol.acceptable_feasibility
-            {
+            if acceptable_level {
                 acceptable_streak += 1;
                 if acceptable_streak >= self.opts.tol.acceptable_iterations {
+                    if !rel_ok {
+                        self.notes.push(format!(
+                            "Acceptable point with a stationarity residual of {stat_rel:.1e} relative to the gradient terms: the multipliers are very large, which usually means the active constraints are degenerate at this point (no bounded multipliers exist)."
+                        ));
+                    }
                     exit = ExitFlag::Acceptable;
                     break;
                 }
@@ -816,20 +891,19 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             } else {
                 stalled = 0;
             }
-            if let Some(limit) = self.opts.max_evaluations {
-                if mincon_core::EvalCounters::get(&self.eval.counters().f) >= limit {
-                    exit = ExitFlag::MaxReached;
-                    break;
-                }
-            }
-            if let Some(limit) = self.opts.max_seconds {
-                if self.start.elapsed().as_secs_f64() >= limit {
-                    exit = ExitFlag::MaxReached;
-                    break;
-                }
-            }
-            if iterations >= max_iter {
+            // Progress history for the verdict given at a budget exit.
+            progress.push((point.f / self.d_f, violation));
+            let budget_exit = self.opts.max_evaluations.is_some_and(|limit| {
+                mincon_core::EvalCounters::get(&self.eval.counters().f) >= limit
+            }) || self
+                .opts
+                .max_seconds
+                .is_some_and(|limit| self.start.elapsed().as_secs_f64() >= limit)
+                || iterations >= max_iter;
+            if budget_exit {
                 exit = ExitFlag::MaxReached;
+                self.notes
+                    .push(progress_verdict(&progress, self.opts.tol.feasibility));
                 break;
             }
 
@@ -1391,6 +1465,29 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         (e0, e_mu, compl0)
     }
 
+    /// Stationarity residual relative to the size of its terms, in the user's
+    /// units: `||g + J^T lam - z||_inf / (1 + ||g|| + ||J^T lam|| + ||z||)` over
+    /// the `n` original variables. Every term in the scaled problem carries the
+    /// factor `d_f`, so dividing by `d_f + ...` in scaled units gives the
+    /// unscaled ratio exactly. This is the oracle's `stationarity_rel`.
+    fn stationarity_rel(&self, grad: &[f64], lambda: &[f64], zl: &[f64], zu: &[f64]) -> f64 {
+        let mut al = vec![0.0; self.nv];
+        self.a_times(lambda, &mut al);
+        let (mut r_norm, mut g_norm, mut al_norm, mut z_norm) =
+            (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64);
+        for j in 0..self.n {
+            let r = grad[j] + al[j] - zl[j] + zu[j];
+            if !r.is_finite() {
+                return f64::INFINITY;
+            }
+            r_norm = r_norm.max(r.abs());
+            g_norm = g_norm.max(grad[j].abs());
+            al_norm = al_norm.max(al[j].abs());
+            z_norm = z_norm.max(zl[j].abs()).max(zu[j].abs());
+        }
+        r_norm / (self.d_f + g_norm + al_norm + z_norm)
+    }
+
     fn stationarity_inf(&self, grad: &[f64], lambda: &[f64], zl: &[f64], zu: &[f64]) -> f64 {
         let mut al = vec![0.0; self.nv];
         self.a_times(lambda, &mut al);
@@ -1633,6 +1730,44 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
     }
 }
 
+/// The note attached to a budget exit: was the solver still getting somewhere?
+/// Compares the last iterate with the one `W` iterations earlier (objective in
+/// the user's units, maximum constraint violation). A heuristic, and stated as
+/// one; the exit flag stays `MaxReached` either way. The distinction matters
+/// because on this solver's own benchmark every budget exit that was still
+/// progressing steadily would have finished with a larger budget, while a
+/// window with no movement has never turned into a solution.
+fn progress_verdict(hist: &[(f64, f64)], feas_tol: f64) -> String {
+    const W: usize = 20;
+    let Some(&(f_now, v_now)) = hist.last() else {
+        return "Budget exhausted before the first iteration.".into();
+    };
+    if hist.len() < 3 {
+        return "Budget exhausted within the first iterations; no progress verdict possible."
+            .into();
+    }
+    let k = hist.len().saturating_sub(1 + W.min(hist.len() - 2));
+    let (f_then, v_then) = hist[k];
+    let w = hist.len() - 1 - k;
+    let df_rel = (f_then - f_now) / f_then.abs().max(1.0);
+    let both_feasible = v_now <= feas_tol && v_then <= feas_tol;
+    let v_ratio = if v_then > 0.0 { v_now / v_then } else { 1.0 };
+    let steady = if both_feasible {
+        df_rel > 1e-3
+    } else {
+        v_ratio < 0.9 || df_rel > 1e-3
+    };
+    if steady {
+        format!(
+            "Budget exhausted while still making steady progress: over the last {w} iterations the objective moved from {f_then:.6e} to {f_now:.6e} and the constraint violation from {v_then:.2e} to {v_now:.2e}. A larger budget (max_evaluations / max_iterations / max_seconds), analytic derivatives, or a better-scaled start would likely finish this solve."
+        )
+    } else {
+        format!(
+            "Budget exhausted with no measurable progress over the last {w} iterations (objective {f_then:.6e} -> {f_now:.6e}, violation {v_then:.2e} -> {v_now:.2e}): the solver is likely stuck. The returned point is the last accepted iterate; check the derivative accuracy, the problem scaling, and whether the constraints admit a feasible point."
+        )
+    }
+}
+
 fn push_inside(x: f64, lo: f64, hi: f64, has_l: bool, has_u: bool, k1: f64, k2: f64) -> f64 {
     match (has_l, has_u) {
         (false, false) => x,
@@ -1660,6 +1795,17 @@ fn fraction_to_boundary_dual(z: &[f64], dz: &[f64], tau: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn progress_verdict_distinguishes_steady_progress_from_a_stall() {
+        let steady: Vec<(f64, f64)> = (0..40).map(|k| (100.0 - f64::from(k), 0.0)).collect();
+        assert!(progress_verdict(&steady, 1e-6).contains("steady progress"));
+        let stuck: Vec<(f64, f64)> = (0..40).map(|_| (2.0, 3.0)).collect();
+        assert!(progress_verdict(&stuck, 1e-6).contains("likely stuck"));
+        let feasibility: Vec<(f64, f64)> = (0..40).map(|k| (5.0, 10.0 * 0.9_f64.powi(k))).collect();
+        assert!(progress_verdict(&feasibility, 1e-6).contains("steady progress"));
+        assert!(progress_verdict(&[], 1e-6).contains("before the first"));
+    }
 
     #[test]
     fn push_inside_respects_every_bound_configuration() {
@@ -1751,6 +1897,87 @@ mod tests {
     /// min -x1 s.t. x2 = x1^2: the first-order conditions hold to tolerance at any
     /// far-away point because the multiplier shrinks with x1. That must be reported
     /// as unbounded, never as optimal.
+    /// D9 (`docs/14`, `bench/results/r3-basins`): Rosenbrock on the unit disc
+    /// from (1000, -1000). The gradient at x0 is ~4e11, so gradient-based
+    /// scaling divides the objective by ~4e9; before the fix the scaled KKT
+    /// test accepted a point with an unscaled gradient of (87, -50) and an
+    /// inactive constraint as `Optimal` (f = 6.375). The minimum is 0.0456748.
+    #[test]
+    fn bad_start_scaling_does_not_report_a_false_optimum() {
+        use mincon_core::{Capabilities, NlpDims};
+        struct P {
+            lb: Vec<f64>,
+            ub: Vec<f64>,
+            cl: Vec<f64>,
+            cu: Vec<f64>,
+            x0: Vec<f64>,
+        }
+        impl Nlp for P {
+            fn dims(&self) -> NlpDims {
+                NlpDims { n: 2, m: 1 }
+            }
+            fn x_bounds(&self) -> (&[f64], &[f64]) {
+                (&self.lb, &self.ub)
+            }
+            fn c_bounds(&self) -> (&[f64], &[f64]) {
+                (&self.cl, &self.cu)
+            }
+            fn x0(&self) -> &[f64] {
+                &self.x0
+            }
+            fn capabilities(&self) -> Capabilities {
+                Capabilities::none()
+            }
+            fn objective(&self, x: &[f64]) -> Result<f64, EvalError> {
+                Ok(100.0 * (x[1] - x[0] * x[0]).powi(2) + (1.0 - x[0]).powi(2))
+            }
+            fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+                out[0] = x[0] * x[0] + x[1] * x[1];
+                Ok(())
+            }
+        }
+        let p = P {
+            lb: vec![-1e20; 2],
+            ub: vec![1e20; 2],
+            cl: vec![-1e20],
+            cu: vec![1.0],
+            x0: vec![1000.0, -1000.0],
+        };
+        let r = solve(&p, &Options::default()).unwrap();
+        // Whatever the flag, the returned point must satisfy the first-order
+        // conditions in the user's units to the acceptable tolerance.
+        let x = &r.solution.x;
+        let g = [
+            -400.0 * x[0] * (x[1] - x[0] * x[0]) - 2.0 * (1.0 - x[0]),
+            200.0 * (x[1] - x[0] * x[0]),
+        ];
+        let lam = r.solution.lambda[0];
+        let resid = (g[0] + lam * 2.0 * x[0])
+            .abs()
+            .max((g[1] + lam * 2.0 * x[1]).abs());
+        let scale = 1.0
+            + g[0].abs().max(g[1].abs())
+            + (lam * 2.0 * x[0]).abs().max((lam * 2.0 * x[1]).abs());
+        assert!(
+            resid / scale <= 1e-4,
+            "stationarity {resid:.3e} relative {:.3e} at x = {x:?}, flag {:?}, f = {}",
+            resid / scale,
+            r.exit_flag,
+            r.solution.f
+        );
+        assert!(r.exit_flag.is_success(), "{:?}", r.exit_flag);
+        assert!(
+            (r.solution.f - 0.045_674_808).abs() < 1e-5,
+            "f = {} (published minimum 0.0456748)",
+            r.solution.f
+        );
+        assert!(
+            r.notes.iter().any(|n| n.contains("rescaled")),
+            "expected the rescale note; notes: {:?}",
+            r.notes
+        );
+    }
+
     #[test]
     fn unbounded_along_a_parabola_is_not_reported_optimal() {
         use mincon_core::{Capabilities, NlpDims};

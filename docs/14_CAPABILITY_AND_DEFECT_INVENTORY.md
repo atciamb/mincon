@@ -86,3 +86,34 @@ check, no fallback.
 
 These items are the input to the S2 failure atlas and the S3 repairs; none is
 fixed in this commit.
+
+## Added later
+
+D8. **Unbounded objective reported as `Optimal`** (UNBOUNDED_PAR): fixed in
+C2 by the far-from-start rule (`docs/16_FAILURE_ATLAS.md`, cluster 5).
+
+D9. **Termination judged in the scaled problem only, with an objective scale
+fixed from the gradient at x₀** (found September 11, 2026 by the basin study,
+`bench/results/r3-basins/`). The gradient-based scaling divides the objective
+by `‖∇f(x₀)‖`-derived factors with no floor; on BADSTART_DISC from
+(1000, −1000) the factor is 2.5e-10 and the scaled KKT test `E_0 <= 1e-6`
+accepts an unscaled stationarity residual of 87 (exact gradient (87, −50),
+constraint slack 3.4e-3, reported multiplier 2165) — a false `Optimal` at
+f = 6.375 where the published minimum is 0.0457. The milder form
+(QUADSPHERE2_300, factor 0.05) stops at a 1.8e-3 objective gap. With
+`scaling = none` both attain. Fix candidates: an unscaled relative
+stationarity guard on the termination test, and a drift-triggered rescale
+when the current gradient norm has left the range the factor was chosen for.
+Fixed in I0 (`bench/results/abl-i0`): unscaled relative stationarity guard
+plus drift-triggered rescale; regression test in `mincon-ip`.
+
+D10. **Restoration does not exit at a stationary infeasible point on a
+bound** (found September 11, 2026 by the budget study,
+`bench/results/r4-budget/`). INFEASIBLE_NL (`x₁ ≥ 2`, `x₁² + x₂² ≤ 1`): from
+iteration 10 the restoration phase sits at x = (2, 0), violation 3.0, step
+norm 1e-16, for 410 further iterations, then `MaxReached`; every portfolio
+member repeats it (9784 evaluations in total). The infeasibility minimizer
+lies on the bound `x₁ = 2`, and the restoration's stationarity test does not
+account for it. Fixed in I0: projected-gradient stationarity test in
+`robust_restoration`; `LocallyInfeasible` after 6 iterations (105 evaluations
+across the three portfolio members); regression test in `mincon-ip`.

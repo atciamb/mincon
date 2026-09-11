@@ -158,7 +158,10 @@ def minimize(
     OptimizeResult
         With ``x``, ``fun``, ``success``, ``usable``, ``status``, ``message``,
         ``nit``, ``nfev``, ``njev``, ``maxcv``, ``optimality``, ``con``,
-        ``lambda``, ``notes``, ``time``, ``model_time``.
+        ``lambda``, ``notes``, ``trace``, ``time``, ``model_time``. ``trace`` is
+        a list of per-iteration dicts (``iter``, ``nfev``, ``f``, ``maxcv``,
+        ``optimality``, ``step_norm``, ``alpha``, ``mu``, ``in_restoration``)
+        for the member that produced the answer.
 
     Notes
     -----

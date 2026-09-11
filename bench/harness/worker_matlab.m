@@ -23,14 +23,32 @@ for i = 1:numel(manifest.problems)
     if iscell(pr), pr = pr{1}; end
     if isfield(pr, 'split') && ~isempty(pr.split), splitOf(pr.name) = pr.split; else, splitOf(pr.name) = ''; end
 end
-algorithm = strrep(solver, 'fmincon-', '');
+% 'fmincon-interior-point@MaxFunctionEvaluations=15000,MaxIterations=10000' carries option overrides
+% (diagnostic runs only; track-A defaults otherwise). Keys starting with '_' only label the run.
+overrides = struct();
+at = strfind(solver, '@');
+if ~isempty(at)
+    tail = solver(at(1)+1:end); solver_base = solver(1:at(1)-1);
+    kvs = strsplit(tail, ',');
+    for q = 1:numel(kvs)
+        if isempty(kvs{q}), continue; end
+        eqp = strfind(kvs{q}, '=');
+        key = kvs{q}(1:eqp(1)-1); val = kvs{q}(eqp(1)+1:end);
+        if startsWith(key, '_'), continue; end
+        num = str2double(val);
+        if ~isnan(num), overrides.(key) = num; else, overrides.(key) = val; end
+    end
+else
+    solver_base = solver;
+end
+algorithm = strrep(solver_base, 'fmincon-', '');
 fid = fopen(out_file, 'a');
 for k = 1:numel(names)
     nm = names{k};
     if ~isempty(progress_file)
         pf = fopen(progress_file, 'w'); fprintf(pf, '%s %f\n', nm, now*86400); fclose(pf);
     end
-    rec = run_one(nm, solver, algorithm, track, maxtime, maxfev, experiment, repeat, splitOf);
+    rec = run_one(nm, solver, algorithm, track, maxtime, maxfev, experiment, repeat, splitOf, overrides);
     fprintf(fid, '%s\n', jsonencode(rec));
     fprintf('%-22s %-24s %-6s status=%d f_model=%d c_model=%d wall=%.3fs\n', nm, solver, rec.outcome, rec.native_status, ...
         rec.counts.f_model, rec.counts.c_model, rec.time.solve_wall);
@@ -41,7 +59,7 @@ if ~isempty(progress_file)
 end
 end
 
-function rec = run_one(nm, solver, algorithm, track, maxtime, maxfev, experiment, repeat, splitOf)
+function rec = run_one(nm, solver, algorithm, track, maxtime, maxfev, experiment, repeat, splitOf, overrides)
 p = feval(nm);
 n = p.n; m = p.m;
 rec = struct();
@@ -113,6 +131,12 @@ end
 deadline_t0 = tic;
 opts = optimoptions(opts, 'OutputFcn', @(x, ov, state) toc(deadline_t0) > maxtime);
 rec.options = struct('Algorithm', algorithm, 'Display', 'off', 'defaults_otherwise', true, 'OutputFcn_deadline', maxtime);
+okeys = fieldnames(overrides);
+for q = 1:numel(okeys)
+    opts = optimoptions(opts, okeys{q}, overrides.(okeys{q}));
+    rec.options.(okeys{q}) = overrides.(okeys{q});
+    rec.options.defaults_otherwise = false;
+end
 rec.x = []; rec.lam = []; rec.zl = []; rec.zu = []; rec.native_status = -99; rec.native_message = ''; rec.reported_success = false;
 rec.time = struct('solve_wall', NaN, 'callback', NaN, 'build', 0);
 try

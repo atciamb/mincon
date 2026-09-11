@@ -103,7 +103,8 @@ def solve_mincon(model, track, budget, threads, variant, overrides=None):
     return dict(x=np.asarray(r.x, float), lam=lam_canon, zl=np.asarray(r.get("z_l", []), float), zu=np.asarray(r.get("z_u", []), float),
                 native_status=int(r.status), native_message=str(r.message), reported_success=bool(r.success),
                 solver_version=mincon.__version__, wall=wall, solver_time=float(r.get("time", float("nan"))),
-                nit=int(r.get("nit", -1)), notes=list(r.get("notes", [])), options=dict(opts, method=method))
+                nit=int(r.get("nit", -1)), notes=list(r.get("notes", [])), options=dict(opts, method=method),
+                trace=list(r.get("trace", [])))
 
 
 def solve_scipy(model, track, budget, method):
@@ -162,7 +163,7 @@ def dispatch(solver, model, track, budget, threads):
     return SOLVERS[base](model, track, budget, threads)
 
 
-def run_one(name, solver, track, budget, threads, experiment, split_of, repeat):
+def run_one(name, solver, track, budget, threads, experiment, split_of, repeat, keep_trace=False):
     s = spec.get(name)
     rec = schema.new_record(experiment=experiment, track=track, problem=name, family=s.family, split=split_of.get(name),
                             checksum=s.checksum(), n=s.n, m=s.m, solver=solver, derivatives=("exact" if track == "C" else "fd"),
@@ -178,6 +179,8 @@ def run_one(name, solver, track, budget, threads, experiment, split_of, repeat):
                    solver_version=out["solver_version"], options=out["options"], notes=out["notes"], outcome="ok")
         rec["time"].update(solve_wall=out["wall"], solver_reported=out["solver_time"], callback=model.callback_seconds)
         rec["nit"] = out["nit"]
+        if keep_trace and out.get("trace"):
+            rec["trace"] = out["trace"]
     except Exception as exc:  # noqa: BLE001 - a crash is a data point
         rec.update(outcome="error", error=f"{type(exc).__name__}: {exc}", notes=[traceback.format_exc()[-2000:]])
         rec["time"].update(callback=model.callback_seconds)
@@ -197,6 +200,7 @@ def main():
     ap.add_argument("--threads", type=int, default=1)
     ap.add_argument("--experiment", default="dev")
     ap.add_argument("--repeat", type=int, default=0)
+    ap.add_argument("--trace", action="store_true", help="keep the solver's per-iteration trace in the record (mincon only)")
     ap.add_argument("--manifest", default=os.path.join(os.path.dirname(HERE), "corpus", "manifest.json"))
     a = ap.parse_args()
     import json
@@ -210,7 +214,7 @@ def main():
             if a.progress:
                 with open(a.progress, "w") as pf:
                     pf.write(f"{name} {time.time()}\n")
-            rec = run_one(name, a.solver, a.track, budget, a.threads, a.experiment, split_of, a.repeat)
+            rec = run_one(name, a.solver, a.track, budget, a.threads, a.experiment, split_of, a.repeat, keep_trace=a.trace)
             fh.write(schema.dumps(rec) + "\n")
             fh.flush()
             print(f"{name:<22} {a.solver:<18} {rec['outcome']:<6} status={rec.get('native_status')} f_model={rec['counts']['f_model']} "

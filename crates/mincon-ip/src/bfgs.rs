@@ -111,6 +111,17 @@ impl DenseBfgs {
         }
     }
 
+    /// Multiply the whole matrix by `k` (used when the objective scale changes
+    /// mid-solve: the Lagrangian, and therefore its curvature model, scales
+    /// with it).
+    pub fn scale(&mut self, k: f64) {
+        if k.is_finite() && k > 0.0 {
+            for b in &mut self.b {
+                *b *= k;
+            }
+        }
+    }
+
     /// `out <- B * v`.
     pub fn multiply(&self, v: &[f64], out: &mut [f64]) {
         for i in 0..self.n {

@@ -392,6 +392,40 @@ impl<P: Nlp + ?Sized> Solver<'_, P> {
         self.notes.push("Using the reduced elastic feasibility phase (analytical elastic minimization, Gauss-Newton curvature).".into());
         while state.steps < remaining && !self.recovery_budget_hit() {
             self.refresh_jacobian(&state.point.v[..self.n], &state.point.c)?;
+            // D10: first-order test for a stationary point of the (sharp) l1
+            // infeasibility over the box, independent of the barrier parameter.
+            // With the projected gradient P_box(v - g) - v, a variable pinned at a
+            // bound by a gradient pointing into it contributes nothing; the old
+            // test waited for the barrier to reach its floor, which at a bound it
+            // never did in the budget (INFEASIBLE_NL: 419 iterations).
+            {
+                let mut lm_sharp = vec![0.0; self.m];
+                for i in 0..self.m {
+                    lm_sharp[i] = elastic(state.point.c_hat[i], floor).1;
+                }
+                let mut g_sharp = vec![0.0; self.nv];
+                self.a_times(&lm_sharp, &mut g_sharp);
+                let mut proj = 0.0_f64;
+                for j in 0..self.nv {
+                    let gj = g_sharp[j] / RHO;
+                    let mut target = state.point.v[j] - gj;
+                    if self.has_l[j] {
+                        target = target.max(self.v_l[j]);
+                    }
+                    if self.has_u[j] {
+                        target = target.min(self.v_u[j]);
+                    }
+                    proj = proj.max((target - state.point.v[j]).abs());
+                }
+                let violation = self.user_violation(&state.point.v, &state.point.c);
+                if proj <= self.opts.tol.optimality && violation > self.opts.tol.feasibility {
+                    self.notes.push(format!(
+                        "Restoration reached a stationary point of the constraint violation within the bounds (projected residual {proj:.3e}, violation {violation:.3e}); this is a local diagnostic, not a proof of infeasibility or a second-order minimum."
+                    ));
+                    state.exit = Some(ExitFlag::LocallyInfeasible);
+                    return Ok(());
+                }
+            }
             let mut lm = vec![0.0; self.m];
             let mut t = vec![0.0; self.m];
             for i in 0..self.m {
@@ -894,5 +928,63 @@ mod tests {
             assert!((t - inverse).abs() / t < 1e-8);
         }
         assert!((elastic(0.0, 0.2).2 - 2.0 * 0.2 / (RHO * RHO)).abs() < 1e-20);
+    }
+}
+
+#[cfg(test)]
+mod infeasible_tests {
+    use crate::solve;
+    use mincon_core::{Capabilities, EvalError, ExitFlag, Nlp, NlpDims, Options};
+
+    /// D10 (`docs/14`, `bench/results/r4-budget`): `x1 >= 2` with `x1^2 + x2^2 <= 1`
+    /// is infeasible; the infeasibility minimizer (2, 0) lies on the bound. The
+    /// solve must end `LocallyInfeasible` quickly instead of sitting there until
+    /// the iteration limit.
+    struct InfeasibleNl;
+    impl Nlp for InfeasibleNl {
+        fn dims(&self) -> NlpDims {
+            NlpDims { n: 2, m: 1 }
+        }
+        fn x_bounds(&self) -> (&[f64], &[f64]) {
+            (&[2.0, -1e20], &[1e20, 1e20])
+        }
+        fn c_bounds(&self) -> (&[f64], &[f64]) {
+            (&[-1e20], &[1.0])
+        }
+        fn x0(&self) -> &[f64] {
+            &[2.0, 0.0]
+        }
+        fn capabilities(&self) -> Capabilities {
+            Capabilities::none()
+        }
+        fn objective(&self, x: &[f64]) -> Result<f64, EvalError> {
+            Ok(x[0] + x[1])
+        }
+        fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
+            out[0] = x[0] * x[0] + x[1] * x[1];
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn stationary_infeasible_point_on_a_bound_is_diagnosed_quickly() {
+        let r = solve(&InfeasibleNl, &Options::default()).unwrap();
+        eprintln!(
+            "flag {:?} iters {} f_evals {} x {:?}",
+            r.exit_flag, r.iterations, r.f_evals, r.solution.x
+        );
+        for n in &r.notes {
+            eprintln!("  note: {n}");
+        }
+        for t in r.trace.iter().take(25) {
+            eprintln!("  {t:?}");
+        }
+        assert_eq!(
+            r.exit_flag,
+            ExitFlag::LocallyInfeasible,
+            "{:?}",
+            r.exit_flag
+        );
+        assert!(r.f_evals < 400, "{} evaluations", r.f_evals);
     }
 }
