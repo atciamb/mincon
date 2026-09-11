@@ -31,21 +31,26 @@ let r = minimize(&p, &Options::default())?;
 ```
 
 > **Status: experimental, measured.** Matched against the installed MATLAB
-> R2025b `fmincon` on a 149-problem single-source corpus with an independent
-> KKT oracle (`docs/15_BENCHMARK_PROTOCOL_V2.md`), two rounds of held-out
+> R2025b `fmincon` on a 161-problem single-source corpus with an independent
+> KKT oracle (`docs/15_BENCHMARK_PROTOCOL_V2.md`), three rounds of held-out
 > qualification. At defaults mincon attained at least as many targets as
-> `fmincon-interior-point` on every split (held-out: 19 vs 18 of 22, then
-> 14 vs 12 of 16), used about the same number of model evaluations (0.88×
-> to 1.43× across four sets; 0.88× [0.68, 1.10] on the latest held-out set)
-> and returned **10–100× faster** in wall-clock time on problems up to a few
-> hundred variables (same laptop, single thread). `fmincon-sqp` and SciPy
-> SLSQP need 0.6–0.8× the evaluations of any interior-point code on small
-> dense problems; mincon has no SQP yet, and dense BFGS makes it slow past
-> n ≈ 200. **The preregistered superiority contract is not met at these
-> sample sizes**; see `bench/results/s6v2-final2/README.md`,
-> `docs/17_CLAIM_AUDIT.md` and `docs/16_FAILURE_ATLAS.md` for exactly where
-> fmincon wins. Development gate: 160 Rust tests, 55/55 fixtures with
-> independent checks, 23 Python tests.
+> `fmincon-interior-point` on every split (held-out rounds: 19 vs 18 of 22,
+> 14 vs 12 of 16, 12 vs 10 of 12) and as many as `fmincon-sqp` on the latest
+> round (12 vs 12); on that round it used 0.81× [0.53, 1.05] the model
+> evaluations of `fmincon-interior-point` and 1.13× [0.97, 1.38] those of
+> `fmincon-sqp`, and returned **13× faster** than the former and 3× faster
+> than the latter in wall-clock time (same laptop, single thread), except on
+> two problems with n ≥ 120 where its dense BFGS iteration count made it
+> slower. The portfolio now has an SQP member (ℓ1 merit, elastic QP, damped
+> BFGS, second-order corrections, a second-order check that walks off saddle
+> points where `fmincon-sqp` and SLSQP stop) that runs first on small
+> problems: on the development corpus it is 0.78× [0.70, 0.86] the
+> interior-point member's evaluations. **The preregistered superiority
+> contract's evaluation interval is still not met at these sample sizes**;
+> see `bench/results/s6v3-final3/README.md`, `docs/17_CLAIM_AUDIT.md` and
+> `docs/16_FAILURE_ATLAS.md` for exactly where fmincon wins. Development
+> gate: Rust tests, 55/55 fixtures with independent checks for the portfolio
+> and each member (SQP alone: 54/55, HS13 within 4e-4), 23 Python tests.
 
 `fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
@@ -61,7 +66,20 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   Algorithm IC inertia correction, second-order corrections,
   fraction-to-boundary, bound-multiplier resets, scaled `E_mu` termination.
 * **Feasibility restoration** — guarded soft steps, then analytically reduced
-  elastic minimization with Gauss-Newton curvature and filter re-entry.
+  elastic minimization with Gauss-Newton curvature and filter re-entry; a
+  stationary infeasible point on a bound is diagnosed in a handful of
+  iterations.
+* **SQP** — ℓ1 merit function with a single penalty shared by the elastic
+  QP (so every step is a descent direction even when the linearization is
+  inconsistent), damped BFGS with a curvature rescale of the unit start,
+  Goldfarb–Idnani dual active-set QP with a hinted warm start, up to four
+  second-order corrections, an adaptive step bound, and a second-order probe
+  at termination that leaves saddle points. Runs first in the portfolio for
+  n ≤ 20 (`docs/20_SQP_MATHEMATICS.md`).
+* **Termination you can trust** — the scaled KKT test is guarded by the
+  stationarity relative to the gradient in your units (the same measure the
+  benchmark's independent oracle uses), budget exits say whether the solve
+  was still progressing, and degenerate multipliers are reported as such.
 * **Sparse `LDL^T`** written from scratch: dynamic regularization, inertia
   certified by Sylvester's law, element-growth detection, iterative refinement.
   **No HSL, no MUMPS, no Fortran** — which is what makes the wheel possible.
@@ -87,22 +105,28 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
 
 ### Known gaps, in priority order (measured, see `docs/16_FAILURE_ATLAS.md`)
 
-1. **SQP.** Specified, not built. `fmincon-sqp`/SLSQP use 0.6–0.8× the
-   evaluations of every interior-point code on small dense problems.
-2. **Dense BFGS from the identity at n ≳ 100** (ELLIPSOID2_200: ~800
-   iterations; QUADSPHERE2_300 not solved within budget): hundreds of
-   iterations on long curved valleys for every BFGS-based solver, and
-   ~25 ms/iteration at n = 200. Pass exact derivatives; a guarded initial
-   scaling is the next candidate fix (an unguarded one was rejected).
+1. **Dense BFGS at n ≳ 100** (MAXENT_200: 80 000 evaluations; ELLIPSOID2_200
+   ~400 iterations; CHAINROSEN_BOX_200 not solved within 100 000
+   evaluations): hundreds of iterations on long curved valleys for every
+   BFGS-based solver, and the SQP member's dense QP makes it worse there.
+   Pass exact derivatives; a structured or limited-memory curvature model is
+   the next candidate.
+2. **Evaluations against `fmincon-sqp`** are even, not better (1.13×
+   [0.97, 1.38] on the last held-out round; 1.05× on n ≤ 50). `fmincon-sqp`'s
+   `100·n` evaluation cap stops it inside the target tolerance on the large
+   problems where mincon keeps iterating to its optimality tolerance.
 3. **Adaptive barrier stalls** on a few problems (HS63: 39 vs 8 iterations
-   monotone) before the monotone fallback fires; a primal-infeasibility floor
-   was rejected as neutral overall.
-4. **Finite-difference accuracy on sensitive models**: the solver now stops
-   at the estimated derivative accuracy (HS62: 100 evaluations, was 504) but
-   the certificate is only as good as the derivatives; pass `jac` and
-   constraint `jac` when you can.
-5. **Nonlinear infeasibility is not always diagnosed** (INFEASIBLE_NL runs to
-   the iteration limit; so do fmincon and SLSQP).
+   monotone) before the monotone fallback fires; the SQP member now runs
+   first on those sizes, so the barrier rule matters less than it did.
+4. **Finite-difference accuracy on sensitive models**: the solver stops at
+   the estimated derivative accuracy (HS62: 100 evaluations, was 504) but the
+   certificate is only as good as the derivatives; pass `jac` and constraint
+   `jac` when you can.
+5. **Basins**: from a given start every local method, mincon included, can
+   finish at a different local minimum than the published one (HS2, HS16,
+   HS20, HS55, HS108 — all verified strict local minima,
+   `bench/results/r3-basins`); mincon reports these as local minima, never
+   as failures, and has no multi-start.
 6. **AMD ordering** falls back to RCM; inertia-free acceptance is not wired.
 
 ---
@@ -116,8 +140,8 @@ crates/
   mincon-linalg/         sparse LDL^T with certified inertia, KKT assembly
   mincon-diff/           finite differences, coloring, sparsity detection, checker
   mincon-ip/             interior point
-  mincon-sqp/            SQP  (specified, not implemented)
-  mincon-qp/             QP subsolver  (specified, not implemented)
+  mincon-sqp/            SQP (l1 merit, elastic QP, damped BFGS, second-order probe)
+  mincon-qp/             dense dual active-set QP subsolver (Goldfarb-Idnani)
   mincon/                public API, algorithm portfolio
   mincon-py/             PyO3 bindings + the Python package
   mincon-testset/        Hock-Schittkowski and torture problems
