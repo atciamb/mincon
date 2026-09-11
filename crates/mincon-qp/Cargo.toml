@@ -1,6 +1,6 @@
 [package]
 name = "mincon-qp"
-description = "Quadratic programming subproblem solver for mincon's SQP (specification and scaffolding)"
+description = "Dense dual active-set (Goldfarb-Idnani) quadratic programming solver for mincon's SQP"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
