@@ -242,11 +242,12 @@ def test_hessian_is_used_when_supplied():
     kw = dict(lb=1., ub=5., nonlcon=nonlcon, jac=jac, nonlcon_jac=nonlcon_jac)
     quasi = mincon.fmincon(f, [1., 5., 5., 1.], **kw)
     exact = mincon.fmincon(f, [1., 5., 5., 1.], hess=hess, **kw)
-    # The exact Hessian is used and the optimum is reached; it is *not* faster here
-    # (docs/22 section 7: the regularisation of indefinite Lagrangian Hessians is untuned).
-    assert quasi.success and exact.usable
-    assert abs(exact.fun - 17.0140173) < 1e-4 * 17.0
+    # The exact Hessian is used, certified, and (I9) not slower than the quasi-Newton
+    # default by more than a couple of iterations (HS71: 7 vs 5; it was 370 before I9).
+    assert quasi.success and exact.success
+    assert abs(exact.fun - 17.0140173) < 1e-5 * 17.0
     assert any("exact Hessian" in n for n in exact.notes)
+    assert exact.nit <= quasi.nit + 3
 
 
 def test_facade_selects_the_method():

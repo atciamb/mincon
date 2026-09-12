@@ -215,13 +215,13 @@ def minimize(
         ``f(x) + sum(lam * c(x))`` over every constraint row in the order of
         ``constraints`` (equalities and inequalities alike), with ``lam`` in
         the sign convention of ``res['lambda']``. Both algorithms use it in
-        place of their quasi-Newton model. Experimental: on unconstrained and
-        bound-constrained problems it gives Newton convergence (a quadratic
-        in one step); on problems with nonlinear constraints the current
-        handling of an indefinite Lagrangian Hessian can make the solve
-        *slower* than the quasi-Newton default (measured: HS71 5 -> 370 SQP
-        iterations), so compare before relying on it. Only the symmetric
-        part is used.
+        place of their quasi-Newton model; the SQP member regularises an
+        indefinite Lagrangian Hessian along the constraint normals only, so
+        it keeps Newton convergence (HS71: 7 iterations). The interior-point
+        member's handling is still experimental (HS71: 56 iterations against
+        10 with its quasi-Newton model), so on problems with more than 20
+        variables, where it runs first, compare before relying on ``hess``.
+        Only the symmetric part is used.
     bounds : sequence of (low, high), optional
         Use ``None`` for an infinite side. Bounds are honoured at **every**
         iterate, including finite-difference probes, so a model that is

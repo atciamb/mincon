@@ -389,11 +389,12 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                         dense[col * n + row] = lower_values[pos];
                     }
                 }
-                let mut h = dense.clone();
-                for j in 0..n {
-                    h[j * n + j] += *shift;
-                }
-                Ok(h)
+                // The regularisation is decided afresh in `direction` each
+                // iteration (I9): a sticky shift grew to 47 on HS71 for a most
+                // negative eigenvalue of 2.7 and turned every step into a scaled
+                // steepest-descent step (370 iterations; `docs/22` section 7.5).
+                *shift = 0.0;
+                Ok(dense.clone())
             }
         }
     }
@@ -419,12 +420,65 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
             .map(|j| (self.xu[j] - p.x[j]).min(self.step_bound * p.x[j].abs().max(1.0)))
             .collect();
         let qopts = QpOptions::default();
+        // I9: an exact Lagrangian Hessian is often indefinite in the full space
+        // while positive on the null space of the active constraints, which is
+        // all the QP needs. Regularise first with `delta (J'J + E_B)` (E_B the
+        // active-bound coordinates), which adds curvature only along the
+        // constraint normals; fall back to `delta I` when that is not enough
+        // (a genuinely indefinite reduced Hessian). The smallest working delta
+        // is found by a factor-of-10 search and four bisections, each iteration
+        // afresh, and reported as `delta_w` in the trace.
+        let h0 = h.clone();
+        let exact = matches!(self.hess, Hess::Exact { .. });
+        let regulariser: Option<Vec<f64>> = if exact && m + n > 0 {
+            let mut r = vec![0.0; n * n];
+            for i in 0..m {
+                for a in 0..n {
+                    let ja = p.j[i * n + a];
+                    if ja == 0.0 {
+                        continue;
+                    }
+                    for b in 0..n {
+                        r[a * n + b] += ja * p.j[i * n + b];
+                    }
+                }
+            }
+            for j in 0..n {
+                let tol = 1e-8 * p.x[j].abs().max(1.0);
+                if p.x[j] - self.xl[j] <= tol || self.xu[j] - p.x[j] <= tol {
+                    r[j * n + j] += 1.0;
+                }
+            }
+            Some(r)
+        } else {
+            None
+        };
+        let scale = (0..n)
+            .fold(0.0_f64, |a, j| a.max(h0[j * n + j].abs()))
+            .max(1.0);
+        let apply = |h: &mut Vec<f64>, delta: f64, use_r: bool| {
+            h.copy_from_slice(&h0);
+            if use_r {
+                if let Some(r) = &regulariser {
+                    for k in 0..n * n {
+                        h[k] += delta * r[k];
+                    }
+                    return;
+                }
+            }
+            for j in 0..n {
+                h[j * n + j] += delta;
+            }
+        };
+        let mut delta = 0.0_f64;
+        let mut delta_fail = 0.0_f64;
+        let mut use_r = regulariser.is_some();
         let mut shifts = 0;
-        loop {
+        let solve_with = |hh: &[f64]| {
             let qp = DenseQp {
                 n,
                 m,
-                h,
+                h: hh,
                 g: &p.g,
                 a: &p.j,
                 a_l: &a_l,
@@ -432,8 +486,31 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                 x_l: &x_l,
                 x_u: &x_u,
             };
-            match solve_dense(&qp, hint, &qopts) {
+            solve_dense(&qp, hint, &qopts)
+        };
+        loop {
+            match solve_with(h) {
                 Ok(mut s) => {
+                    // Solved. With a shift in play, close in on the smallest one
+                    // that works: the bracket [delta_fail, delta] is a factor 10.
+                    if delta > 0.0 && delta_fail > 0.0 {
+                        for _ in 0..4 {
+                            let mid = (delta_fail * delta).sqrt();
+                            let mut h_try = h.clone();
+                            apply(&mut h_try, mid, use_r);
+                            match solve_with(&h_try) {
+                                Ok(s2) => {
+                                    delta = mid;
+                                    *h = h_try;
+                                    s = s2;
+                                }
+                                Err(_) => delta_fail = mid,
+                            }
+                        }
+                    }
+                    if let Hess::Exact { shift, .. } = &mut self.hess {
+                        *shift = delta;
+                    }
                     let model_obj = s.objective;
                     self.drop_step_bound_multipliers(p, &mut s.z_l, &mut s.z_u);
                     return Ok(Direction {
@@ -452,16 +529,19 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                     if shifts > 30 {
                         return Err("QP Hessian could not be made positive definite".into());
                     }
-                    let scale = (0..n)
-                        .fold(0.0_f64, |a, j| a.max(h[j * n + j].abs()))
-                        .max(1.0);
-                    let delta = 1e-4 * scale * 10f64.powi(shifts - 1);
-                    for j in 0..n {
-                        h[j * n + j] += delta;
+                    delta_fail = delta;
+                    delta = if delta == 0.0 {
+                        1e-4 * scale
+                    } else {
+                        10.0 * delta
+                    };
+                    if use_r && delta > 1e6 * scale {
+                        // the reduced Hessian is not positive: shift the identity instead
+                        use_r = false;
+                        delta = 1e-4 * scale;
+                        delta_fail = 0.0;
                     }
-                    if let Hess::Exact { shift, .. } = &mut self.hess {
-                        *shift += delta;
-                    }
+                    apply(h, delta, use_r);
                 }
                 Err(QpError::Infeasible(_)) => break,
                 Err(QpError::IterationLimit(k)) => {

@@ -165,11 +165,12 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
    `bench/results/r3-basins`); mincon reports these as local minima, never
    as failures, and has no multi-start.
 6. **AMD ordering** falls back to RCM; inertia-free acceptance is not wired.
-7. **Exact Hessians on constrained problems** are slower than the
-   quasi-Newton default (HS71: 5 → 370 SQP iterations, 10 → 56 interior-point)
-   because the handling of an indefinite Lagrangian Hessian is untuned; on
-   unconstrained and bound-constrained problems they give Newton convergence.
-   `hess=` is therefore documented as experimental (`docs/22` §7.5).
+7. **Exact Hessians in the interior-point member** are slower than its
+   quasi-Newton default (HS71: 10 → 56 iterations): the inertia correction
+   fires at every iteration although the reduced Hessian is positive, a study
+   item (`docs/22` §7.5). The SQP member regularises an indefinite Lagrangian
+   Hessian along the constraint normals only and keeps Newton convergence
+   (HS71: 7 iterations, from 370 before that fix).
 8. **Unit mismatches between variables** (a 1e6 pressure next to a 1e-6
    area): every solver in the friction audit, fmincon included, misses the
    optimum, and every first-order certificate is fooled because the gradient

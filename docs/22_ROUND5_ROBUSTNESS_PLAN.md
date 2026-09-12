@@ -202,6 +202,27 @@ step whenever the reduced Hessian is fine but the full one is not; the IP's iner
 is IPOPT's Algorithm IC with its parameters, so its 56 iterations need a study of their own.
 H7 is falsified for constrained problems as built; `hess=` stays in the API, documented as
 experimental, and the regularisation of indefinite exact Hessians is the next study (S-E).
+Traces for S-E (HS71, exact Hessian, eigenvalues of the Lagrangian Hessian at the solution
+-2.67, 0.63, 1.06, 5.03; the active set leaves a one-dimensional null space on which the reduced
+Hessian is positive): the SQP member's shift is 46.9 at every iteration, sticky across
+iterations and grown by factors of 10 from 1e-4 times the diagonal scale, so the QP's Hessian is
+the shift and every step is a scaled steepest-descent step (370 iterations, linear); the IP
+member's inertia correction fires at every iteration with delta_w between 3 and 15 although the
+KKT matrix should already have inertia (n, m) when the reduced Hessian is positive, which points
+at the inertia test itself (56 iterations). The SQP part is a contained fix (I9 below); the IP
+part needs the study.
+
+### 7.7 I9, the SQP member's exact-Hessian regularisation, September 12
+
+`direction()` now regularises an indefinite exact Hessian afresh every iteration with
+`delta (J'J + E_B)` (E_B the coordinates at a bound), which adds curvature along the constraint
+normals only, and falls back to `delta I` when the reduced Hessian is itself indefinite; delta is
+the smallest that makes the QP convex, found by a factor-of-10 search and four bisections, and is
+reported as `delta_w`. HS71 with the exact Hessian: 370 -> 7 SQP iterations (`Optimal`, quasi-
+Newton 5); the one-equality problem 17 -> 5 (quasi-Newton 7); the shift on HS71 is 11.2 at the
+first iteration and 0.005 near the solution, where it was 46.9 throughout. Fixtures and the corpus
+are unaffected (no exact Hessians there); gates 56/56, 56/56, 55/56, Python 34. The interior-point
+member's exact-Hessian path (56 iterations) is unchanged and remains the S-E study.
 
 ### 7.6 I8, variable scaling from the start (H8), September 12 (ablation pending)
 

@@ -85,10 +85,10 @@ result = minimize(
 `fmincon` nonlinear inequalities mean `c(x) <= 0`. Equalities are zero in both.
 Use `bounds=[(0, None), (0, None)]` with `minimize`; use `lb=0` with `fmincon`.
 
-Supply `jac=` if you have an analytical objective gradient; `hess=` (the
-Hessian of the Lagrangian) is accepted but experimental: it is Newton-fast on
-bound-constrained problems and can be slower than the default on problems with
-nonlinear constraints, see `help(minimize)`. Supplied derivatives
+Supply `jac=` if you have an analytical objective gradient and `hess=` (the
+Hessian of the Lagrangian) if you have that too; the SQP member uses it with
+Newton convergence, the interior-point member's handling of it is still
+experimental, see `help(minimize)`. Supplied derivatives
 are checked along one direction at `x0` with two extra evaluations: a gross
 disagreement raises with the offending component named, a mild one is noted
 in `res.notes`. `args=(...)` passes additional arguments to your objective
