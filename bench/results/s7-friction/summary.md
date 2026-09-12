@@ -10,13 +10,13 @@
 | with_args | Y 86 | Y 77 | Y 99 | Y 61 | Y 100 |
 | wrong_gradient | n! 45 | n! 49 | n 477 | n! 416 | n! 407 |
 | infeasible_start_far | Y 199 | Y 33 | Y 99 | Y 33 | Y 462 |
-| bad_scaling | n! 20 | n 11 | n! 64 | n 3 | n! 84 |
+| bad_scaling | nk 20 | n 11 | n! 64 | n 3 | nk 84 |
 | noisy_simulator | Y 183 | Y 68 | Y 86 | Y 28 | Y 255 |
 | box_lsq | n 3009 | Y? 5049 | Y 8595 | Y 3213 | Y 7803 |
 | equality_circle | Y 44 | Y 24 | Y 26 | Y 20 | Y 44 |
 | **attained** | **11/14** | **11/14** | **12/14** | **10/14** | **11/14** |
 
-Cell: Y attained (feasible to 1e-6, objective within 1e-4 relative of the reference) or n / err, then model-boundary objective evaluations. `!` marks a solver that reported success without attaining; `?` marks attainment the solver did not report as success.
+Cell: Y attained (feasible to 1e-6, objective within 1e-4 relative of the reference) or n / err, then model-boundary objective evaluations. `!` marks a false certificate (success reported at a point the oracle does not certify); `k` marks success reported at a point the oracle certifies as first-order stationary but which is not the reference optimum; `?` marks attainment the solver did not report as success.
 
 ### fmincon-interior-point
 

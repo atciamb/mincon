@@ -1,0 +1,41 @@
+{
+ "n_problems": 169,
+ "duplicates_overwritten": 0,
+ "solvers": {
+  "mincon-sqp": {
+   "attained": 154,
+   "scorable": 166,
+   "kkt": 88,
+   "kkt_recovered": 138,
+   "not_ok": 0,
+   "n": 169
+  },
+  "mincon-sqp@bfgs_rescale=0": {
+   "attained": 154,
+   "scorable": 166,
+   "kkt": 88,
+   "kkt_recovered": 138,
+   "not_ok": 0,
+   "n": 169
+  }
+ },
+ "paired": {
+  "mincon-sqp": {
+   "both": 154,
+   "only_solver": 0,
+   "only_baseline": 0,
+   "neither": 12,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    0.0,
+    0.0
+   ],
+   "geo_mean_ratio": 1.0,
+   "ratio_ci": [
+    1.0,
+    1.0
+   ],
+   "n_common": 154
+  }
+ }
+}

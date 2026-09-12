@@ -8,6 +8,7 @@
 //! | Failure mode | Problem |
 //! |---|---|
 //! | Objective and variables span many orders of magnitude | `TORTURE_SCALING` |
+//! | Two variables twelve orders of magnitude apart, each mattering (D11) | `TORTURE_UNITS` |
 //! | Model returns `NaN` outside its domain | `TORTURE_DOMAIN` |
 //! | Model returns `NaN` in a region *inside* the feasible set | `TORTURE_NAN_POCKET` |
 //! | Constraints are inconsistent | `TORTURE_INFEASIBLE` |
@@ -84,6 +85,22 @@ pub fn all() -> Vec<TestProblem> {
              scaling off this is close to unsolvable; with gradient-based scaling on it is easy. \
              This single problem is the clearest demonstration of why our default differs from \
              fmincon's ScaleProblem = false.",
+        ),
+        p(
+            "TORTURE_UNITS",
+            &[1.0e6, 1.0e-6],
+            &[1.0, 1.0e-9],
+            &[INF, INF],
+            &[-INF],
+            &[0.0],
+            // A pressure (1e6) and an area (1e-6), each mattering equally, coupled by
+            // x0 x1 >= 5 (written 5 - x0 x1 <= 0). Convex; the Hessian's condition
+            // number is 1e25. The optimum is on the row at x = (2.8998e6, 1.7243e-6).
+            |x| (x[0] / 3.0e6 - 1.0).powi(2) + (x[1] / 1.0e-6 - 1.0).powi(2),
+            |x, c| c[0] = 5.0 - x[0] * x[1],
+            Some(0.169_355_538_390_110_78),
+            Expect::NoFalseCertificate,
+            "The friction audit's bad_scaling problem (bench/results/s7-friction). Every solver              tested misses the optimum from this start; the fixture asserts that the answer is              not certified: the interior-point member once reported Optimal at f = 120.7 because              its start push moved x1 to 1e-2, the objective factor (5e-9) was chosen there, and              the scaled complementarity let a bound 1e-5 away carry a multiplier of 8e6 (D11).",
         ),
         p(
             "TORTURE_DOMAIN",

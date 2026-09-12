@@ -40,8 +40,10 @@ one-shot and include MATLAB's first-call overhead, so they are not comparable ac
 
 ## 2. First-try attainment (the metric that matters first)
 
-Cell: `Y` attained or `n`, then model-boundary objective evaluations; `!` = the solver
-reported success without attaining; `?` = attained but not reported as success.
+Cell: `Y` attained or `n`, then model-boundary objective evaluations; `!` = a false
+certificate (success reported at a point the oracle does not certify as first-order
+stationary); `k` = success reported at a point the oracle does certify but which is not the
+reference optimum; `?` = attained but not reported as success.
 
 | problem | fmincon-interior-point | fmincon-sqp | **mincon** | scipy-slsqp | scipy-trust-constr |
 |---|---|---|---|---|---|
@@ -55,28 +57,32 @@ reported success without attaining; `?` = attained but not reported as success.
 | with_args | Y 86 | Y 77 | Y 99 | Y 61 | Y 100 |
 | wrong_gradient | n! 45 | n! 49 | n 477 | n! 416 | n! 407 |
 | infeasible_start_far | Y 199 | Y 33 | Y 99 | Y 33 | Y 462 |
-| bad_scaling | n! 20 | n 11 | n! 64 | n 3 | n! 84 |
+| bad_scaling | nk 20 | n 11 | n! 64 | n 3 | nk 84 |
 | noisy_simulator | Y 183 | Y 68 | Y 86 | Y 28 | Y 255 |
 | box_lsq | n 3009 | Y? 5049 | Y 8595 | Y 3213 | Y 7803 |
 | equality_circle | Y 44 | Y 24 | Y 26 | Y 20 | Y 44 |
 | **attained** | **11/14** | **11/14** | **12/14** | **10/14** | **11/14** |
-| reported success without attaining | 2 | 1 | 1 | 1 | 3 |
-| attained without reporting success | 1 | 1 | 0 | 0 | 0 |
+| false certificates (`!`) | 1 | 1 | 1 | 1 | 2 |
+| certified stationary point that is not the optimum (`k`) | 1 | 0 | 0 | 0 | 1 |
+| attained without reporting success (`?`) | 1 | 1 | 0 | 0 | 0 |
 
 What the records say:
 
-* **mincon attains the most on the first try (12/14)** and is the only solver whose reported
-  successes and attained problems coincide except on one problem. It attains everything any
+* **mincon attains the most on the first try (12/14)**, with one false certificate, like
+  fmincon-interior-point, fmincon-sqp and SLSQP (trust-constr has two). It attains everything any
   other solver attains, plus chainrosen20 (fmincon-sqp and SLSQP stop at their default
   iteration or evaluation caps, fmincon-interior-point reaches the target but reports its cap)
   and box_lsq (fmincon-interior-point's 3000-evaluation default cap ends it 1.3e-3 short).
 * **No solver attains `wrong_gradient` or `bad_scaling`.** Four of five certify a wrong point on
   `wrong_gradient`; mincon alone refuses (exit 2, `success = False`) but says "Local minimum
   possible. Step size below tolerance", which does not tell the user what is wrong. On
-  `bad_scaling`, a two-variable convex problem, fmincon-interior-point, mincon and trust-constr
-  all report success at wrong points (f = 16.4, 120.7 and 16.4 against 0.169); fmincon-sqp and
-  SLSQP fail without claiming success (fmincon-sqp: "Converged to an infeasible point" on a
-  feasible problem).
+  `bad_scaling`, a two-variable convex problem, fmincon-interior-point and trust-constr stop
+  at f = 16.4 against 0.169 and report success: the oracle certifies that point as first-order
+  stationary (the gradient component along the 1e6-scale variable is 1e-7 relative to the
+  other, invisible to any first-order tolerance), so it is the scaling pathology, not a false
+  certificate. mincon reports success at f = 120.7, a point the oracle rejects, which is a
+  false certificate; fmincon-sqp and SLSQP fail without claiming success (fmincon-sqp:
+  "Converged to an infeasible point" on a feasible problem).
 * **mincon's `bad_scaling` exit is a false certificate**, the one defect in this audit that
   belongs to this project. Mechanism, from the trace and the solver notes: the interior-point
   member pushes the start away from the bound x1 >= 1e-9 by 1e-2 (the push floor is 1, so a
@@ -135,6 +141,19 @@ What the user must write beyond MATLAB's minimum, from the runner's translations
    Hessian.
 6. The ODE-fit and noisy-simulator problems are attained by every solver here; harder
    instances (stiff models, larger noise) belong in the sealed round-5 set, not in this baseline.
+
+## 5. After the first increments (candidate runs, same audit)
+
+`mincon-fmincon-i1.jsonl` (I1, the certificate guard) and `mincon-fmincon-i3.jsonl` (I1 + I2 +
+I3 + the API increments), summarised in `summary-i1.md` and `summary-i3.md`:
+
+| candidate | attained | bad_scaling | wrong_gradient | every other record |
+|---|---|---|---|---|
+| I1 | 12/14 | `Acceptable`, `success = False`, f = 16.46 (two objective rescales; 115 evaluations) | unchanged | identical to the baseline to the evaluation |
+| I1 + I2 + I3 | 12/14 | the SQP member no longer declares infeasibility and certifies the same first-order point fmincon-interior-point certifies (f = 16.44, `k`, 15 evaluations) | stops before iterating: "The supplied derivatives disagree with finite differences along a test direction at x0 (relative error 3.8e-1) ... grad f [1]  4.0 vs -4.0" (11 evaluations) | identical |
+
+The scaling problem itself stays unsolved by every solver in the audit until the variables
+are scaled (I8 of `docs/22`).
 
 ## Files
 

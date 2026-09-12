@@ -22,11 +22,12 @@
 //! `docs/07_API_DESIGN.md` and is the single biggest speedup available on the
 //! Python side.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use mincon_core::{
-    Algorithm, BarrierUpdate, Capabilities, EvalError, ExitFlag, FdType, Nlp, NlpDims, Options,
-    ScalingMode, Sparsity, Tolerances, INF_BOUND,
+    Algorithm, BarrierUpdate, Capabilities, DerivativeCheck, EvalError, ExitFlag, FdType,
+    IterationCallback, IterationRecord, Nlp, NlpDims, Options, ScalingMode, Sparsity, Tolerances,
+    INF_BOUND,
 };
 use numpy::{PyArray1, PyReadonlyArray1, ToPyArray};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -42,6 +43,10 @@ struct PyNlp {
     m: usize,
     fun: Py<PyAny>,
     jac: Option<Py<PyAny>>,
+    /// `hess(x, lam) -> (n, n)`: the Hessian of the Lagrangian `f + sum lam_i c_i`.
+    hess: Option<Py<PyAny>>,
+    /// Dense lower triangle, present when `hess` is.
+    hess_structure: Option<Sparsity>,
     /// One entry per constraint block: (callable, is_equality, block length, optional Jacobian callable).
     blocks: Vec<Block>,
     /// Dense `m x n` structure, present only when every block supplied a Jacobian.
@@ -86,6 +91,7 @@ impl Nlp for PyNlp {
         Capabilities {
             gradient: self.jac.is_some(),
             jacobian: self.jac_structure.is_some(),
+            hessian: self.hess.is_some(),
             // Every call needs the GIL, so concurrent evaluation buys nothing.
             parallel_safe: false,
             ..Capabilities::none()
@@ -94,6 +100,74 @@ impl Nlp for PyNlp {
 
     fn jacobian_structure(&self) -> Option<&Sparsity> {
         self.jac_structure.as_ref()
+    }
+
+    fn hessian_structure(&self) -> Option<&Sparsity> {
+        self.hess_structure.as_ref()
+    }
+
+    /// `sigma * hess_f + sum lam_i hess_c_i` from the user's `hess(x, lam)`, which
+    /// returns the Lagrangian Hessian at `sigma = 1`; other `sigma` values (the
+    /// restoration phase asks for 0) cost a second call at `lam = 0`.
+    fn hessian_lagrangian(
+        &self,
+        x: &[f64],
+        sigma: f64,
+        lambda: &[f64],
+        out: &mut [f64],
+    ) -> Result<(), EvalError> {
+        let Some(hess) = &self.hess else {
+            return Err(EvalError::Failed("no hess supplied".into()));
+        };
+        let n = self.n;
+        Python::attach(|py| {
+            let full = |lam: &[f64]| -> Result<Vec<f64>, EvalError> {
+                let v = hess
+                    .call1(py, (x.to_pyarray(py), lam.to_pyarray(py)))
+                    .map_err(|e| {
+                        self.record(&e);
+                        EvalError::Failed(e.to_string())
+                    })?;
+                let np = py
+                    .import("numpy")
+                    .map_err(|e| EvalError::Failed(e.to_string()))?;
+                let a = np
+                    .call_method1("asarray", (v.bind(py), "float64"))
+                    .and_then(|a| a.call_method0("ravel"))
+                    .map_err(|e| EvalError::Failed(e.to_string()))?;
+                let flat: Vec<f64> = a
+                    .extract()
+                    .map_err(|e| EvalError::Failed(format!("hess did not return numbers: {e}")))?;
+                if flat.len() != n * n {
+                    return Err(EvalError::Failed(format!(
+                        "hess returned {} values; expected an ({n}, {n}) matrix",
+                        flat.len()
+                    )));
+                }
+                Ok(flat)
+            };
+            let h_lam = full(lambda)?;
+            let vals = if (sigma - 1.0).abs() <= f64::EPSILON {
+                h_lam
+            } else {
+                let h0 = full(&vec![0.0; lambda.len()])?;
+                (0..n * n)
+                    .map(|k| sigma * h0[k] + (h_lam[k] - h0[k]))
+                    .collect()
+            };
+            let mut pos = 0usize;
+            for j in 0..n {
+                for i in j..n {
+                    out[pos] = 0.5 * (vals[i * n + j] + vals[j * n + i]);
+                    pos += 1;
+                }
+            }
+            if out.iter().all(|v| v.is_finite()) {
+                Ok(())
+            } else {
+                Err(EvalError::NonFinite(None))
+            }
+        })
     }
 
     /// Dense Jacobian assembled block by block, written in the column-major
@@ -252,6 +326,37 @@ impl Nlp for PyNlp {
     }
 }
 
+/// Dense lower-triangular pattern in column-major order, matching the fill
+/// order of `PyNlp::hessian_lagrangian`.
+fn lower_triangle(n: usize) -> Sparsity {
+    let mut triplets = Vec::with_capacity(n * (n + 1) / 2);
+    for j in 0..n {
+        for i in j..n {
+            triplets.push((i, j));
+        }
+    }
+    Sparsity::from_triplets(n, n, &triplets).expect("valid lower triangle")
+}
+
+/// The iteration record as the Python-side dict (`result.trace` rows and the
+/// callback's argument).
+fn record_to_dict<'py>(py: Python<'py>, t: &IterationRecord) -> PyResult<Bound<'py, PyDict>> {
+    let row = PyDict::new(py);
+    row.set_item("iter", t.iter)?;
+    row.set_item("nfev", t.f_count)?;
+    row.set_item("f", t.f)?;
+    row.set_item("maxcv", t.constraint_violation)?;
+    row.set_item("optimality", t.optimality)?;
+    row.set_item("step_norm", t.step_norm)?;
+    row.set_item("alpha", t.alpha)?;
+    row.set_item("mu", t.mu)?;
+    row.set_item("in_restoration", t.in_restoration)?;
+    row.set_item("delta_w", t.delta_w)?;
+    row.set_item("delta_c", t.delta_c)?;
+    row.set_item("soc", t.soc_count)?;
+    Ok(row)
+}
+
 /// Probe a constraint callable once to learn how many values it returns.
 fn block_length(py: Python<'_>, f: &Py<PyAny>, x0: &[f64]) -> PyResult<usize> {
     let arr = x0.to_pyarray(py);
@@ -309,8 +414,27 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
     if let Some(v) = get!("seed", u64) {
         o.seed = v;
     }
-    if let Some(v) = get!("check_derivatives", bool) {
-        o.check_derivatives = v;
+    if let Some(v) = d.get_item("check_derivatives")? {
+        if !v.is_none() {
+            o.check_derivatives = if let Ok(b) = v.extract::<bool>() {
+                if b {
+                    DerivativeCheck::Full
+                } else {
+                    DerivativeCheck::Off
+                }
+            } else {
+                match v.extract::<String>()?.as_str() {
+                    "off" | "none" => DerivativeCheck::Off,
+                    "auto" | "directional" => DerivativeCheck::Directional,
+                    "full" => DerivativeCheck::Full,
+                    other => {
+                        return Err(PyValueError::new_err(format!(
+                            "unknown check_derivatives '{other}'; use True (full), False (off), 'auto' (directional, the default) or 'full'"
+                        )))
+                    }
+                }
+            };
+        }
     }
     if let Some(v) = get!("scaling", String) {
         o.scaling = match v.as_str() {
@@ -379,7 +503,7 @@ fn parse_algorithm(method: Option<&str>) -> PyResult<Algorithm> {
 /// Deliberately shaped like `scipy.optimize.minimize`, so an existing script
 /// needs only a changed import.
 #[pyfunction]
-#[pyo3(signature = (fun, x0, jac=None, bounds=None, constraints=None, method=None, options=None))]
+#[pyo3(signature = (fun, x0, jac=None, bounds=None, constraints=None, method=None, options=None, hess=None, callback=None))]
 #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
 fn minimize(
     py: Python<'_>,
@@ -390,6 +514,8 @@ fn minimize(
     constraints: Option<Bound<'_, PyAny>>,
     method: Option<&str>,
     options: Option<Bound<'_, PyDict>>,
+    hess: Option<Py<PyAny>>,
+    callback: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     let x0v: Vec<f64> = x0.as_slice()?.to_vec();
     let n = x0v.len();
@@ -506,6 +632,39 @@ fn minimize(
     let m = cl.len();
     let mut opts = parse_options(py, options.as_ref())?;
     opts.algorithm = parse_algorithm(method)?;
+    // The user's callback runs with the GIL re-acquired for the call only; an
+    // exception inside it stops the solve and is re-raised afterwards.
+    let callback_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    if let Some(cb) = callback {
+        if !cb.bind(py).is_callable() {
+            return Err(PyValueError::new_err("callback must be callable"));
+        }
+        let slot = callback_error.clone();
+        opts.callback = Some(IterationCallback::new(move |rec: &IterationRecord| {
+            Python::attach(|py| {
+                let stop = record_to_dict(py, rec)
+                    .and_then(|row| cb.call1(py, (row,)))
+                    .and_then(|v| v.bind(py).is_truthy());
+                match stop {
+                    Ok(s) => s,
+                    Err(e) => {
+                        if let Ok(mut g) = slot.lock() {
+                            if g.is_none() {
+                                *g = Some(e.to_string());
+                            }
+                        }
+                        true
+                    }
+                }
+            })
+        }));
+    }
+    if let Some(h) = &hess {
+        if !h.bind(py).is_callable() {
+            return Err(PyValueError::new_err("hess must be callable"));
+        }
+    }
+    let hess_structure = hess.as_ref().map(|_| lower_triangle(n));
     // Analytic Jacobian only when every block supplies one: a partial Jacobian
     // would silently mix exact and approximate rows.
     let jac_structure = if m > 0 && blocks.iter().all(|b| b.3.is_some()) {
@@ -519,6 +678,8 @@ fn minimize(
         m,
         fun,
         jac,
+        hess,
+        hess_structure,
         blocks,
         jac_structure,
         lb,
@@ -533,6 +694,13 @@ fn minimize(
     // this, a solve blocks every other Python thread for its whole duration.
     let outcome = py.detach(|| mincon::minimize(&nlp, &opts));
 
+    if let Ok(slot) = callback_error.lock() {
+        if let Some(msg) = slot.as_ref() {
+            return Err(PyRuntimeError::new_err(format!(
+                "the callback raised: {msg}"
+            )));
+        }
+    }
     let report = match outcome {
         Ok(r) => r,
         Err(e) => {
@@ -569,20 +737,7 @@ fn minimize(
     d.set_item("notes", PyList::new(py, &report.notes)?)?;
     let trace = PyList::empty(py);
     for t in &report.trace {
-        let row = PyDict::new(py);
-        row.set_item("iter", t.iter)?;
-        row.set_item("nfev", t.f_count)?;
-        row.set_item("f", t.f)?;
-        row.set_item("maxcv", t.constraint_violation)?;
-        row.set_item("optimality", t.optimality)?;
-        row.set_item("step_norm", t.step_norm)?;
-        row.set_item("alpha", t.alpha)?;
-        row.set_item("mu", t.mu)?;
-        row.set_item("in_restoration", t.in_restoration)?;
-        row.set_item("delta_w", t.delta_w)?;
-        row.set_item("delta_c", t.delta_c)?;
-        row.set_item("soc", t.soc_count)?;
-        trace.append(row)?;
+        trace.append(record_to_dict(py, t)?)?;
     }
     d.set_item("trace", trace)?;
     d.set_item("time", report.timings.total.as_secs_f64())?;
@@ -608,6 +763,8 @@ fn check_gradients(
         m: 0,
         fun,
         jac: Some(jac),
+        hess: None,
+        hess_structure: None,
         blocks: Vec::new(),
         jac_structure: None,
         lb: vec![-INF_BOUND; n],

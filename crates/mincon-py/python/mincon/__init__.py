@@ -126,22 +126,44 @@ def _display_level(opts: dict) -> str:
     return level
 
 
+_ITER_HEADER = (f"{'Iter':>5} {'F-count':>8} {'f(x)':>14} {'Feasibility':>12} {'Optimality':>12} "
+                f"{'Step':>10} {'alpha':>8} {'mu':>9}")
+
+
+def _iteration_line(t: Mapping[str, Any]) -> str:
+    step = t.get("step_norm")
+    alpha = t.get("alpha")
+    mu = t.get("mu")
+    return (f"{t['iter']:>5d} {t['nfev']:>8d} {t['f']:>14.6e} {t['maxcv']:>12.3e} {t['optimality']:>12.3e} "
+            f"{'---' if step is None else f'{step:.3e}':>10} "
+            f"{'---' if alpha is None else f'{alpha:.3f}':>8} "
+            f"{'---' if mu is None else f'{mu:.1e}':>9}"
+            + ("  restoration" if t.get("in_restoration") else ""))
+
+
+def _streaming_callback(level: str, user_callback):
+    """The per-iteration callback handed to the engine: prints each row as it
+    happens when ``level == 'iter'`` (the engine re-acquires the GIL for the
+    call) and forwards the row to the user's callback, whose truthy return
+    stops the solve."""
+    if level != "iter" and user_callback is None:
+        return None
+    state = {"members": 0}
+
+    def callback(row):
+        if level == "iter":
+            if row["iter"] == 0:
+                state["members"] += 1
+                print(_ITER_HEADER if state["members"] == 1 else "  (portfolio: next member)")
+            print(_iteration_line(row), flush=True)
+        if user_callback is not None:
+            return bool(user_callback(row))
+        return False
+    return callback
+
+
 def _print_report(result: "OptimizeResult", level: str) -> None:
-    """Print the iteration table and/or the final line. The engine runs
-    without the GIL, so the table is printed when the solve returns, not
-    streamed; ``result.trace`` holds the same rows for programmatic use."""
-    if level == "iter" and result.get("trace"):
-        print(f"{'Iter':>5} {'F-count':>8} {'f(x)':>14} {'Feasibility':>12} {'Optimality':>12} "
-              f"{'Step':>10} {'alpha':>8} {'mu':>9}")
-        for t in result["trace"]:
-            step = t.get("step_norm")
-            alpha = t.get("alpha")
-            mu = t.get("mu")
-            print(f"{t['iter']:>5d} {t['nfev']:>8d} {t['f']:>14.6e} {t['maxcv']:>12.3e} {t['optimality']:>12.3e} "
-                  f"{'---' if step is None else f'{step:.3e}':>10} "
-                  f"{'---' if alpha is None else f'{alpha:.3f}':>8} "
-                  f"{'---' if mu is None else f'{mu:.1e}':>9}"
-                  + ("  restoration" if t.get("in_restoration") else ""))
+    """Print the final line(s); the iteration rows were streamed by the callback."""
     if level in ("iter", "final"):
         tag = "converged" if result["success"] else ("usable" if result.get("usable") else "not solved")
         print(f"mincon ({tag}, status {result['status']}): {result['message']}")
@@ -155,10 +177,12 @@ def minimize(
     args: tuple = (),
     method: str | None = None,
     jac: Callable[[np.ndarray], Sequence[float]] | None = None,
+    hess: Callable[[np.ndarray, np.ndarray], Any] | None = None,
     bounds: Iterable[tuple[float | None, float | None]] | None = None,
     constraints: Mapping | Iterable[Mapping] | None = None,
     tol: float | None = None,
     options: Mapping[str, Any] | None = None,
+    callback: Callable[[Mapping[str, Any]], Any] | None = None,
 ) -> OptimizeResult:
     """Minimize a scalar function subject to bounds and constraints.
 
@@ -180,7 +204,24 @@ def minimize(
         ``jac(x, *args) -> array_like``. Without it the gradient is estimated
         by finite differences, which is supported and tested but costs
         accuracy and evaluations. If you have JAX, PyTorch or CasADi, pass
-        their gradient here.
+        their gradient here. A supplied gradient or Jacobian is checked along
+        one direction at ``x0`` (two extra evaluations): a gross disagreement
+        raises ``RuntimeError`` naming the component, a mild one is recorded
+        in ``res.notes`` (``options={'check_derivatives': ...}`` selects
+        ``'auto'`` (this), ``'full'``/``True`` (every entry at three points, a
+        failure raises) or ``False``).
+    hess : callable, optional
+        ``hess(x, lam, *args) -> (n, n)``: the Hessian of the Lagrangian
+        ``f(x) + sum(lam * c(x))`` over every constraint row in the order of
+        ``constraints`` (equalities and inequalities alike), with ``lam`` in
+        the sign convention of ``res['lambda']``. Both algorithms use it in
+        place of their quasi-Newton model. Experimental: on unconstrained and
+        bound-constrained problems it gives Newton convergence (a quadratic
+        in one step); on problems with nonlinear constraints the current
+        handling of an indefinite Lagrangian Hessian can make the solve
+        *slower* than the quasi-Newton default (measured: HS71 5 -> 370 SQP
+        iterations), so compare before relying on it. Only the symmetric
+        part is used.
     bounds : sequence of (low, high), optional
         Use ``None`` for an infinite side. Bounds are honoured at **every**
         iterate, including finite-difference probes, so a model that is
@@ -201,8 +242,8 @@ def minimize(
         ``threads``, ``seed``, ``check_derivatives``,
         ``scaling`` in ``{'none', 'gradient', 'equilibration'}`` (``True``
         keeps the default ``'gradient'``, ``False`` means ``'none'``),
-        ``disp`` (bool: print the iteration table and the final line when
-        the solve returns) or ``display`` in ``{'none', 'final', 'iter'}``,
+        ``disp`` (bool: stream one line per iteration as it happens and print
+        the final line) or ``display`` in ``{'none', 'final', 'iter'}``,
         ``finite_diff`` in ``{'forward', 'central', 'adaptive'}``,
         ``barrier`` in ``{'monotone', 'adaptive', 'adaptive-then-monotone'}``,
         ``fd_error_aware`` (bool, default True: stop at the accuracy the
@@ -214,6 +255,14 @@ def minimize(
         along an accepted step is off by more than this factor; 10 helps
         separable large problems and hurts dense coupled ones, so it is
         opt-in).
+
+    callback : callable, optional
+        ``callback(row)`` after every iteration with the same dict as a
+        ``res.trace`` row (``iter``, ``nfev``, ``f``, ``maxcv``,
+        ``optimality``, ``step_norm``, ``alpha``, ``mu``, ...). Return
+        ``True`` to stop the solve (``res.status == -1``, the current iterate
+        is returned), like ``fmincon``'s ``OutputFcn`` and SciPy's callback.
+        An exception raised inside it stops the solve and is re-raised.
 
     Returns
     -------
@@ -236,6 +285,10 @@ def minimize(
         raise ValueError("x0 must contain at least one finite number and no NaN or infinity")
     if not callable(fun) or (jac is not None and not callable(jac)):
         raise TypeError("fun and an optional jac must be callable")
+    if hess is not None and not callable(hess):
+        raise TypeError("hess must be callable: hess(x, lam) -> (n, n)")
+    if callback is not None and not callable(callback):
+        raise TypeError("callback must be callable")
 
     if args:
         _f = fun
@@ -243,6 +296,9 @@ def minimize(
         if jac is not None:
             _j = jac
             jac = lambda x: _j(x, *args)  # noqa: E731
+        if hess is not None:
+            _h = hess
+            hess = lambda x, lam: _h(x, lam, *args)  # noqa: E731
 
     cons = _normalize_constraints(constraints, args)
 
@@ -272,6 +328,8 @@ def minimize(
         constraints=cons,
         method=method,
         options=opts,
+        hess=hess,
+        callback=_streaming_callback(display, callback),
     )
     result = OptimizeResult(raw)
     if display != "none":
@@ -280,7 +338,8 @@ def minimize(
 
 
 def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
-            nonlcon=None, options=None, *, jac=None, nonlcon_jac=None, args=(), tol=None):
+            nonlcon=None, options=None, *, jac=None, nonlcon_jac=None, hess=None, args=(), tol=None,
+            method=None, callback=None):
     """Minimize with MATLAB-style constraint inputs and automatic defaults.
 
     ``A @ x <= b``, ``Aeq @ x == beq``, ``lb <= x <= ub`` and
@@ -294,8 +353,15 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     ``(len(c), n)`` and ``(len(ceq), n)`` (rows are constraints, unlike
     MATLAB's transposed ``GC``). Alternatively ``nonlcon`` itself may return
     ``(c, ceq, Jc, Jceq)``; the shape of the return is fixed by its first
-    call. Derivatives are used only when supplied, and are checked against
-    finite differences when ``options={'check_derivatives': True}``.
+    call. Derivatives are used only when supplied; they are checked along one
+    direction at ``x0`` by default (see :func:`minimize`), and against finite
+    differences entry by entry when ``options={'check_derivatives': True}``.
+    ``hess(x, lam, *args)`` optionally returns MATLAB's ``HessianFcn`` matrix,
+    ``hess f + sum(lam.ineqnonlin * hess c) + sum(lam.eqnonlin * hess ceq)``,
+    where ``lam`` is a :class:`Multipliers` with MATLAB's signs. ``method``
+    selects ``'auto'`` (default), ``'interior-point'`` or ``'sqp'``;
+    ``callback(row)`` is called after every iteration and stops the solve
+    when it returns ``True``.
 
     Returns an :class:`OptimizeResult`: use ``r.x``, ``r.fun``, ``r.success``
     and ``r.maxcv``. ``r.multipliers`` groups the MATLAB-sign multipliers as
@@ -413,8 +479,25 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     # Bind user arguments here so linear constraints do not receive them.
     objective = (lambda x: fun(x, *args)) if args else fun
     gradient = (lambda x: jac(x, *args)) if args and jac is not None else jac
-    result = minimize(objective, x0, jac=gradient, bounds=bounds,
-                      constraints=cons, tol=tol, options=options)
+    hessian = None
+    if hess is not None:
+        if not callable(hess):
+            raise TypeError("hess must be callable: hess(x, lam) -> (n, n)")
+
+        def hessian(x, lam):
+            # The engine's Lagrangian is f + sum(lam_engine * c_engine) over the blocks
+            # [A rows, Aeq rows, c, ceq]; c_engine = -c for the inequality blocks and the
+            # MATLAB-sign multipliers are -lam_engine there, so MATLAB's HessianFcn formula
+            # with these groups is exactly the engine's Lagrangian Hessian.
+            groups = Multipliers()
+            start = 0
+            for name, size, sign in zip(["ineqlin", "eqlin", "ineqnonlin", "eqnonlin"],
+                                        sizes + nonlinear_sizes, [-1., 1., -1., 1.]):
+                groups[name] = sign * np.asarray(lam, float)[start:start + size]
+                start += size
+            return hess(x, groups, *args)
+    result = minimize(objective, x0, jac=gradient, hess=hessian, bounds=bounds,
+                      constraints=cons, tol=tol, options=options, method=method, callback=callback)
     multipliers = Multipliers()
     start = 0
     for name, size, sign in zip(

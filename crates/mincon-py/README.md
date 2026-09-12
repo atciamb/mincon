@@ -50,9 +50,12 @@ constraints and bounds. The result is a Python object, not MATLAB's output
 tuple. `result.multipliers` groups multipliers with MATLAB's signs, readable
 as `result.multipliers["eqlin"]` or `result.multipliers.eqlin`. Options use
 Python names such as `options={"maxiter": 500}`, not MATLAB option names;
-`options={"disp": True}` prints the iteration table and the final line when
-the solve returns (`"display": "final"` prints only the last), and
-`"scaling": True` / `False` map to the default gradient scaling / none.
+`options={"disp": True}` streams one line per iteration and prints the final
+line (`"display": "final"` prints only the last), and `"scaling": True` /
+`False` map to the default gradient scaling / none. `method=` selects
+`'auto'`, `'interior-point'` or `'sqp'`; `callback=` receives every
+iteration's row and stops the solve when it returns `True`; `hess=` takes
+MATLAB's `HessianFcn(x, lambda)` matrix.
 
 ## Several starting points
 
@@ -79,9 +82,15 @@ result = minimize(
 `fmincon` nonlinear inequalities mean `c(x) <= 0`. Equalities are zero in both.
 Use `bounds=[(0, None), (0, None)]` with `minimize`; use `lb=0` with `fmincon`.
 
-Supply `jac=` if you have an analytical objective gradient. It is optional.
-`args=(...)` passes additional arguments to your objective and nonlinear
-constraints. Inspect `help(fmincon)` or `help(minimize)` for the full interface.
+Supply `jac=` if you have an analytical objective gradient; `hess=` (the
+Hessian of the Lagrangian) is accepted but experimental: it is Newton-fast on
+bound-constrained problems and can be slower than the default on problems with
+nonlinear constraints, see `help(minimize)`. Supplied derivatives
+are checked along one direction at `x0` with two extra evaluations: a gross
+disagreement raises with the offending component named, a mild one is noted
+in `res.notes`. `args=(...)` passes additional arguments to your objective
+and nonlinear constraints. Inspect `help(fmincon)` or `help(minimize)` for
+the full interface.
 
 ## Interpreting results
 

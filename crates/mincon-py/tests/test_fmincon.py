@@ -168,3 +168,89 @@ def test_multistart_finds_the_lower_basin_and_reports_the_others():
     assert threaded.success and threaded.x[0] > 0
     with pytest.raises(ValueError, match="finite"):
         mincon.multistart(_double_well, [(-2.0, 2.0), (None, None)], n_starts=2)
+
+
+def test_wrong_gradient_is_named_by_the_default_check():
+    tgt = np.arange(1., 5.)
+
+    def f(x):
+        return float(np.sum((x - tgt) ** 2) + 0.1 * np.sum(x ** 4))
+
+    def wrong(x):
+        g = 2 * (x - tgt) + 0.4 * x ** 3
+        g[1] = -g[1]
+        return g
+    with pytest.raises(RuntimeError) as info:
+        mincon.fmincon(f, np.zeros(4), lb=-10, ub=10, jac=wrong)
+    assert "grad f [    1]" in str(info.value)
+    # a slightly noisy gradient is noted, not rejected
+    r = mincon.fmincon(f, np.zeros(4), lb=-10, ub=10, jac=lambda x: (2 * (x - tgt) + 0.4 * x ** 3) * (1 + 1e-4))
+    assert r.success and any("Derivative check" in n for n in r.notes)
+    # and the check can be turned off
+    r = mincon.fmincon(f, np.zeros(4), lb=-10, ub=10, jac=wrong, options={"check_derivatives": False})
+    assert not r.success
+
+
+def test_callback_streams_rows_and_can_stop():
+    rows = []
+    r = mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []),
+                       callback=lambda row: rows.append(dict(row)) or False)
+    assert r.success and len(rows) == len(r.trace) and rows[0]["iter"] == 0 and "optimality" in rows[-1]
+    r = mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []),
+                       callback=lambda row: row["iter"] >= 1)
+    assert r.status == mincon.ExitFlag.STOPPED_BY_USER and not r.success and r.usable is False
+    assert any("callback" in n for n in r.notes)
+    with pytest.raises(RuntimeError, match="callback raised"):
+        mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], callback=lambda row: 1 / 0)
+
+
+def test_disp_streams_before_the_final_line(capsys):
+    seen = []
+    mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []),
+                   options={"disp": True}, callback=lambda row: seen.append(capsys.readouterr().out) or False)
+    # by the time the callback for a row runs, the header and the previous rows are already printed
+    assert seen[0].startswith(" Iter") or seen[0].lstrip().startswith("Iter")
+    assert len(seen) >= 2 and seen[1].strip() != ""
+
+
+def test_hessian_is_used_when_supplied():
+    def f(x):
+        return x[0] * x[3] * (x[0] + x[1] + x[2]) + x[2]
+
+    def jac(x):
+        return np.array([x[3] * (x[0] + x[1] + x[2]) + x[0] * x[3], x[0] * x[3], x[0] * x[3] + 1., x[0] * (x[0] + x[1] + x[2])])
+
+    def nonlcon(x):
+        return [25. - x[0] * x[1] * x[2] * x[3]], [x[0] ** 2 + x[1] ** 2 + x[2] ** 2 + x[3] ** 2 - 40.]
+
+    def nonlcon_jac(x):
+        return (np.array([[-x[1] * x[2] * x[3], -x[0] * x[2] * x[3], -x[0] * x[1] * x[3], -x[0] * x[1] * x[2]]]),
+                np.array([[2 * x[0], 2 * x[1], 2 * x[2], 2 * x[3]]]))
+
+    def hess(x, lam):
+        # MATLAB's HessianFcn for HS71
+        h = np.array([[2 * x[3], x[3], x[3], 2 * x[0] + x[1] + x[2]],
+                      [x[3], 0., 0., x[0]],
+                      [x[3], 0., 0., x[0]],
+                      [2 * x[0] + x[1] + x[2], x[0], x[0], 0.]])
+        li = lam.ineqnonlin[0]
+        hc = -np.array([[0., x[2] * x[3], x[1] * x[3], x[1] * x[2]],
+                        [x[2] * x[3], 0., x[0] * x[3], x[0] * x[2]],
+                        [x[1] * x[3], x[0] * x[3], 0., x[0] * x[1]],
+                        [x[1] * x[2], x[0] * x[2], x[0] * x[1], 0.]])
+        return h + li * hc + lam.eqnonlin[0] * 2 * np.eye(4)
+    kw = dict(lb=1., ub=5., nonlcon=nonlcon, jac=jac, nonlcon_jac=nonlcon_jac)
+    quasi = mincon.fmincon(f, [1., 5., 5., 1.], **kw)
+    exact = mincon.fmincon(f, [1., 5., 5., 1.], hess=hess, **kw)
+    # The exact Hessian is used and the optimum is reached; it is *not* faster here
+    # (docs/22 section 7: the regularisation of indefinite Lagrangian Hessians is untuned).
+    assert quasi.success and exact.usable
+    assert abs(exact.fun - 17.0140173) < 1e-4 * 17.0
+    assert any("exact Hessian" in n for n in exact.notes)
+
+
+def test_facade_selects_the_method():
+    r = mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []), method="sqp")
+    assert r.success and r.algorithm == "Sqp"
+    with pytest.raises(ValueError):
+        mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], method="simplex")

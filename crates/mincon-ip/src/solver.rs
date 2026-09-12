@@ -638,6 +638,9 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         let approximate = self.opts.fd_error_aware
             && (self.eval.gradient_is_approximate() || self.eval.jacobian_is_approximate());
         let mut tol_eff = self.opts.tol.optimality;
+        // `MINCON_IP_DEBUG=1` prints the termination quantities every iteration (a
+        // diagnostic for the solver, like `MINCON_SQP_DEBUG` in the SQP member).
+        let debug = std::env::var_os("MINCON_IP_DEBUG").is_some();
         let mut progress: Vec<(f64, f64)> = Vec::new();
         let mut rescales = 0usize;
         let mut guard_blocked = 0usize;
@@ -658,21 +661,43 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             // --- termination ---
             let (e0, e_mu, compl) = self.optimality(&point, &grad_f, &lambda, &z_l, &z_u, mu);
             let violation = self.user_violation(&point.v, &point.c);
+            if debug {
+                eprintln!(
+                    "ip it {iter} e0 {e0:.3e} e_mu {e_mu:.3e} compl {compl:.3e} viol {violation:.3e} mu {mu:.2e} d_f {:.3e} f {:.6e} x {:?} g_scaled {:?} lambda {:?} z_l {:?} z_u {:?}",
+                    self.d_f,
+                    point.f / self.d_f,
+                    &point.v[..n.min(6)],
+                    &grad_f[..n.min(6)],
+                    &lambda[..m.min(6)],
+                    &z_l[..n.min(6)],
+                    &z_u[..n.min(6)]
+                );
+            }
+            let record = IterationRecord {
+                iter: iterations,
+                f_count: mincon_core::EvalCounters::get(&self.eval.counters().f),
+                f: point.f / self.d_f,
+                constraint_violation: violation,
+                optimality: e0,
+                step_norm: last_step_norm,
+                alpha: last_alpha,
+                mu,
+                delta_w: last_delta_w,
+                delta_c: last_delta_c,
+                in_restoration: false,
+                soc_count: last_soc,
+            };
             if self.opts.record_trace {
-                trace.push(IterationRecord {
-                    iter: iterations,
-                    f_count: mincon_core::EvalCounters::get(&self.eval.counters().f),
-                    f: point.f / self.d_f,
-                    constraint_violation: violation,
-                    optimality: e0,
-                    step_norm: last_step_norm,
-                    alpha: last_alpha,
-                    mu,
-                    delta_w: last_delta_w,
-                    delta_c: last_delta_c,
-                    in_restoration: false,
-                    soc_count: last_soc,
-                });
+                trace.push(record);
+            }
+            if let Some(cb) = &self.opts.callback {
+                if cb.call(&record) {
+                    self.notes.push(format!(
+                        "Stopped by the user's callback at iteration {iterations}."
+                    ));
+                    exit = ExitFlag::StoppedByUser;
+                    break;
+                }
             }
 
             if e0 <= 100.0 * self.opts.tol.optimality
@@ -755,7 +780,17 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             // converged while it exceeds the acceptable tolerance, and when the
             // scaled test passes anyway the factor is stale: rescale and go on.
             let stat_rel = self.stationarity_rel(&grad_f, &lambda, &z_l, &z_u);
-            let rel_ok = stat_rel <= self.opts.tol.acceptable_optimality;
+            // D11 guard: complementarity must also hold in the user's units. The
+            // scaled product `compl` is `d_f` times the user-unit product
+            // (distance times multiplier, in objective units), so with a tiny
+            // objective factor a bound 1e-5 away can carry a multiplier of 8e6
+            // and still pass the scaled test (`bench/results/s7-friction`,
+            // bad_scaling: product 98 against an objective of 120). Measured
+            // against the objective's own size, like the scaled test is.
+            let compl_user = compl / self.d_f;
+            let compl_ok =
+                compl_user <= self.opts.tol.complementarity * (point.f / self.d_f).abs().max(1.0);
+            let rel_ok = stat_rel <= self.opts.tol.acceptable_optimality && compl_ok;
             let acceptable_level = e0 <= self.opts.tol.acceptable_optimality
                 && violation <= self.opts.tol.acceptable_feasibility;
             if (scaled_pass || acceptable_level) && !rel_ok && rescales < 3 {
@@ -808,7 +843,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                 guard_blocked += 1;
                 if guard_blocked >= self.opts.tol.acceptable_iterations {
                     self.notes.push(format!(
-                        "Stopped with the scaled KKT error {e0:.2e} below tolerance but the stationarity relative to the gradient terms at {stat_rel:.1e}, above the acceptable tolerance, for {guard_blocked} iterations (very large multipliers or a degenerate active set)."
+                        "Stopped with the scaled KKT error {e0:.2e} below tolerance but, for {guard_blocked} iterations, either the stationarity relative to the gradient terms ({stat_rel:.1e}) above the acceptable tolerance or the complementarity in the user's units ({compl_user:.1e}) above the tolerance (very large multipliers, a degenerate active set, or a badly scaled problem). First-order optimality is not certified at this point."
                     ));
                     exit = ExitFlag::Acceptable;
                     break;

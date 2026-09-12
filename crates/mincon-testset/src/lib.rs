@@ -84,6 +84,11 @@ pub enum Expect {
     /// Known optimum with failed constraint qualifications; require an honest
     /// non-success usable-point status as well as objective and feasibility.
     DegenerateOptimum,
+    /// Known optimum that a local method may legitimately miss from `x0`
+    /// (badly scaled units): pass on either the optimum with any status or a
+    /// feasible usable point *without* a success claim; an `Optimal` exit away
+    /// from the optimum is a lie.
+    NoFalseCertificate,
 }
 
 impl TestProblem {
@@ -91,6 +96,136 @@ impl TestProblem {
     #[must_use]
     pub fn as_nlp(&self) -> TestNlp<'_> {
         TestNlp { p: self }
+    }
+
+    /// First-order stationarity residual at `x`, relative to the size of its
+    /// terms, from central finite differences and unsigned least-squares
+    /// multipliers on the active set (rows and bounds within `1e-5` of a
+    /// bound, relative). This is the fixture checker's independent view of a
+    /// first-order certificate: `||g + J^T lam - z||_inf / (1 + ||g|| + ||J^T lam|| + ||z||)`.
+    /// Returns infinity when the model is not finite around `x`.
+    #[must_use]
+    pub fn relative_stationarity(&self, x: &[f64]) -> f64 {
+        let n = self.n;
+        let m = self.m;
+        if x.len() != n || x.iter().any(|v| !v.is_finite()) {
+            return f64::INFINITY;
+        }
+        // central differences of f and c
+        let mut g = vec![0.0; n];
+        let mut jac = vec![0.0; m * n]; // row-major
+        let mut cp = vec![0.0; m];
+        let mut cm = vec![0.0; m];
+        for j in 0..n {
+            let h = 1e-6 * x[j].abs().max(1.0);
+            let mut xp = x.to_vec();
+            let mut xm = x.to_vec();
+            xp[j] += h;
+            xm[j] -= h;
+            let (fp, fm) = ((self.f)(&xp), (self.f)(&xm));
+            if !fp.is_finite() || !fm.is_finite() {
+                return f64::INFINITY;
+            }
+            g[j] = (fp - fm) / (2.0 * h);
+            if m > 0 {
+                (self.c)(&xp, &mut cp);
+                (self.c)(&xm, &mut cm);
+                for i in 0..m {
+                    if !cp[i].is_finite() || !cm[i].is_finite() {
+                        return f64::INFINITY;
+                    }
+                    jac[i * n + j] = (cp[i] - cm[i]) / (2.0 * h);
+                }
+            }
+        }
+        // active set: rows at a bound, variables at a bound
+        let mut c = vec![0.0; m];
+        if m > 0 {
+            (self.c)(x, &mut c);
+        }
+        let act_tol = 1e-5;
+        let mut columns: Vec<Vec<f64>> = Vec::new(); // each is an n-vector
+        for i in 0..m {
+            let near_lo = self.cl[i].is_finite()
+                && (c[i] - self.cl[i]).abs() <= act_tol * self.cl[i].abs().max(1.0);
+            let near_hi = self.cu[i].is_finite()
+                && (self.cu[i] - c[i]).abs() <= act_tol * self.cu[i].abs().max(1.0);
+            if near_lo || near_hi {
+                columns.push(jac[i * n..(i + 1) * n].to_vec());
+            }
+        }
+        for j in 0..n {
+            let near_lo = self.xl[j].is_finite()
+                && (x[j] - self.xl[j]).abs() <= act_tol * self.xl[j].abs().max(1.0);
+            let near_hi = self.xu[j].is_finite()
+                && (self.xu[j] - x[j]).abs() <= act_tol * self.xu[j].abs().max(1.0);
+            if near_lo || near_hi {
+                let mut e = vec![0.0; n];
+                e[j] = 1.0;
+                columns.push(e);
+            }
+        }
+        let g_norm = g.iter().fold(0.0_f64, |a, v| a.max(v.abs()));
+        // least squares: minimise ||g + A mult||, A = [columns]; normal equations,
+        // Gaussian elimination with partial pivoting (k is tiny in fixtures)
+        let k = columns.len();
+        let mut mult = vec![0.0; k];
+        if k > 0 {
+            let mut ata = vec![0.0; k * k];
+            let mut atg = vec![0.0; k];
+            for a in 0..k {
+                for b in 0..k {
+                    ata[a * k + b] = (0..n).map(|j| columns[a][j] * columns[b][j]).sum();
+                }
+                atg[a] = -(0..n).map(|j| columns[a][j] * g[j]).sum::<f64>();
+                ata[a * k + a] += 1e-14 * (1.0 + ata[a * k + a].abs());
+            }
+            // solve ata * mult = atg
+            let mut aug: Vec<Vec<f64>> = (0..k)
+                .map(|a| {
+                    let mut row = ata[a * k..(a + 1) * k].to_vec();
+                    row.push(atg[a]);
+                    row
+                })
+                .collect();
+            for col in 0..k {
+                let piv = (col..k)
+                    .max_by(|&a, &b| aug[a][col].abs().partial_cmp(&aug[b][col].abs()).unwrap())
+                    .unwrap();
+                aug.swap(col, piv);
+                let d = aug[col][col];
+                if d.abs() < 1e-300 {
+                    continue;
+                }
+                for r in 0..k {
+                    if r != col {
+                        let f = aug[r][col] / d;
+                        if f != 0.0 {
+                            for cc in col..=k {
+                                aug[r][cc] -= f * aug[col][cc];
+                            }
+                        }
+                    }
+                }
+            }
+            for a in 0..k {
+                let d = aug[a][a];
+                mult[a] = if d.abs() < 1e-300 { 0.0 } else { aug[a][k] / d };
+            }
+        }
+        let mut r_norm = 0.0_f64;
+        let mut term_norm = 0.0_f64;
+        for j in 0..n {
+            let mut r = g[j];
+            let mut t = 0.0_f64;
+            for a in 0..k {
+                r += columns[a][j] * mult[a];
+                t = t.max((columns[a][j] * mult[a]).abs());
+            }
+            r_norm = r_norm.max(r.abs());
+            term_norm = term_norm.max(t);
+        }
+        r_norm / (1.0 + g_norm + term_norm)
     }
 
     /// Maximum constraint violation at `x`, including variable bounds.

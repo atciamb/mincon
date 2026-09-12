@@ -121,4 +121,28 @@ I7 makes it unnecessary; any change to the sealed-round protocol.
 
 ## 7. Outcome
 
-Filled in as the increments land (see the sections below, added in order).
+Filled in as the increments land, in order.
+
+### 7.1 I1, the certificate guard (D11), September 12
+
+Mechanism confirmed by an env-gated dump of the interior-point termination quantities
+(`MINCON_IP_DEBUG=1`, kept): at the false exit on bad_scaling the row `5 - x0 x1` has slack 7
+and a user-unit multiplier of 13.75, the bound of x1 sits 1.2e-5 away with a multiplier of
+8.2e6, and both products are below 1e-6 only in scaled units (row factor 1e-4, objective factor
+5e-9). The guard is one line: complementarity must also hold in the user's units, `compl / d_f
+<= tol_compl * max(1, |f|)`, added to the `rel_ok` condition of the D9 rule so that a failure
+blocks the certificate and, when the gradient norm has drifted by more than 10x, rescales the
+objective factor and continues. A first version that instead required zero multiplier weight on
+every inactive row or bound (the oracle's active-set rule) was tried and dropped before any
+ablation: it turned box_lsq's `Optimal` into `Acceptable` at +650 evaluations, because the
+barrier legitimately leaves multipliers of 5e-3 on bounds 2e-5 away (products 1e-7).
+
+| check | result |
+|---|---|
+| bad_scaling (friction) | exit `Acceptable` at f = 16.46 (`success = False`), two objective rescales logged; every other friction record unchanged to the evaluation |
+| fixture `TORTURE_UNITS` (new, `Expect::NoFalseCertificate`: Optimal away from the optimum is a lie unless an independent finite-difference stationarity check passes) | auto 56/56, ip 56/56, sqp 55/56 (HS13) |
+| `abl-i1` portfolio, track A, 169 problems vs the current default's records | attained 159/166 vs 158 (COVQP_300, a 60 s budget exit either way, landed inside the target this time); cost 1.00 [1.00, 1.00] on 158 common; the only two changed records are the two 60 s exits |
+| `abl-i1` IP member | 156/166 both; cost 1.00 [1.00, 1.01]; changed records: the two 60 s exits, HS16 (+16 evaluations, unattained either way), HS17 (+18, attained either way) and **UNITS**, whose old exit `Optimal` at f = 5.009 against 0.5 (oracle: not KKT, relative stationarity 1.9e-3) was a false certificate already in the corpus and is now `Acceptable` |
+
+H1 stands: the exit is no longer certified and no attained run changed. The problem itself is
+still not solved by any member; that is H8's question.

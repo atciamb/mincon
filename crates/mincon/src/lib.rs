@@ -40,11 +40,11 @@ pub mod portfolio;
 
 pub use builder::{to_fmincon_multipliers, FminconMultipliers, Problem};
 pub use mincon_core::{
-    Algorithm, Capabilities, Display, EvalError, ExitFlag, FdType, HessianMode, IterationRecord,
-    LinearSolverKind, Nlp, NlpDims, Options, RegularizationMode, ScalingMode, Solution, SolveError,
-    SolveReport, Sparsity, Timings, Tolerances,
+    Algorithm, Capabilities, DerivativeCheck, Display, EvalError, ExitFlag, FdType, HessianMode,
+    IterationRecord, LinearSolverKind, Nlp, NlpDims, Options, RegularizationMode, ScalingMode,
+    Solution, SolveError, SolveReport, Sparsity, Timings, Tolerances,
 };
-pub use mincon_diff::{check_derivatives, CheckReport};
+pub use mincon_diff::{check_derivatives, check_derivatives_directional, CheckReport};
 pub use portfolio::PortfolioReport;
 
 /// Solve a problem.
@@ -60,21 +60,58 @@ pub fn minimize<P: Nlp + Sync + ?Sized>(
     nlp: &P,
     opts: &Options,
 ) -> Result<SolveReport, SolveError> {
-    if opts.check_derivatives {
-        // `fmincon`'s CheckGradients semantics: a failed check stops the solve. An
-        // inconclusive check (no analytic derivatives, or callbacks that failed) is
-        // also a stop, because "could not verify" must never read as "verified".
-        let report = check_derivatives(nlp, 1e-5, 3).map_err(SolveError::InitialPoint)?;
-        if !report.passed() {
-            return Err(SolveError::InvalidProblem(report.message()));
+    let mut check_note: Option<String> = None;
+    match opts.check_derivatives {
+        DerivativeCheck::Off => {}
+        DerivativeCheck::Full => {
+            // `fmincon`'s CheckGradients semantics: a failed check stops the solve. An
+            // inconclusive check (no analytic derivatives, or callbacks that failed) is
+            // also a stop, because "could not verify" must never read as "verified".
+            let report = check_derivatives(nlp, 1e-5, 3).map_err(SolveError::InitialPoint)?;
+            if !report.passed() {
+                return Err(SolveError::InvalidProblem(report.message()));
+            }
+        }
+        DerivativeCheck::Directional => {
+            let caps = nlp.capabilities();
+            if caps.gradient || (caps.jacobian && nlp.dims().m > 0) {
+                let report =
+                    check_derivatives_directional(nlp, 1e-5).map_err(SolveError::InitialPoint)?;
+                if report.conclusive() && !report.passed() {
+                    if report.max_relative > GROSS_DERIVATIVE_ERROR || report.nonfinite > 0 {
+                        // Name the components: the full check at x0 only.
+                        let full = check_derivatives(nlp, 1e-5, 1)
+                            .map(|r| r.message())
+                            .unwrap_or_else(|e| format!("(the full check could not run: {e})"));
+                        return Err(SolveError::InvalidProblem(format!(
+                            "The supplied derivatives disagree with finite differences along a test direction at x0 (relative error {:.2e}). {full}",
+                            report.max_relative
+                        )));
+                    }
+                    check_note = Some(format!(
+                        "Derivative check: the supplied derivatives disagree with a central difference along a test direction at x0 by {:.2e} relative (tolerance 1e-5). The solve continued; if it stalls, check the derivatives with options check_derivatives = Full, or expect this much noise from the model.",
+                        report.max_relative
+                    ));
+                } else if let Some(reason) = report.inconclusive_reason {
+                    check_note = Some(format!("Derivative check skipped: {reason}."));
+                }
+            }
         }
     }
-    match opts.algorithm {
+    let mut report = match opts.algorithm {
         Algorithm::Auto => portfolio::solve(nlp, opts).map(|p| p.best),
         Algorithm::InteriorPoint => mincon_ip::solve(nlp, opts),
         Algorithm::Sqp | Algorithm::Slqp => mincon_sqp::solve(nlp, opts),
+    }?;
+    if let Some(note) = check_note {
+        report.notes.insert(0, note);
     }
+    Ok(report)
 }
+
+/// Relative disagreement along the test direction above which a supplied
+/// derivative is treated as wrong rather than noisy.
+const GROSS_DERIVATIVE_ERROR: f64 = 1e-2;
 
 /// Solve and get the full portfolio outcome, including what every member did.
 ///
@@ -218,11 +255,28 @@ mod tests {
                 g[1] = 20.0 * (x[1] - 2.0); // wrong by a factor of 10
             });
         let opts = Options {
-            check_derivatives: true,
+            check_derivatives: DerivativeCheck::Full,
             ..Options::default()
         };
         let err = minimize(&p, &opts).expect_err("a wrong gradient must be rejected");
         assert!(err.to_string().contains("FAILED"), "{err}");
+        // The default directional check catches the same gradient with two
+        // evaluations and names the component through the full check at x0.
+        let err = minimize(&p, &Options::default()).expect_err("the default check must reject it");
+        assert!(err.to_string().contains("grad f [    1]"), "{err}");
+    }
+
+    #[test]
+    fn a_mildly_noisy_gradient_is_noted_not_rejected() {
+        let p = Problem::new(2, |x| (x[0] - 1.0).powi(2) + (x[1] - 2.0).powi(2))
+            .start_at(&[0.0, 0.0])
+            .with_gradient(|x, g| {
+                g[0] = 2.0 * (x[0] - 1.0) * (1.0 + 1e-4);
+                g[1] = 2.0 * (x[1] - 2.0);
+            });
+        let r = minimize(&p, &Options::default()).unwrap();
+        assert!(r.notes[0].contains("Derivative check"), "{:?}", r.notes);
+        assert!(r.exit_flag.returned_usable_point());
     }
 
     #[test]
@@ -230,7 +284,7 @@ mod tests {
         let p =
             Problem::new(2, |x| (x[0] - 1.0).powi(2) + (x[1] - 2.0).powi(2)).start_at(&[0.0, 0.0]);
         let opts = Options {
-            check_derivatives: true,
+            check_derivatives: DerivativeCheck::Full,
             ..Options::default()
         };
         let err = minimize(&p, &opts).expect_err("nothing to check must not pass silently");

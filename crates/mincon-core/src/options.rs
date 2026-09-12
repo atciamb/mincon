@@ -4,7 +4,41 @@
 //! support use without user-supplied derivatives or algorithm settings.
 //! The current portfolio uses interior-point configurations; SQP is not implemented.
 
-use crate::EPS;
+use std::fmt;
+use std::sync::Arc;
+
+use crate::{IterationRecord, EPS};
+
+/// A per-iteration callback: receives the iteration record and returns
+/// `true` to stop the solve (`fmincon`'s `OutputFcn` `stop`, SciPy's
+/// `callback` returning `True`). Called after the record of every iteration,
+/// including the last, by whichever algorithm is running; the portfolio
+/// passes it to each member. A stop ends the solve with
+/// `ExitFlag::StoppedByUser` and the current iterate.
+#[derive(Clone)]
+pub struct IterationCallback(Arc<dyn Fn(&IterationRecord) -> bool + Send + Sync>);
+
+impl IterationCallback {
+    /// Wrap a closure.
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(&IterationRecord) -> bool + Send + Sync + 'static,
+    {
+        Self(Arc::new(f))
+    }
+
+    /// Invoke it. `true` means stop.
+    #[must_use]
+    pub fn call(&self, record: &IterationRecord) -> bool {
+        (self.0)(record)
+    }
+}
+
+impl fmt::Debug for IterationCallback {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("IterationCallback(..)")
+    }
+}
 
 /// Console output verbosity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -100,6 +134,27 @@ pub enum FdType {
     /// benefit for a fraction of the cost.
     #[default]
     Adaptive,
+}
+
+/// How user-supplied derivatives are checked before a solve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DerivativeCheck {
+    /// No check.
+    Off,
+    /// Two extra model evaluations along one bounds-respecting direction at
+    /// `x0`, comparing the directional derivative of the objective and of
+    /// every constraint row with the supplied gradient and Jacobian. The
+    /// default: it costs the same for `n = 2` and `n = 2000`, and a wrong
+    /// gradient is the most common reason a solve "does not work". A gross
+    /// disagreement (relative error above 1e-2) stops the solve with the
+    /// offending components named by the full check; a mild one is recorded
+    /// in the report's notes and the solve continues. Skipped silently when
+    /// the model supplies no derivatives.
+    #[default]
+    Directional,
+    /// `fmincon`'s `CheckGradients`: every entry at several points; a failed
+    /// or inconclusive check stops the solve.
+    Full,
 }
 
 /// How the KKT matrix is regularized and its inertia established.
@@ -206,6 +261,9 @@ pub struct Options {
     /// Record a per-iteration trace in the report. Cheap; on by default because
     /// "why did it stop there" is the most common user question.
     pub record_trace: bool,
+    /// Called after every iteration with its record; returning `true` stops the
+    /// solve (see [`IterationCallback`]).
+    pub callback: Option<IterationCallback>,
 
     /// Scaling strategy.
     pub scaling: ScalingMode,
@@ -292,9 +350,9 @@ pub struct Options {
 
     /// Worker threads, or `None` for "all available".
     pub threads: Option<usize>,
-    /// Compare analytic derivatives against finite differences at the start.
-    /// `fmincon`'s `CheckGradients`.
-    pub check_derivatives: bool,
+    /// Check user-supplied derivatives against finite differences at the start
+    /// (see [`DerivativeCheck`]).
+    pub check_derivatives: DerivativeCheck,
     /// Seed for every stochastic decision (multi-start perturbations, tie
     /// breaks). Fixing this makes a run bit-reproducible, which `fmincon`
     /// does not promise and which CI needs.
@@ -311,6 +369,7 @@ impl Default for Options {
             max_seconds: None,
             display: Display::None,
             record_trace: true,
+            callback: None,
 
             scaling: ScalingMode::GradientBased,
             scaling_max_gradient: 100.0,
@@ -343,7 +402,7 @@ impl Default for Options {
             restoration: true,
 
             threads: None,
-            check_derivatives: false,
+            check_derivatives: DerivativeCheck::Directional,
             seed: 0x5EED_C0FF_EE00_0F0F,
         }
     }

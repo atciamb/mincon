@@ -104,6 +104,9 @@ const SOC_MAX: usize = 4;
 const MAX_BACKTRACKS: usize = 25;
 const ARMIJO: f64 = 1e-4;
 const PENALTY_FRACTION: f64 = 0.1; // tau in (5.3)
+/// How many times an infeasibility verdict may be refused (D12) before the
+/// run gives up with `NumericalFailure` instead.
+const INFEASIBILITY_REFUSALS_MAX: usize = 3;
 
 impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
     fn new(nlp: &'a P, opts: &Options) -> Result<Self, SolveError> {
@@ -542,6 +545,41 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
             }
             Err(e) => Err(format!("elastic QP failed: {e}")),
         }
+    }
+
+    /// D12: can the linearised constraint violation at `p` be reduced at all when
+    /// the QP step bound is lifted? A step bound that has shrunk after rejected
+    /// steps can make the elastic QP report a positive linearised violation on a
+    /// linearisation that is perfectly feasible (`bench/results/s7-friction`,
+    /// bad_scaling: a 1e-6 variable needing a 4e-6 move inside a bound of 1e-6).
+    /// Returns the unbounded direction and the penalty the merit function needs to
+    /// accept it (uncapped: the step reaches the linearised feasible set, which is
+    /// outside the penalty trap the per-iteration cap guards against), or `None`
+    /// when the violation is stationary for the linearisation, which is the only
+    /// case where `LocallyInfeasible` is a diagnosis.
+    fn linearisation_can_improve(
+        &mut self,
+        p: &Point,
+        h: &mut Vec<f64>,
+        rho: f64,
+        v_now: f64,
+    ) -> Option<(Direction, f64)> {
+        let saved = self.step_bound;
+        self.step_bound = f64::INFINITY;
+        let free = self.direction(p, h, rho, &[]);
+        self.step_bound = saved;
+        let free = free.ok()?;
+        let improves = !free.elastic || free.v_lin < (1.0 - 1e-3) * v_now;
+        if !improves {
+            return None;
+        }
+        let reduction = v_now - free.v_lin;
+        let need = if free.model_obj > 0.0 && reduction > 0.0 {
+            1.5 * free.model_obj / ((1.0 - PENALTY_FRACTION) * reduction)
+        } else {
+            rho
+        };
+        Some((free, need.max(rho)))
     }
 
     /// Multipliers of QP bounds that came from the step bound rather than the
@@ -1011,6 +1049,9 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
         let mut curvature_rescaled = false;
         let mut zero_step_retest = false;
         let mut bound_shrinks = 0usize;
+        // D12: how often an infeasibility verdict was refused because the
+        // linearisation could still be improved without the step bound.
+        let mut infeasibility_refusals = 0usize;
         let mut progress: Vec<(f64, f64)> = Vec::new();
         let mut trace: Vec<IterationRecord> = Vec::new();
         let mut last_alpha = 0.0;
@@ -1023,24 +1064,34 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
             iterations = iter;
             let (e0, compl, stat_rel) = self.kkt(&p, &lambda, &z_l, &z_u);
             let violation = self.user_violation(&p.x, &p.c);
+            let record = IterationRecord {
+                iter,
+                f_count: EvalCounters::get(&self.eval.counters().f),
+                f: p.f / self.d_f,
+                constraint_violation: violation,
+                optimality: e0,
+                step_norm: last_step,
+                alpha: last_alpha,
+                mu: 0.0,
+                delta_w: match &self.hess {
+                    Hess::Exact { shift, .. } => *shift,
+                    Hess::Bfgs(_) => 0.0,
+                },
+                delta_c: rho,
+                in_restoration: false,
+                soc_count: last_soc,
+            };
             if self.opts.record_trace {
-                trace.push(IterationRecord {
-                    iter,
-                    f_count: EvalCounters::get(&self.eval.counters().f),
-                    f: p.f / self.d_f,
-                    constraint_violation: violation,
-                    optimality: e0,
-                    step_norm: last_step,
-                    alpha: last_alpha,
-                    mu: 0.0,
-                    delta_w: match &self.hess {
-                        Hess::Exact { shift, .. } => *shift,
-                        Hess::Bfgs(_) => 0.0,
-                    },
-                    delta_c: rho,
-                    in_restoration: false,
-                    soc_count: last_soc,
-                });
+                trace.push(record);
+            }
+            if let Some(cb) = &self.opts.callback {
+                if cb.call(&record) {
+                    self.notes.push(format!(
+                        "Stopped by the user's callback at iteration {iter}."
+                    ));
+                    exit = ExitFlag::StoppedByUser;
+                    break;
+                }
             }
 
             // ---- error-aware finite-difference floor (as mincon-ip) ----
@@ -1350,8 +1401,31 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                         "The QP step vanished at a feasible point (scaled KKT error {e0b:.2e}); reported as {exit:?}."
                     ));
                 } else if dir.elastic {
+                    // D12: a vanished elastic step inside a shrunken step bound says
+                    // nothing about infeasibility. Ask the linearisation without the
+                    // bound; only a stationary point of the violation there is a diagnosis.
+                    if let Some((free, need)) =
+                        self.linearisation_can_improve(&p, &mut h, rho, v_now)
+                    {
+                        infeasibility_refusals += 1;
+                        if infeasibility_refusals <= INFEASIBILITY_REFUSALS_MAX {
+                            self.step_bound = f64::INFINITY;
+                            rho = rho.max(need);
+                            hint = free.active;
+                            self.notes.push(format!(
+                                "Iteration {iter}: the elastic QP step vanished inside the step bound, but the linearised violation can still fall without it ({v_now:.3e} -> {:.3e}); not an infeasibility diagnosis. Step bound reset, penalty raised to {rho:.2e}, retrying.",
+                                free.v_lin
+                            ));
+                            continue;
+                        }
+                        self.notes.push(format!(
+                            "The step that reduces the linearised constraint violation was rejected {infeasibility_refusals} times (violation {violation:.3e}); the linearisation is not stationary, so this is not an infeasibility diagnosis."
+                        ));
+                        exit = ExitFlag::NumericalFailure;
+                        break;
+                    }
                     self.notes.push(format!(
-                        "The elastic QP step vanished with constraint violation {violation:.3e}: a stationary point of the constraint violation; this is a local diagnostic, not a proof of infeasibility."
+                        "The elastic QP step vanished with constraint violation {violation:.3e}, and the linearised violation cannot be reduced without the step bound either: a stationary point of the constraint violation; this is a local diagnostic, not a proof of infeasibility."
                     ));
                     exit = ExitFlag::LocallyInfeasible;
                 } else {
@@ -1551,10 +1625,30 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                         ExitFlag::StepTolerance
                     }
                 } else if dir.elastic {
-                    self.notes.push(format!(
-                        "The line search could not reduce the ℓ1 merit function from an infeasible point (violation {violation:.3e}) along the elastic QP step; this is a local diagnostic, not a proof of infeasibility."
-                    ));
-                    ExitFlag::LocallyInfeasible
+                    if let Some((free, need)) =
+                        self.linearisation_can_improve(&p, &mut h, rho, v_now)
+                    {
+                        infeasibility_refusals += 1;
+                        if infeasibility_refusals <= INFEASIBILITY_REFUSALS_MAX {
+                            self.step_bound = f64::INFINITY;
+                            rho = rho.max(need);
+                            hint = free.active;
+                            self.notes.push(format!(
+                                "Iteration {iter}: the line search rejected the elastic QP step inside the step bound, but the linearised violation can still fall without it ({v_now:.3e} -> {:.3e}); not an infeasibility diagnosis. Step bound reset, penalty raised to {rho:.2e}, retrying.",
+                                free.v_lin
+                            ));
+                            continue;
+                        }
+                        self.notes.push(format!(
+                            "The step that reduces the linearised constraint violation was rejected {infeasibility_refusals} times (violation {violation:.3e}); the linearisation is not stationary, so this is not an infeasibility diagnosis."
+                        ));
+                        ExitFlag::NumericalFailure
+                    } else {
+                        self.notes.push(format!(
+                            "The line search could not reduce the l1 merit function from an infeasible point (violation {violation:.3e}) along the elastic QP step, and the linearised violation cannot be reduced without the step bound either; this is a local diagnostic, not a proof of infeasibility."
+                        ));
+                        ExitFlag::LocallyInfeasible
+                    }
                 } else {
                     self.notes.push(format!(
                         "The line search failed at an infeasible point (violation {violation:.3e})."

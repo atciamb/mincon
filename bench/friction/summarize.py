@@ -24,6 +24,9 @@ import problems  # noqa: E402
 from run import judge  # noqa: E402
 
 
+BASELINE_SOLVERS = {"mincon-fmincon", "scipy-slsqp", "scipy-trust-constr", "fmincon-interior-point", "fmincon-sqp"}
+
+
 def _num(v):
     if isinstance(v, str):
         return float(v) if v in ("nan", "inf", "-inf", "NaN", "Inf", "-Inf") else float("nan")
@@ -96,14 +99,23 @@ def table(scored):
             rep = r.get("reported_success")
             fm = r.get("counts", {}).get("f_model", -1)
             mark = "Y" if att else ("err" if r.get("outcome") != "ok" else "n")
-            flag = "" if (bool(att) == bool(rep)) else ("!" if rep and not att else "?")
+            if bool(att) == bool(rep):
+                flag = ""
+            elif rep and not att:
+                # reported success without the reference optimum: a false certificate
+                # unless the oracle certifies the point as first-order stationary
+                flag = "k" if v.get("kkt_recovered") else "!"
+            else:
+                flag = "?"
             cells.append(f"{mark}{flag} {fm}")
         lines.append(f"| {n} | " + " | ".join(cells) + " |")
     lines.append("| **attained** | " + " | ".join(f"**{tot[s]}/{len(names)}**" for s in solvers) + " |")
     lines.append("")
     lines.append("Cell: Y attained (feasible to 1e-6, objective within 1e-4 relative of the reference) or n / err, "
-                 "then model-boundary objective evaluations. `!` marks a solver that reported success without "
-                 "attaining; `?` marks attainment the solver did not report as success.")
+                 "then model-boundary objective evaluations. `!` marks a false certificate (success reported at a "
+                 "point the oracle does not certify); `k` marks success reported at a point the oracle certifies as "
+                 "first-order stationary but which is not the reference optimum; `?` marks attainment the solver "
+                 "did not report as success.")
     lines.append("")
     # 2. per-solver detail
     for s in solvers:
@@ -150,8 +162,8 @@ def main():
             continue
         if a.tag and not base.endswith(a.tag + ".jsonl"):
             continue
-        if not a.tag and any(base.endswith(t + ".jsonl") for t in ("-cand", "-off")):
-            continue
+        if not a.tag and base[:-len(".jsonl")] not in BASELINE_SOLVERS:
+            continue  # tagged candidate runs are summarised with --tag
         recs.extend(load(path))
     scored = score(recs)
     with open(os.path.join(a.dir, f"scored{a.tag}.jsonl"), "w", encoding="utf-8") as fh:

@@ -40,7 +40,7 @@ pub mod detect;
 pub mod evaluator;
 pub mod fd;
 
-pub use check::{check_derivatives, CheckReport, Discrepancy};
+pub use check::{check_derivatives, check_derivatives_directional, CheckReport, Discrepancy};
 pub use coloring::{distance1_coloring, star_coloring, verify_coloring, Coloring};
 pub use detect::{detect_jacobian_sparsity, DetectConfig, Detected};
 pub use evaluator::Evaluator;

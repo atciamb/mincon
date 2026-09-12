@@ -117,6 +117,48 @@ fn verdict(p: &TestProblem, r: &mincon_core::SolveReport) -> (&'static str, Stri
                 ("FAIL", format!("violation {viol:.1e}, {:?}", r.exit_flag))
             }
         }
+        Expect::NoFalseCertificate => {
+            let attained = p
+                .f_opt
+                .is_some_and(|fo| feasible && (f - fo).abs() <= 1e-4 * fo.abs().max(1.0));
+            if attained {
+                (
+                    "PASS",
+                    format!("f = {f:.8e}, optimum attained ({:?})", r.exit_flag),
+                )
+            } else if r.exit_flag.is_success() {
+                // Optimal away from the optimum is a lie unless the point is a
+                // first-order stationary point by an independent check: a badly
+                // scaled problem can have a whole curve of such points.
+                let stat = p.relative_stationarity(&r.solution.x);
+                if feasible && stat <= 1e-5 {
+                    (
+                        "PASS",
+                        format!(
+                            "f = {f:.8e}: not the optimum, but first-order stationary (relative residual {stat:.1e})"
+                        ),
+                    )
+                } else {
+                    (
+                        "LIE ",
+                        format!(
+                            "claimed Optimal at f = {f:.8e} against {:?}; relative stationarity {stat:.1e}, violation {viol:.1e}",
+                            p.f_opt
+                        ),
+                    )
+                }
+            } else if feasible && r.exit_flag.returned_usable_point() {
+                (
+                    "PASS",
+                    format!(
+                        "f = {f:.8e}, feasible, honest non-success ({:?})",
+                        r.exit_flag
+                    ),
+                )
+            } else {
+                ("FAIL", format!("violation {viol:.1e}, {:?}", r.exit_flag))
+            }
+        }
     }
 }
 

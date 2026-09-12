@@ -100,7 +100,17 @@ impl CheckReport {
             self.max_relative, self.tolerance
         );
         for d in self.worst.iter().take(10) {
-            if d.row == usize::MAX {
+            if d.col == usize::MAX {
+                let what = if d.row == usize::MAX {
+                    "grad f . d".to_string()
+                } else {
+                    format!("J[{}] . d", d.row)
+                };
+                s.push_str(&format!(
+                    "  {what:<22} {:>14.6e}  vs {:>14.6e}   (rel {:.2e}, along a test direction d at x0)\n",
+                    d.analytic, d.numerical, d.relative
+                ));
+            } else if d.row == usize::MAX {
                 s.push_str(&format!(
                     "  grad f [{:>5}]        {:>14.6e}  vs {:>14.6e}   (rel {:.2e}, point {})\n",
                     d.col, d.analytic, d.numerical, d.relative, d.point
@@ -260,6 +270,175 @@ pub fn check_derivatives<P: Nlp + ?Sized>(
         max_relative,
         tolerance,
         points_checked,
+        evaluations,
+        comparisons,
+        nonfinite,
+        derivative_failures,
+        inconclusive_reason,
+    })
+}
+
+/// The two-evaluation directional check (see `DerivativeCheck::Directional`).
+///
+/// One direction `d` at `x0`, scaled per coordinate by `max(1, |x0_i|)`,
+/// pointing into the box wherever a coordinate sits on a bound (zero where
+/// the box has no room), and a central difference `(f(x + h d) - f(x - h d)) / 2h`
+/// against `grad f . d`; likewise `J d` for every constraint row. Discrepancies
+/// are reported with `col = usize::MAX` (a direction, not a component).
+///
+/// # Errors
+/// Propagates a model failure at the displaced points.
+pub fn check_derivatives_directional<P: Nlp + ?Sized>(
+    nlp: &P,
+    tolerance: f64,
+) -> Result<CheckReport, EvalError> {
+    let dims = nlp.dims();
+    let (n, m) = (dims.n, dims.m);
+    let caps = nlp.capabilities();
+    let (lb, ub) = nlp.x_bounds();
+    let x: Vec<f64> = nlp
+        .x0()
+        .iter()
+        .enumerate()
+        .map(|(i, v)| clamp(*v, lb[i], ub[i]))
+        .collect();
+    let has_any = caps.gradient || (caps.jacobian && m > 0);
+    let empty = |reason: Option<String>| CheckReport {
+        worst: Vec::new(),
+        max_relative: 0.0,
+        tolerance,
+        points_checked: 0,
+        evaluations: 0,
+        comparisons: 0,
+        nonfinite: 0,
+        derivative_failures: 0,
+        inconclusive_reason: reason,
+    };
+    if !has_any {
+        return Ok(empty(Some(
+            "the model supplies no analytic derivatives to check".to_string(),
+        )));
+    }
+    // A deterministic direction with every coordinate nonzero (so one sign error
+    // anywhere shows), scaled to the variable's size and kept inside the box.
+    let h = f64::EPSILON.powf(1.0 / 3.0);
+    let mut d = vec![0.0; n];
+    for i in 0..n {
+        let scale = nlp
+            .typical_x()
+            .map_or(1.0, |t| t[i].abs())
+            .max(x[i].abs())
+            .max(1.0);
+        let mut di = scale * (0.7 + 0.3 * (((i * 7919) % 13) as f64) / 13.0);
+        if (i % 3) == 1 {
+            di = -di;
+        }
+        let room_up = ub[i] - x[i];
+        let room_dn = x[i] - lb[i];
+        if di > 0.0 && h * di > room_up {
+            di = if h * di <= room_dn { -di } else { 0.0 };
+        } else if di < 0.0 && -h * di > room_dn {
+            di = if -h * di <= room_up { -di } else { 0.0 };
+        }
+        d[i] = di;
+    }
+    if d.iter().all(|v| *v == 0.0) {
+        return Ok(empty(Some(
+            "no direction fits inside the variable bounds at x0".to_string(),
+        )));
+    }
+    let xp: Vec<f64> = (0..n).map(|i| x[i] + h * d[i]).collect();
+    let xm: Vec<f64> = (0..n).map(|i| x[i] - h * d[i]).collect();
+    // the realised step, after rounding
+    let hd: Vec<f64> = (0..n).map(|i| (xp[i] - xm[i]) / 2.0).collect();
+    let mut all: Vec<Discrepancy> = Vec::new();
+    let mut evaluations = 0u64;
+    let mut derivative_failures = 0usize;
+    let mut model_failures = 0usize;
+    if caps.gradient {
+        let mut g = vec![0.0; n];
+        if nlp.gradient(&x, &mut g).is_ok() {
+            match (nlp.objective(&xp), nlp.objective(&xm)) {
+                (Ok(fp), Ok(fm)) => {
+                    evaluations += 2;
+                    // directional derivatives (per unit of the direction), so
+                    // the checker's absolute floor of 1 has its usual meaning
+                    let numeric = (fp - fm) / (2.0 * h);
+                    let analytic: f64 = (0..n).map(|i| g[i] * hd[i]).sum::<f64>() / h;
+                    all.push(make(usize::MAX, usize::MAX, analytic, numeric, 0));
+                }
+                _ => model_failures += 1,
+            }
+        } else {
+            derivative_failures += 1;
+        }
+    }
+    if caps.jacobian && m > 0 {
+        let pattern = nlp
+            .jacobian_structure()
+            .cloned()
+            .unwrap_or_else(|| Sparsity::dense(m, n));
+        let mut jv = vec![0.0; pattern.nnz()];
+        if nlp.jacobian(&x, &mut jv).is_ok() {
+            let mut cp = vec![0.0; m];
+            let mut cm = vec![0.0; m];
+            if nlp.constraints(&xp, &mut cp).is_ok() && nlp.constraints(&xm, &mut cm).is_ok() {
+                evaluations += 2;
+                let mut jd = vec![0.0; m];
+                for j in 0..n {
+                    for pos in pattern.col_ptr()[j]..pattern.col_ptr()[j + 1] {
+                        jd[pattern.row_idx()[pos]] += jv[pos] * hd[j];
+                    }
+                }
+                for i in 0..m {
+                    all.push(make(
+                        i,
+                        usize::MAX,
+                        jd[i] / h,
+                        (cp[i] - cm[i]) / (2.0 * h),
+                        0,
+                    ));
+                }
+            } else {
+                model_failures += 1;
+            }
+        } else {
+            derivative_failures += 1;
+        }
+    }
+    let comparisons = all.len();
+    let nonfinite = all.iter().filter(|d| !d.relative.is_finite()).count();
+    let max_relative = all.iter().fold(0.0_f64, |a, d| {
+        if d.relative.is_finite() {
+            a.max(d.relative)
+        } else {
+            f64::INFINITY
+        }
+    });
+    all.sort_by(
+        |a, b| match (a.relative.is_finite(), b.relative.is_finite()) {
+            (false, true) => std::cmp::Ordering::Less,
+            (true, false) => std::cmp::Ordering::Greater,
+            _ => b.relative.total_cmp(&a.relative),
+        },
+    );
+    all.truncate(20);
+    let inconclusive_reason = if comparisons == 0 {
+        Some(format!(
+            "no derivative could be compared along the test direction: {derivative_failures} derivative callback(s) and {model_failures} model evaluation(s) failed"
+        ))
+    } else if derivative_failures > 0 {
+        Some(format!(
+            "{derivative_failures} derivative callback(s) failed, so part of the derivatives went unchecked"
+        ))
+    } else {
+        None
+    };
+    Ok(CheckReport {
+        worst: all,
+        max_relative,
+        tolerance,
+        points_checked: 1,
         evaluations,
         comparisons,
         nonfinite,
