@@ -210,7 +210,17 @@ the shift and every step is a scaled steepest-descent step (370 iterations, line
 member's inertia correction fires at every iteration with delta_w between 3 and 15 although the
 KKT matrix should already have inertia (n, m) when the reduced Hessian is positive, which points
 at the inertia test itself (56 iterations). The SQP part is a contained fix (I9 below); the IP
-part needs the study.
+part needs the study. Reading `kkt.rs`: the loop first tries delta_w = 0 and demands a *certified* factorisation
+with inertia (n, m); a factorisation with regularised pivots is never certified. The sparse
+LDL^T has no 2x2 (Bunch-Kaufman) pivoting, so with an indefinite primal block (an exact
+Lagrangian Hessian) a negative or tiny pivot met before the dual rows is regularised, the
+certificate is lost, and delta_w is applied although the true inertia is (n, m); with a BFGS
+(positive definite) primal block this never happens, which is why the quasi-Newton path is
+unaffected. IPOPT relies on MA27/MA57's 2x2 pivots here. Candidate fixes for S-E: count
+negative pivots in the primal block as legitimate for the inertia certificate when no pivot
+is regularised, or a Bunch-Kaufman variant of the dense path for n + m < 500; falsifier HS71
+with `hess=` under the IP member at most 10 iterations, and no record change on the corpus
+(the corpus never supplies Hessians, so the change must be confined to the exact-Hessian path).
 
 ### 7.7 I9, the SQP member's exact-Hessian regularisation, September 12
 
@@ -244,4 +254,11 @@ multipliers are mapped back by `1/d`. `Options::scale_variables` is `Off` (defau
 evaluations) but costs evaluations elsewhere (portfolio_risk 111 -> 247, pressure_vessel 57 ->
 128, box_lsq 8595 -> 12677, infeasible_start_far 99 -> 62); `Auto` attains 13/14 with every
 other record identical to the default's. Rust test `variable_scaling_solves_the_units_problem`.
-Whole-corpus ablation of `Auto` and `On` (`abl-i8`): pending; `Auto` is the candidate default.
+Whole-corpus ablation (`abl-i8`): `Auto` 158/158 attained, cost 1.01 [1.00, 1.02], one changed
+record besides the 60 s exits (HS117, attained, 5010 vs 612 evaluations: its start spans 1e4 and
+the scaling by |x0| does not match the solution); `On` 151/158, -4.2 pp [-11.3, -2.1], cost
+1.09 [1.00, 1.25], 112 records changed, QUADSPHERE_1000 / QUADSPHERE2_300 / POLYQP_100 / SNL_150
+lost. **`On` falsified, `Auto` kept and made the default** (`VariableScaling::Auto`, Python
+`'auto'`); `TORTURE_UNITS` is now an `Expect::Optimum` fixture (56/56, 56/56, 55/56). A start of
+zeros carries no scale, so UNITS in the corpus stays unsolved; the message for such starts is a
+later item.

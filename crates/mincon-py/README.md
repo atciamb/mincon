@@ -52,10 +52,10 @@ as `result.multipliers["eqlin"]` or `result.multipliers.eqlin`. Options use
 Python names such as `options={"maxiter": 500}`, not MATLAB option names;
 `options={"disp": True}` streams one line per iteration and prints the final
 line (`"display": "final"` prints only the last), and `"scaling": True` /
-`False` map to the default gradient scaling / none; `"scale_variables": "auto"`
-solves in variables divided by their starting magnitudes when those span a
-factor of 1e4 or more (`fmincon`'s `TypicalX` done for you; `True` always,
-`False` never, the default). `method=` selects
+`False` map to the default gradient scaling / none; `"scale_variables"` is
+`"auto"` by default (solve in variables divided by their starting magnitudes
+when those span a factor of 1e4 or more, `fmincon`'s `TypicalX` done for you;
+`True` always, `False` never). `method=` selects
 `'auto'`, `'interior-point'` or `'sqp'`; `callback=` receives every
 iteration's row and stops the solve when it returns `True`; `hess=` takes
 MATLAB's `HessianFcn(x, lambda)` matrix.

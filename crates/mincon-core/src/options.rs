@@ -141,10 +141,10 @@ pub enum FdType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VariableScaling {
     /// Never.
-    #[default]
     Off,
     /// Only when the scale factors `max(|x0_i|, typical_i)` span a factor of
     /// 1e4 or more, i.e. when the start says the units are mismatched.
+    #[default]
     Auto,
     /// Always (when any factor differs from 1).
     On,
@@ -315,8 +315,12 @@ pub struct Options {
     /// seen by the solver as (1, 1): finite-difference steps, the start push,
     /// the step bound and the quasi-Newton model all assume variables of
     /// order one. The solution and the bound multipliers are mapped back.
-    /// Off by default until the whole-corpus ablation says otherwise
-    /// (`docs/22` I8); `fmincon`'s `TypicalX` is the manual version.
+    /// Default [`VariableScaling::Auto`]: on the 169-problem corpus it fires on
+    /// one problem (HS117, attained either way at 8x the evaluations) and
+    /// changes nothing else (`bench/results/abl-i8`), while it is the only
+    /// thing that solves a unit-mismatched start such as (1e6, 1e-6), where
+    /// every first-order certificate is blind (`docs/22` I8). `fmincon`'s
+    /// `TypicalX` is the manual version.
     pub scale_variables: VariableScaling,
     /// Finite-difference flavour.
     pub fd_type: FdType,
@@ -401,7 +405,7 @@ impl Default for Options {
             bfgs_guarded_scaling: true,
             bfgs_curvature_rescale: f64::INFINITY,
 
-            scale_variables: VariableScaling::Off,
+            scale_variables: VariableScaling::Auto,
             fd_type: FdType::Adaptive,
             fd_step: None,
             fd_respect_bounds: true,

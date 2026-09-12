@@ -65,7 +65,10 @@ let r = minimize(&p, &Options::default())?;
 > SLSQP and 11/14 for trust-constr; it also found mincon certifying a wrong
 > point on a two-variable problem with a 1e12 unit mismatch (every solver
 > misses that optimum), fixed as D11 and D12 with whole-corpus ablations that
-> changed no attained record (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`). Development
+> changed no attained record; with the round's increments (derivative check,
+> variable scaling from the start) the same audit is 13/14, the miss being
+> the wrong-gradient problem, where mincon alone refuses to iterate and names
+> the component (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`). Development
 > gate: Rust tests, 56/56 fixtures with independent checks for the portfolio
 > and each member (SQP alone: 55/56, HS13 within 4e-4), 34 Python tests.
 
@@ -114,9 +117,11 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
 * **Seeing and steering a run** — `callback=` after every iteration with the
   trace row (return `True` to stop), `disp=True` streams the iteration table,
   `method=` on the `fmincon` facade, `mincon.multistart` for several starts.
-* **Variable scaling from the start** — `scale_variables='auto'` solves in
-  variables divided by their starting magnitudes when those span a factor of
-  1e4 (fmincon's `TypicalX` done for you); opt-in until its ablation is in.
+* **Variable scaling from the start** — by default (`scale_variables='auto'`)
+  the solve runs in variables divided by their starting magnitudes when those
+  span a factor of 1e4 (fmincon's `TypicalX` done for you); on the corpus it
+  fires on one problem (HS117, attained either way at 8x the evaluations) and
+  changes nothing else (`bench/results/abl-i8`).
 * **Gradient-based scaling**, on by default.
 * **Adaptive barrier update** (LOQO centrality rule) with a bounded fallback
   to the monotone schedule; **algorithm portfolio** with deterministic
@@ -175,8 +180,10 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
    area): every solver in the friction audit, fmincon included, misses the
    optimum, and every first-order certificate is fooled because the gradient
    component along the large variable is 1e-7 relative to the other. mincon no
-   longer certifies a non-KKT point there (D11, D12) and solves it with
-   `scale_variables='auto'`, which is opt-in until the corpus ablation.
+   longer certifies a non-KKT point there (D11, D12) and, with the default
+   `scale_variables='auto'`, reaches the optimum from a start whose magnitudes
+   reveal the units; a start of zeros carries no scale (the corpus problem
+   UNITS stays unsolved).
 
 ---
 

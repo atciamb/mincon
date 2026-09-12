@@ -250,12 +250,13 @@ def minimize(
         finite-difference derivatives can support instead of chasing a tighter
         tolerance), ``bfgs_scaling`` (bool, default True: rescale the initial
         quasi-Newton matrix when the first step had to be cut hard),
-        ``scale_variables`` (``True``, ``False`` (default) or ``'auto'``:
+        ``scale_variables`` (``'auto'`` (default), ``True`` or ``False``:
         solve in variables divided by their starting magnitudes,
         ``fmincon``'s ``TypicalX`` done for you, the answer mapped back;
         ``'auto'`` does it only when the magnitudes of ``x0`` span a factor
-        of 1e4 or more; use it when the components of ``x0`` differ by orders
-        of magnitude and each matters),
+        of 1e4 or more, which is the unit-mismatch case where every
+        first-order test is blind; a start of zeros carries no scale, so
+        pass ``True`` with a meaningful ``x0`` or scale by hand there),
         ``bfgs_rescale`` (float, default 0 = off: rebuild the quasi-Newton
         matrix from per-coordinate curvature quotients whenever its curvature
         along an accepted step is off by more than this factor; 10 helps

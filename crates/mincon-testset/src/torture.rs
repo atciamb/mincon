@@ -99,8 +99,8 @@ pub fn all() -> Vec<TestProblem> {
             |x| (x[0] / 3.0e6 - 1.0).powi(2) + (x[1] / 1.0e-6 - 1.0).powi(2),
             |x, c| c[0] = 5.0 - x[0] * x[1],
             Some(0.169_355_538_390_110_78),
-            Expect::NoFalseCertificate,
-            "The friction audit's bad_scaling problem (bench/results/s7-friction). Every solver              tested misses the optimum from this start; the fixture asserts that the answer is              not certified: the interior-point member once reported Optimal at f = 120.7 because              its start push moved x1 to 1e-2, the objective factor (5e-9) was chosen there, and              the scaled complementarity let a bound 1e-5 away carry a multiplier of 8e6 (D11).",
+            Expect::Optimum,
+            "The friction audit's bad_scaling problem (bench/results/s7-friction). Every solver              tested misses the optimum from this start without variable scaling, and the              interior-point member once reported Optimal at f = 120.7 there (D11: its start push              moved x1 to 1e-2, the objective factor 5e-9 was chosen there, and the scaled              complementarity let a bound 1e-5 away carry a multiplier of 8e6). With the default              scale_variables = Auto the start (1e6, 1e-6) is rescaled and the optimum is reached;              Expect::NoFalseCertificate is the check to fall back to if that default ever changes.",
         ),
         p(
             "TORTURE_DOMAIN",

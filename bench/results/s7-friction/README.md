@@ -151,9 +151,10 @@ I3 + the API increments), summarised in `summary-i1.md` and `summary-i3.md`:
 |---|---|---|---|---|
 | I1 | 12/14 | `Acceptable`, `success = False`, f = 16.46 (two objective rescales; 115 evaluations) | unchanged | identical to the baseline to the evaluation |
 | I1 + I2 + I3 | 12/14 | the SQP member no longer declares infeasibility and certifies the same first-order point fmincon-interior-point certifies (f = 16.44, `k`, 15 evaluations) | stops before iterating: "The supplied derivatives disagree with finite differences along a test direction at x0 (relative error 3.8e-1) ... grad f [1]  4.0 vs -4.0" (11 evaluations) | identical |
+| final tree (I1-I4, I7-I9, `scale_variables='auto'` default), `mincon-fmincon-final.jsonl` | **13/14** | attained, `Optimal`, 27 evaluations: the start (1e6, 1e-6) reveals the units and the solve runs in scaled variables (`abl-i8`) | as above | identical (`-i8-auto` and `-final` runs) |
 
-The scaling problem itself stays unsolved by every solver in the audit until the variables
-are scaled (I8 of `docs/22`).
+With the final tree mincon attains every problem in the audit except the one whose supplied
+gradient is wrong, where it is the only solver that refuses to iterate and names the component.
 
 ## Files
 

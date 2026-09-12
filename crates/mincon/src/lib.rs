@@ -305,10 +305,23 @@ mod tests {
         .start_at(&[1.0e6, 1.0e-6])
         .lower_bounds(&[1.0, 1.0e-9])
         .inequality(1, |x, c| c[0] = 5.0 - x[0] * x[1]);
-        let off = minimize(&p, &Options::default()).unwrap();
+        let off = minimize(
+            &p,
+            &Options {
+                scale_variables: VariableScaling::Off,
+                ..Options::default()
+            },
+        )
+        .unwrap();
         assert!(
             (off.solution.f - 0.169_355_538).abs() > 1e-3,
-            "the unscaled default is not expected to solve this: f = {}",
+            "without variable scaling this is not expected to be solved: f = {}",
+            off.solution.f
+        );
+        assert!(
+            !off.exit_flag.is_success() || off.solution.f < 20.0,
+            "an uncertified or a first-order-stationary exit is the honest outcome: {:?} at f = {}",
+            off.exit_flag,
             off.solution.f
         );
         let on = minimize(
