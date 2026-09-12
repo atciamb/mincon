@@ -57,9 +57,17 @@ let r = minimize(&p, &Options::default())?;
 > mincon, and on these model-bound problems mincon's wall time is 1.4–1.9×
 > fmincon's. The curvature-tracking rebuild (`docs/21`) that cut the
 > development corpus to 0.94× cost 1.24× on the sealed set and is off by
-> default (opt-in `bfgs_rescale`). Development
-> gate: Rust tests, 55/55 fixtures with independent checks for the portfolio
-> and each member (SQP alone: 54/55, HS13 within 4e-4), 23 Python tests.
+> default (opt-in `bfgs_rescale`). Round 5 (September 12, 2026, development
+> material only, no new claim): a friction audit of fourteen realistic
+> problems written with fmincon's minimal inputs
+> (`bench/results/s7-friction`) has mincon attaining 12/14 on the first try
+> against 11/14 for `fmincon-interior-point` and `fmincon-sqp`, 10/14 for
+> SLSQP and 11/14 for trust-constr; it also found mincon certifying a wrong
+> point on a two-variable problem with a 1e12 unit mismatch (every solver
+> misses that optimum), fixed as D11 and D12 with whole-corpus ablations that
+> changed no attained record (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`). Development
+> gate: Rust tests, 56/56 fixtures with independent checks for the portfolio
+> and each member (SQP alone: 55/56, HS13 within 4e-4), 34 Python tests.
 
 `fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
@@ -99,6 +107,16 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   sparsity detection, a multi-point derivative checker that cannot pass
   without evidence; exact objective gradients and constraint Jacobians from
   Python (`jac` in SciPy-style constraint dicts, `nonlcon_jac` in `fmincon`).
+  Supplied derivatives are checked along one direction at the start with two
+  evaluations: a gross disagreement stops the solve naming the component, a
+  mild one is a note (zero false alarms on the 172-problem corpus with exact
+  derivatives). `hess=` is accepted but experimental (see the gaps).
+* **Seeing and steering a run** — `callback=` after every iteration with the
+  trace row (return `True` to stop), `disp=True` streams the iteration table,
+  `method=` on the `fmincon` facade, `mincon.multistart` for several starts.
+* **Variable scaling from the start** — `scale_variables='auto'` solves in
+  variables divided by their starting magnitudes when those span a factor of
+  1e4 (fmincon's `TypicalX` done for you); opt-in until its ablation is in.
 * **Gradient-based scaling**, on by default.
 * **Adaptive barrier update** (LOQO centrality rule) with a bounded fallback
   to the monotone schedule; **algorithm portfolio** with deterministic
@@ -147,6 +165,17 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
    `bench/results/r3-basins`); mincon reports these as local minima, never
    as failures, and has no multi-start.
 6. **AMD ordering** falls back to RCM; inertia-free acceptance is not wired.
+7. **Exact Hessians on constrained problems** are slower than the
+   quasi-Newton default (HS71: 5 → 370 SQP iterations, 10 → 56 interior-point)
+   because the handling of an indefinite Lagrangian Hessian is untuned; on
+   unconstrained and bound-constrained problems they give Newton convergence.
+   `hess=` is therefore documented as experimental (`docs/22` §7.5).
+8. **Unit mismatches between variables** (a 1e6 pressure next to a 1e-6
+   area): every solver in the friction audit, fmincon included, misses the
+   optimum, and every first-order certificate is fooled because the gradient
+   component along the large variable is 1e-7 relative to the other. mincon no
+   longer certifies a non-KKT point there (D11, D12) and solves it with
+   `scale_variables='auto'`, which is opt-in until the corpus ablation.
 
 ---
 

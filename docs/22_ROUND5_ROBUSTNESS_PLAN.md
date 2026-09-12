@@ -161,8 +161,13 @@ the step was rejected. On bad_scaling the SQP member then converges in 9 iterati
 row-constrained point f = 16.44, the same first-order point fmincon-interior-point certifies
 (oracle: KKT, relative stationarity 2e-12), which the friction table marks `k`, not `!`.
 Fixtures: `TORTURE_INFEASIBLE` and the INFEASIBLE_* diagnostics unchanged (sqp 55/56, HS13
-only). Whole-corpus ablation `abl-i2` (with the diagnostic problems included, 172): filled in
-from `bench/results/abl-i2/README.md` when the run ends.
+only). Whole-corpus ablation `abl-i2` (with the diagnostic problems included, 172): portfolio
+158/158, IP 156/156, SQP 154/154 attained against the baseline, cost 1.00 with intervals of
+width at most 0.01 in every arm, the only changed records being the 60 s budget exits (plus
+I1's five in the IP arm); INFEASIBLE_LIN and INFEASIBLE_NL keep their diagnosis under every
+arm (INFEASIBLE_NL now through the "cannot be reduced without the step bound" path);
+UNBOUNDED_PAR under the SQP member alone is a budget exit exactly as before I2. H2 stands; the
+refusal path fired on no corpus problem.
 
 ### 7.3 I3, the directional derivative check (H3), September 12
 
