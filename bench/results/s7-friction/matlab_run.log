@@ -1,0 +1,28 @@
+chainrosen20           fmincon-interior-point  ok     exitflag=0 f_model=3014 wall=0.992s Solver stopped prematurely.
+odefit                 fmincon-interior-point  ok     exitflag=1 f_model=160 wall=0.289s Local minimum found that satisfies the constraints.
+portfolio_risk         fmincon-interior-point  ok     exitflag=1 f_model=250 wall=0.194s Local minimum found that satisfies the constraints.
+pressure_vessel        fmincon-interior-point  ok     exitflag=1 f_model=63 wall=0.166s Local minimum found that satisfies the constraints.
+nan_region             fmincon-interior-point  ok     exitflag=1 f_model=32 wall=0.235s Local minimum found that satisfies the constraints.
+hs71                   fmincon-interior-point  ok     exitflag=1 f_model=46 wall=0.099s Local minimum found that satisfies the constraints.
+linear_only            fmincon-interior-point  ok     exitflag=1 f_model=142 wall=0.106s Local minimum found that satisfies the constraints.
+with_args              fmincon-interior-point  ok     exitflag=1 f_model=86 wall=0.121s Local minimum found that satisfies the constraints.
+wrong_gradient         fmincon-interior-point  ok     exitflag=2 f_model=45 wall=0.063s Local minimum possible. Constraints satisfied.
+infeasible_start_far   fmincon-interior-point  ok     exitflag=1 f_model=199 wall=0.074s Local minimum found that satisfies the constraints.
+bad_scaling            fmincon-interior-point  ok     exitflag=1 f_model=20 wall=0.065s Local minimum found that satisfies the constraints.
+noisy_simulator        fmincon-interior-point  ok     exitflag=1 f_model=183 wall=0.134s Local minimum found that satisfies the constraints.
+box_lsq                fmincon-interior-point  ok     exitflag=0 f_model=3009 wall=0.159s Solver stopped prematurely.
+equality_circle        fmincon-interior-point  ok     exitflag=1 f_model=44 wall=0.128s Local minimum found that satisfies the constraints.
+chainrosen20           fmincon-sqp             ok     exitflag=0 f_model=2014 wall=0.108s Solver stopped prematurely.
+odefit                 fmincon-sqp             ok     exitflag=2 f_model=135 wall=0.051s Local minimum possible. Constraints satisfied.
+portfolio_risk         fmincon-sqp             ok     exitflag=1 f_model=111 wall=0.026s Local minimum found that satisfies the constraints.
+pressure_vessel        fmincon-sqp             ok     exitflag=1 f_model=32 wall=0.020s Local minimum found that satisfies the constraints.
+nan_region             fmincon-sqp             ok     exitflag=1 f_model=18 wall=0.027s Local minimum found that satisfies the constraints.
+hs71                   fmincon-sqp             ok     exitflag=1 f_model=30 wall=0.024s Local minimum found that satisfies the constraints.
+linear_only            fmincon-sqp             ok     exitflag=1 f_model=92 wall=0.021s Local minimum found that satisfies the constraints.
+with_args              fmincon-sqp             ok     exitflag=1 f_model=77 wall=0.015s Local minimum found that satisfies the constraints.
+wrong_gradient         fmincon-sqp             ok     exitflag=2 f_model=49 wall=0.008s Local minimum possible. Constraints satisfied.
+infeasible_start_far   fmincon-sqp             ok     exitflag=1 f_model=33 wall=0.009s Local minimum found that satisfies the constraints.
+bad_scaling            fmincon-sqp             ok     exitflag=-2 f_model=11 wall=0.005s Converged to an infeasible point.
+noisy_simulator        fmincon-sqp             ok     exitflag=2 f_model=68 wall=0.012s Local minimum possible. Constraints satisfied.
+box_lsq                fmincon-sqp             ok     exitflag=0 f_model=5049 wall=0.196s Solver stopped prematurely.
+equality_circle        fmincon-sqp             ok     exitflag=1 f_model=24 wall=0.013s Local minimum found that satisfies the constraints.
