@@ -199,7 +199,15 @@ def main():
     with open(os.path.join(a.out, "experiment.json"), "a") as fh:
         # Record the arguments without the machine's home directory (published logs must not carry private paths).
         home = os.path.expanduser("~")
-        args = {k: (v.replace(home, "<home>") if isinstance(v, str) else v) for k, v in vars(a).items()}
+
+        def scrub(v):
+            if not isinstance(v, str):
+                return v
+            for h in (home, home.replace("\\", "/")):
+                v = v.replace(h, "<home>")
+            return v
+
+        args = {k: scrub(v) for k, v in vars(a).items()}
         fh.write(json.dumps(dict(args=args, problems=problems, started=time.time())) + "\n")
     for repeat in range(a.repeats):
         for solver in a.solvers.split(","):

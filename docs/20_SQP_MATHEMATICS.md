@@ -806,7 +806,15 @@ diagonal is demonstrably the better model (its scale is wrong, or its
 off-diagonal is) and only for `n ≥ 10`. On QUADSPHERE_100 this turns 178
 iterations into 2; the plan, mechanism and whole-corpus ablation are
 `docs/21_LARGE_N_CURVATURE_PLAN.md` and `bench/results/abl-c7` (SQP member
-0.88× [0.58, 0.96] evaluations, +3 attained, no loss).
+0.88× [0.58, 0.96] evaluations, +3 attained, no loss). One un-shielded
+regression for the SQP member alone: PORTFOLIO_100, a dense covariance QP,
+where a single scale-route rebuild installs a diagonal that is not the
+curvature of anything and costs 7× the evaluations (`docs/21` §7). **Round 4
+(September 12) generalised that regression, not the win**: on the sealed
+set the rule cost the SQP member 1.14× [1.00, 1.54] evaluations on track A
+(COVQP_120 3.2×), so it is off by default and opt-in
+(`bench/results/s6v4-final4` §2). The measured numbers below are the C7-on
+development record.
 
 **Measured** (`bench/results/abl-sqp1`, `abl-sqp2`): SQP alone 134/143 at
 0.78× [0.70, 0.86] the interior-point member's evaluations; portfolio (SQP

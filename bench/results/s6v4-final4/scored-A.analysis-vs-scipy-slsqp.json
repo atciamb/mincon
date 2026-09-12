@@ -1,0 +1,141 @@
+{
+ "n_problems": 11,
+ "duplicates_overwritten": 0,
+ "solvers": {
+  "fmincon-interior-point": {
+   "attained": 5,
+   "scorable": 11,
+   "kkt": 1,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  },
+  "fmincon-sqp": {
+   "attained": 8,
+   "scorable": 11,
+   "kkt": 2,
+   "kkt_recovered": 2,
+   "not_ok": 0,
+   "n": 11
+  },
+  "mincon": {
+   "attained": 9,
+   "scorable": 11,
+   "kkt": 0,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  },
+  "mincon-ip": {
+   "attained": 9,
+   "scorable": 11,
+   "kkt": 0,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  },
+  "mincon-sqp": {
+   "attained": 9,
+   "scorable": 11,
+   "kkt": 1,
+   "kkt_recovered": 2,
+   "not_ok": 0,
+   "n": 11
+  },
+  "scipy-slsqp": {
+   "attained": 11,
+   "scorable": 11,
+   "kkt": 0,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  }
+ },
+ "paired": {
+  "fmincon-interior-point": {
+   "both": 5,
+   "only_solver": 0,
+   "only_baseline": 6,
+   "neither": 0,
+   "diff_pp": -54.54545454545455,
+   "diff_ci": [
+    -83.33333333333334,
+    -20.0
+   ],
+   "geo_mean_ratio": 1.5725305609145757,
+   "ratio_ci": [
+    1.1589649942738576,
+    2.5833333333333335
+   ],
+   "n_common": 5
+  },
+  "fmincon-sqp": {
+   "both": 8,
+   "only_solver": 0,
+   "only_baseline": 3,
+   "neither": 0,
+   "diff_pp": -27.272727272727273,
+   "diff_ci": [
+    -54.54545454545454,
+    0.0
+   ],
+   "geo_mean_ratio": 1.7313349908817013,
+   "ratio_ci": [
+    1.2987039707579575,
+    2.9637874106551174
+   ],
+   "n_common": 8
+  },
+  "mincon": {
+   "both": 9,
+   "only_solver": 0,
+   "only_baseline": 2,
+   "neither": 0,
+   "diff_pp": -18.181818181818183,
+   "diff_ci": [
+    -33.33333333333333,
+    0.0
+   ],
+   "geo_mean_ratio": 1.5511792122522932,
+   "ratio_ci": [
+    0.697365569584012,
+    2.9572834759610602
+   ],
+   "n_common": 9
+  },
+  "mincon-ip": {
+   "both": 9,
+   "only_solver": 0,
+   "only_baseline": 2,
+   "neither": 0,
+   "diff_pp": -18.181818181818183,
+   "diff_ci": [
+    -33.33333333333333,
+    0.0
+   ],
+   "geo_mean_ratio": 1.5097151658974624,
+   "ratio_ci": [
+    0.697365569584012,
+    2.7349729488841454
+   ],
+   "n_common": 9
+  },
+  "mincon-sqp": {
+   "both": 9,
+   "only_solver": 0,
+   "only_baseline": 2,
+   "neither": 0,
+   "diff_pp": -18.181818181818183,
+   "diff_ci": [
+    -33.33333333333333,
+    0.0
+   ],
+   "geo_mean_ratio": 1.1286517305669583,
+   "ratio_ci": [
+    0.4908203009823743,
+    2.4257951599803254
+   ],
+   "n_common": 9
+  }
+ }
+}

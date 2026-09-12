@@ -90,3 +90,81 @@ def test_wrong_constraint_jacobian_is_rejected_when_checked():
 def test_check_derivatives_without_analytic_derivatives_is_inconclusive_not_silent():
     with pytest.raises(RuntimeError, match="INCONCLUSIVE"):
         mincon.fmincon(lambda x: (x[0]-1.)**2, [0.], options={"check_derivatives": True})
+
+
+def _double_well(x):
+    # Two basins along x[0]: minima near -1 (f = 0.5) and +1 (f = 0), plus a bowl in x[1].
+    return float((x[0]**2 - 1.0)**2 + 0.25 * (x[0] - 1.0)**2 + x[1]**2)
+
+
+def _double_well_grad(x):
+    return [4.0 * x[0] * (x[0]**2 - 1.0) + 0.5 * (x[0] - 1.0), 2.0 * x[1]]
+
+
+def test_scaling_accepts_booleans():
+    r_true = mincon.minimize(_double_well, [0.5, 0.5], jac=_double_well_grad, options={"scaling": True})
+    r_default = mincon.minimize(_double_well, [0.5, 0.5], jac=_double_well_grad)
+    r_false = mincon.minimize(_double_well, [0.5, 0.5], jac=_double_well_grad, options={"scaling": False})
+    assert r_true.success and r_false.success
+    assert r_true.nit == r_default.nit and r_true.nfev == r_default.nfev  # True keeps the default
+    np.testing.assert_allclose(r_false.x, [1.0, 0.0], atol=1e-5)
+
+
+def test_disp_prints_iteration_table_and_final_line(capsys):
+    r = mincon.minimize(_double_well, [0.5, 0.5], jac=_double_well_grad, options={"disp": True})
+    out = capsys.readouterr().out
+    assert "Iter" in out and "F-count" in out and "mincon (converged" in out
+    assert out.count("\n") >= len(r.trace) + 2
+    mincon.minimize(_double_well, [0.5, 0.5], jac=_double_well_grad, options={"display": "final"})
+    out = capsys.readouterr().out
+    assert "Iter" not in out and "mincon (converged" in out
+    with pytest.raises(ValueError, match="display"):
+        mincon.minimize(_double_well, [0.5, 0.5], options={"display": "loud"})
+
+
+def test_multipliers_allow_attribute_access():
+    r = mincon.fmincon(lambda x: np.sum((x - 1.0)**2), [0.0, 0.0], A=[[1.0, 1.0]], b=[1.0],
+                       nonlcon=lambda x: ([], [x[0] - x[1]]))
+    assert r.success, r
+    assert isinstance(r.multipliers, mincon.Multipliers)
+    np.testing.assert_allclose(r.multipliers.ineqlin, r.multipliers["ineqlin"])
+    assert r.multipliers.ineqlin[0] > 0.9  # the linear constraint is active with multiplier 1
+    with pytest.raises(AttributeError, match="no multiplier group"):
+        r.multipliers.nonsense
+
+
+def test_nonlcon_may_return_its_jacobians():
+    calls = {"n": 0}
+
+    def nonlcon4(x):
+        calls["n"] += 1
+        c = [x[0]**2 + x[1]**2 - 4.0]           # inside the circle of radius 2
+        ceq = [x[0] - 2.0 * x[1]]
+        return c, ceq, [[2.0 * x[0], 2.0 * x[1]]], [[1.0, -2.0]]
+
+    f = lambda x: -(x[0] + x[1])  # noqa: E731
+    jac = lambda x: [-1.0, -1.0]  # noqa: E731
+    r4 = mincon.fmincon(f, [0.1, 0.1], nonlcon=nonlcon4, jac=jac, options={"check_derivatives": True})
+    r2 = mincon.fmincon(f, [0.1, 0.1], nonlcon=lambda x: nonlcon4(x)[:2], jac=jac)
+    assert r4.success and r2.success, (r4, r2)
+    expect = [4.0 / np.sqrt(5.0), 2.0 / np.sqrt(5.0)]
+    np.testing.assert_allclose(r4.x, expect, atol=1e-5)
+    np.testing.assert_allclose(r2.x, expect, atol=1e-5)
+    assert r4.ncjev > 0 and r2.ncjev == 0 and r4.ncev < r2.ncev  # the supplied Jacobians replace finite differences
+    with pytest.raises(ValueError, match="do not also pass nonlcon_jac"):
+        mincon.fmincon(f, [0.1, 0.1], nonlcon=nonlcon4, nonlcon_jac=lambda x: nonlcon4(x)[2:])
+
+
+def test_multistart_finds_the_lower_basin_and_reports_the_others():
+    single = mincon.minimize(_double_well, [-0.8, 0.3], jac=_double_well_grad)
+    assert single.success and single.x[0] < 0  # the local method stays in the left basin
+    r = mincon.multistart(_double_well, [(-2.0, 2.0), (-1.0, 1.0)], n_starts=8, x0=[-0.8, 0.3],
+                          jac=_double_well_grad, seed=1)
+    assert r.success and r.x[0] > 0 and abs(r.fun) < 1e-8, r
+    assert len(r.starts) == 8 and r.distinct == 2 and r.nfev_total == sum(s.nfev for s in r.starts)
+    np.testing.assert_allclose(r.starts[0].x, single.x, atol=1e-6)  # x0 is the first start
+    threaded = mincon.multistart(_double_well, [(-2.0, 2.0), (None, None)], n_starts=4, x0=[0.0, 0.0],
+                                 jac=_double_well_grad, seed=1, workers=2)
+    assert threaded.success and threaded.x[0] > 0
+    with pytest.raises(ValueError, match="finite"):
+        mincon.multistart(_double_well, [(-2.0, 2.0), (None, None)], n_starts=2)

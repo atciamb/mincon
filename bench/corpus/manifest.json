@@ -211,6 +211,63 @@
    "split": "dev"
   },
   {
+   "name": "COVQP_120",
+   "family": "covqp",
+   "n": 120,
+   "m": 2,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 120,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": -0.05880158210906184,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "f2e4e4673696f9f0",
+   "split": "final4"
+  },
+  {
+   "name": "COVQP_30",
+   "family": "covqp",
+   "n": 30,
+   "m": 2,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 30,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": -0.05093640532847937,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "3c5c1cd7d30bbdae",
+   "split": "final4"
+  },
+  {
+   "name": "COVQP_300",
+   "family": "covqp",
+   "n": 300,
+   "m": 2,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 300,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": -0.06239466124014983,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "e6679e7a21560aae",
+   "split": "final4"
+  },
+  {
    "name": "DEGEN_LICQ",
    "family": "adversarial",
    "n": 2,
@@ -228,6 +285,44 @@
    ],
    "checksum": "7f54e7cb2b39f8c2",
    "split": "validation"
+  },
+  {
+   "name": "DENSELAP_100",
+   "family": "denselap",
+   "n": 100,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 100,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": 57.12006831906789,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "63844ccf0027e919",
+   "split": "final4"
+  },
+  {
+   "name": "DENSELAP_250",
+   "family": "denselap",
+   "n": 250,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 250,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": 150.413453751555,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "a50c3c8d431310e6",
+   "split": "final4"
   },
   {
    "name": "DISPATCH_20",
@@ -2449,6 +2544,63 @@
    "split": "final3"
   },
   {
+   "name": "OBSTACLE_200",
+   "family": "obstacle",
+   "n": 200,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 200,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.5866445779055045,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "23b50a6ddee673da",
+   "split": "final4"
+  },
+  {
+   "name": "OBSTACLE_50",
+   "family": "obstacle",
+   "n": 50,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 50,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.5942266847520836,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "992a1a4fb20746df",
+   "split": "final4"
+  },
+  {
+   "name": "OBSTACLE_500",
+   "family": "obstacle",
+   "n": 500,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 500,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.5903241345573145,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "a7e9e1952188352f",
+   "split": "final4"
+  },
+  {
    "name": "POLYQP_10",
    "family": "polyqp",
    "n": 10,
@@ -2723,6 +2875,57 @@
    "tags": [],
    "checksum": "6e3ea58a05c7237e",
    "split": "final3"
+  },
+  {
+   "name": "SNL_150",
+   "family": "snl",
+   "n": 150,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 150,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.0,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [],
+   "checksum": "108cb98c2db3c84d",
+   "split": "final4"
+  },
+  {
+   "name": "SNL_24",
+   "family": "snl",
+   "n": 24,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 24,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.0,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [],
+   "checksum": "dc7f806a8eddae1c",
+   "split": "final4"
+  },
+  {
+   "name": "SNL_60",
+   "family": "snl",
+   "n": 60,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 60,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.0,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [],
+   "checksum": "0b70e481fa4f136f",
+   "split": "final4"
   },
   {
    "name": "SPEED_REDUCER",

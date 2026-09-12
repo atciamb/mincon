@@ -823,11 +823,25 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
         let (n, m) = (self.n, self.m);
         if let Hess::Bfgs(b) = &self.hess {
             if b.rebuilds() > 0 {
+                let (via_scale, via_shape) = b.rebuild_routes();
                 self.notes.push(format!(
-                    "The quasi-Newton model was rebuilt from per-coordinate curvature quotients {} time(s): its curvature along an accepted step was off by more than {:.0}x.",
+                    "The quasi-Newton model was rebuilt from per-coordinate curvature quotients {} time(s) ({} by scale, {} by shape; at update(s) {}): its curvature along an accepted step was off by more than {:.0}x.",
                     b.rebuilds(),
+                    via_scale,
+                    via_shape,
+                    mincon_ip::bfgs::rebuild_log_text(b.rebuild_log()),
                     self.opts.bfgs_curvature_rescale
                 ));
+                if !b.post_rebuild_tau().is_empty() {
+                    self.notes.push(format!(
+                        "Curvature ratio s^T y / s^T B s at the updates after each rebuild: {}.",
+                        b.post_rebuild_tau()
+                            .iter()
+                            .map(|t| format!("{t:.2e}"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
             }
         }
         let (e0, compl, _) = self.kkt(p, lambda, z_l, z_u);

@@ -41,9 +41,12 @@ below).
 | SQP member | 148 / 145 | 3 (QUADSPHERE2_300, QUADSPHERE_1000, ELLIPSOID_500) | 0 | 0.88 [0.58, 0.96] | 0.32 |
 
 All three intervals exclude 1.0; no configuration loses an attainment. Gate G1
-of `docs/21` is met: the paired evaluation ratio is below 1 with the interval
-excluding 1 on the portfolio and both members, attainment does not fall, and
-the n ≥ 100 subset improves (0.81× portfolio, 0.32× SQP member).
+of `docs/21` is met on attainment and on the whole-corpus ratio, and **not met
+on its n ≥ 100 subset criterion** (≤ 0.5×) for the portfolio and the IP member:
+over the ten n ≥ 100 problems both arms attain, the subset ratio is 0.81×
+(the newly attained ELLIPSOID_500 is outside it); the SQP member's is 0.32×.
+The geo-mean and the subset ratio are over problems attained by both arms, so
+the two PORTFOLIO problems (no target yet) contribute to neither.
 
 ### Where the evaluations go (portfolio)
 
@@ -54,19 +57,33 @@ stalled at the budget (f = 2034.13 = target vs 1995.49 with violation 0.85),
 QUADSPHERE_10 0.179×, HS118 0.322×, DISPATCH_20 0.447×, ELLIPSOID_50 0.509×,
 MAXENT_10 0.510×, NNLS_SIMPLEX_30 0.607×, MAXENT_50 0.610×, ELLIPSOID2_20
 0.645×, CHAINROSEN_EQ_10 0.667×. The one cost regression is ELLIPSOID2_200 at
-1.035×, within noise.
+1.035× (412 → 424 iterations after one rebuild under the IP member; the
+problem is non-separable, and the rebuilt diagonal neither helps nor hurts
+much). Exit-status changes: HS112 (portfolio, SQP) and DISPATCH_20 (IP)
+`Acceptable` → `Optimal`; HS114 under the IP member `Optimal` →
+`StepTolerance` after one rebuild, still attained.
 
 ### The SQP member alone
 
 Larger swings because it has no interior-point fallback: QUADSPHERE_100
 **0.022×** (2 vs 178 iterations), CHAINROSEN_EQ_200 0.109×, MAXENT_200 0.126×,
 QUADSPHERE2_300 0.158× (newly attained), QUADSPHERE_1000 0.399× (newly
-attained). One real blemish — **PORTFOLIO_100 at 7.0×** (175 vs 23 iterations):
-the rule fires on a dense covariance QP where the diagonal is not the right
-model, and the repeated rebuilds thrash. It does **not** reach the portfolio,
-which routes PORTFOLIO_100 (n = 100 > 20) to the interior-point member first
-and attains it at 1.0×. It is filed against the shape test's weight threshold
-(`docs/16` cluster 15) and is a candidate for the round-4 diagnosis.
+attained), ELLIPSOID2_200 0.467× (139 → 64 iterations after two rebuilds — the
+rule does reach this non-separable problem for the SQP member; it does not for
+the IP member). CHAINROSEN_BOX_200 rebuilds once and is unchanged (496 vs 494
+iterations, budget exit either way). One real blemish — **PORTFOLIO_100 at
+7.0×** (175 vs 23 iterations, exit `Optimal` → `Acceptable`): a **single**
+rebuild through the **scale route** (route counters added after this run,
+`bench/results/abl-c8-rejected/`) on a dense covariance QP, where the
+quotients pass the 80 % consistency test yet are not the diagonal of anything,
+and the damped updates that follow take 150 iterations to undo it. The problem
+has no target (best-known pending), so it is outside the attainment counts and
+the cost ratio above. The portfolio's record on it is byte-identical rule on
+and off, because n = 100 > 20 routes it to the interior-point member; that
+member's objective is 0.09 % above the SQP member's rule-off value, and
+whether that is within the frozen tolerance is unknown until a target exists.
+Filed against the scale route on coupled problems (`docs/16` cluster 15,
+`docs/21` §7).
 
 ## The gate (why n ≥ 10)
 
@@ -75,19 +92,39 @@ The first version of the rule had no size gate. On the whole corpus it reached
 the scale route fired early, when the matrix was still near-unit and the
 quotients all exceeded the factor, and rebuilt to a diagonal that ignores the
 coupling a dense BFGS would have learned in six updates
-(`bench/results/abl-c7` was regenerated with the gate; the un-gated numbers are
-in the private worklog). Gating the rule to n ≥ 10 makes HS97, HS98, HS44 and
-HS86 byte-identical rule-on vs rule-off while keeping every n ≥ 10 win
-(QUADSPHERE_10 at n = 10 is the smallest problem the rule helps). This is the
-same "helps large, perturbs small" boundary that governed the earlier BFGS
-scaling studies (`bench/results/s4-bfgs-scaling-rejected`,
+(`bench/results/abl-c7` was regenerated with the gate; the un-gated records
+were not kept, contrary to the plan's `abl-c7-rejected/` rule, and only the
+summary survives in the private worklog). Gating the rule to n ≥ 10 makes all
+118 problems with n < 10 byte-identical rule-on vs rule-off in every
+configuration while keeping every n ≥ 10 win (QUADSPHERE_10 at n = 10 is the
+smallest problem the rule helps). The threshold was chosen after seeing that
+it separates the two losses from the smallest win, i.e. it is fitted to this
+corpus; the round-4 set is where that is tested. This is the same "helps
+large, perturbs small" boundary that governed the earlier BFGS scaling
+studies (`bench/results/s4-bfgs-scaling-rejected`,
 `s5-bfgs-guarded-diagonal`).
 
 ## Status
 
-Development-validated. This is the whole corpus (dev plus the former held-out
-rounds, all development material). The increment is kept in `auto`; a **round-4
-held-out set** is required before any superiority claim is updated
+**Rejected on round 4 (September 12, 2026).** On the sealed final4 set the
+rule cost 1.24× [0.99, 1.67] evaluations for the portfolio (track A) and
+1.13× [0.78, 1.82] (track C) with no attainment change, COVQP_120 3.6× worse
+by the same first-update rebuild that hurt PORTFOLIO_100 here
+(`../s6v4-final4/README.md` §2). The default is off; the option remains for
+separable problems, where this record stands.
+
+Before that: development-validated. This is the whole corpus (dev plus the former held-out
+rounds, all development material). A **round-4
+held-out set** was required before any superiority claim could be updated
 (`docs/17_CLAIM_AUDIT.md`). The mechanism most affected — MAXENT_200 at
 0.157× — is exactly the one that kept round 3's evaluations against
 `fmincon-sqp` above 1, so round 4 is where that is tested, not asserted.
+
+Reviewed September 11 (evening): every record here was regenerated from a
+wheel rebuilt from the committed source on 18 spot runs (identical), the
+rule-off arm equals the round-3 C6 build on the 12 final3 problems, and the
+numbers above were recomputed from the raw records. Corrections made in that
+review: the n ≥ 100 subset criterion, the PORTFOLIO_100 mechanism and scoring
+status, ELLIPSOID2_200 and CHAINROSEN_BOX_200 do rebuild (see above), and the
+exit-status changes. Since the review the notes carry the rebuild route split
+(`docs/21` §7.1), which changes no numbers.

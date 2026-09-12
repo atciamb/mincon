@@ -38,7 +38,8 @@ import numpy as np
 
 from . import _mincon
 
-__all__ = ["minimize", "fmincon", "check_gradients", "OptimizeResult", "ExitFlag", "__version__"]
+__all__ = ["minimize", "fmincon", "multistart", "check_gradients", "OptimizeResult", "Multipliers",
+           "ExitFlag", "__version__"]
 
 __version__ = _mincon.__version__
 
@@ -97,6 +98,57 @@ class OptimizeResult(dict):
         return "OptimizeResult(\n" + "\n".join(lines) + "\n)"
 
 
+class Multipliers(dict):
+    """The multiplier groups of :func:`fmincon`, readable as ``m['ineqlin']`` or ``m.ineqlin``."""
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(f"no multiplier group named '{name}'; groups: {sorted(self)}") from exc
+
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+
+_DISPLAY_LEVELS = ("none", "final", "iter")
+
+
+def _display_level(opts: dict) -> str:
+    """Consume ``disp`` / ``display`` from the option dict and return the level."""
+    level = "none"
+    if "disp" in opts:
+        level = "iter" if opts.pop("disp") else "none"
+    if "display" in opts:
+        level = opts.pop("display")
+        if level not in _DISPLAY_LEVELS:
+            raise ValueError(f"display must be one of {_DISPLAY_LEVELS}, got {level!r}")
+    return level
+
+
+def _print_report(result: "OptimizeResult", level: str) -> None:
+    """Print the iteration table and/or the final line. The engine runs
+    without the GIL, so the table is printed when the solve returns, not
+    streamed; ``result.trace`` holds the same rows for programmatic use."""
+    if level == "iter" and result.get("trace"):
+        print(f"{'Iter':>5} {'F-count':>8} {'f(x)':>14} {'Feasibility':>12} {'Optimality':>12} "
+              f"{'Step':>10} {'alpha':>8} {'mu':>9}")
+        for t in result["trace"]:
+            step = t.get("step_norm")
+            alpha = t.get("alpha")
+            mu = t.get("mu")
+            print(f"{t['iter']:>5d} {t['nfev']:>8d} {t['f']:>14.6e} {t['maxcv']:>12.3e} {t['optimality']:>12.3e} "
+                  f"{'---' if step is None else f'{step:.3e}':>10} "
+                  f"{'---' if alpha is None else f'{alpha:.3f}':>8} "
+                  f"{'---' if mu is None else f'{mu:.1e}':>9}"
+                  + ("  restoration" if t.get("in_restoration") else ""))
+    if level in ("iter", "final"):
+        tag = "converged" if result["success"] else ("usable" if result.get("usable") else "not solved")
+        print(f"mincon ({tag}, status {result['status']}): {result['message']}")
+        print(f"  f = {result['fun']:.10g}, max constraint violation = {result['maxcv']:.3e}, "
+              f"{result['nit']} iterations, {result['nfev']} objective evaluations")
+
+
 def minimize(
     fun: Callable[[np.ndarray], float],
     x0: Sequence[float],
@@ -147,16 +199,21 @@ def minimize(
     options : dict, optional
         ``maxiter``, ``maxfev``, ``maxtime`` (seconds), ``ftol``, ``ctol``,
         ``threads``, ``seed``, ``check_derivatives``,
-        ``scaling`` in ``{'none', 'gradient', 'equilibration'}``,
+        ``scaling`` in ``{'none', 'gradient', 'equilibration'}`` (``True``
+        keeps the default ``'gradient'``, ``False`` means ``'none'``),
+        ``disp`` (bool: print the iteration table and the final line when
+        the solve returns) or ``display`` in ``{'none', 'final', 'iter'}``,
         ``finite_diff`` in ``{'forward', 'central', 'adaptive'}``,
         ``barrier`` in ``{'monotone', 'adaptive', 'adaptive-then-monotone'}``,
         ``fd_error_aware`` (bool, default True: stop at the accuracy the
         finite-difference derivatives can support instead of chasing a tighter
         tolerance), ``bfgs_scaling`` (bool, default True: rescale the initial
         quasi-Newton matrix when the first step had to be cut hard),
-        ``bfgs_rescale`` (float, default 10: rebuild the quasi-Newton matrix
-        from per-coordinate curvature quotients whenever its curvature along an
-        accepted step is off by more than this factor; 0 disables).
+        ``bfgs_rescale`` (float, default 0 = off: rebuild the quasi-Newton
+        matrix from per-coordinate curvature quotients whenever its curvature
+        along an accepted step is off by more than this factor; 10 helps
+        separable large problems and hurts dense coupled ones, so it is
+        opt-in).
 
     Returns
     -------
@@ -190,12 +247,20 @@ def minimize(
     cons = _normalize_constraints(constraints, args)
 
     opts = dict(options or {})
+    display = _display_level(opts)
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
                  "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
                  "bfgs_rescale"}
     unknown = set(opts) - supported
     if unknown:
-        raise ValueError(f"unknown options: {sorted(unknown, key=str)}; supported: {sorted(supported)}")
+        raise ValueError(f"unknown options: {sorted(unknown, key=str)}; "
+                         f"supported: {sorted(supported | {'disp', 'display'})}")
+    if isinstance(opts.get("scaling"), bool):
+        opts["scaling"] = "gradient" if opts["scaling"] else "none"
+    if "bfgs_rescale" in opts:
+        v = opts["bfgs_rescale"]
+        if not (v == 0 or v > 1):
+            raise ValueError("bfgs_rescale must be 0 (off) or a factor greater than 1")
     if tol is not None:
         opts.setdefault("tol", tol)
 
@@ -208,7 +273,10 @@ def minimize(
         method=method,
         options=opts,
     )
-    return OptimizeResult(raw)
+    result = OptimizeResult(raw)
+    if display != "none":
+        _print_report(result, display)
+    return result
 
 
 def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
@@ -224,13 +292,15 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     ``jac(x, *args)`` optionally returns the objective gradient and
     ``nonlcon_jac(x, *args)`` optionally returns ``(Jc, Jceq)`` with shapes
     ``(len(c), n)`` and ``(len(ceq), n)`` (rows are constraints, unlike
-    MATLAB's transposed ``GC``); both are used only when supplied together
-    with the corresponding callback, and are checked against finite
-    differences when ``options={'check_derivatives': True}``.
+    MATLAB's transposed ``GC``). Alternatively ``nonlcon`` itself may return
+    ``(c, ceq, Jc, Jceq)``; the shape of the return is fixed by its first
+    call. Derivatives are used only when supplied, and are checked against
+    finite differences when ``options={'check_derivatives': True}``.
 
     Returns an :class:`OptimizeResult`: use ``r.x``, ``r.fun``, ``r.success``
     and ``r.maxcv``. ``r.multipliers`` groups the MATLAB-sign multipliers as
-    ``ineqlin``, ``eqlin``, ``ineqnonlin``, ``eqnonlin``, ``lower``, ``upper``.
+    ``ineqlin``, ``eqlin``, ``ineqnonlin``, ``eqnonlin``, ``lower``, ``upper``,
+    readable as ``r.multipliers['eqlin']`` or ``r.multipliers.eqlin``.
     The raw ``con`` and ``lambda`` fields retain the conventions of minimize.
     This is a convenience interface, not MATLAB output-tuple compatibility.
 
@@ -283,17 +353,28 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
 
         # Both components are evaluated from one nonlcon call per point: a
         # single-entry cache keyed on the point avoids calling the model twice.
+        # nonlcon may return (c, ceq) or (c, ceq, Jc, Jceq); the arity is fixed
+        # by the first call so a model cannot silently change its contract.
         cache = {"x": None, "pair": None}
+        arity = [None]
 
         def pair_at(x):
             xa = np.asarray(x, dtype=float)
             if cache["x"] is not None and np.array_equal(xa, cache["x"]):
                 return cache["pair"]
             pair = nonlcon(xa, *args)
-            if not isinstance(pair, (tuple, list)) or len(pair) != 2:
-                raise ValueError("nonlcon must return (c, ceq), with c <= 0 and ceq == 0")
+            if not isinstance(pair, (tuple, list)) or len(pair) not in (2, 4):
+                raise ValueError("nonlcon must return (c, ceq) or (c, ceq, Jc, Jceq), with c <= 0 and ceq == 0")
+            if arity[0] is None:
+                arity[0] = len(pair)
+            elif len(pair) != arity[0]:
+                raise ValueError(f"nonlcon returned {len(pair)} values after returning {arity[0]} on its first call")
             cache["x"], cache["pair"] = xa.copy(), pair
             return pair
+
+        returns_jacobians = len(pair_at(x0)) == 4
+        if returns_jacobians and nonlcon_jac is not None:
+            raise ValueError("nonlcon returns its Jacobians; do not also pass nonlcon_jac")
 
         def component(index):
             def evaluate(x):
@@ -311,13 +392,16 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
             return evaluate
 
         blocks = [{"type": "ineq", "fun": component(0)}, {"type": "eq", "fun": component(1)}]
-        if nonlcon_jac is not None:
+        if nonlcon_jac is not None or returns_jacobians:
             def jac_component(index):
                 def evaluate(x):
-                    pair = nonlcon_jac(x, *args)
-                    if not isinstance(pair, (tuple, list)) or len(pair) != 2:
-                        raise ValueError("nonlcon_jac must return (Jc, Jceq)")
-                    value = pair[index]
+                    if returns_jacobians:
+                        value = pair_at(x)[2 + index]
+                    else:
+                        pair = nonlcon_jac(x, *args)
+                        if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+                            raise ValueError("nonlcon_jac must return (Jc, Jceq)")
+                        value = pair[index]
                     a = np.asarray([] if value is None else value, dtype=float)
                     a = a.reshape(-1, n) if a.size else np.zeros((0, n))
                     return -a if index == 0 else a
@@ -331,7 +415,7 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     gradient = (lambda x: jac(x, *args)) if args and jac is not None else jac
     result = minimize(objective, x0, jac=gradient, bounds=bounds,
                       constraints=cons, tol=tol, options=options)
-    multipliers = {}
+    multipliers = Multipliers()
     start = 0
     for name, size, sign in zip(
         ["ineqlin", "eqlin", "ineqnonlin", "eqnonlin"],
@@ -404,4 +488,95 @@ def _normalize_constraints(constraints, args):
             if jac is not None:
                 d["jac"] = lambda x, _j=jac: _j(x, *args)
         out.append(d)
+    return out
+
+
+def multistart(
+    fun: Callable[[np.ndarray], float],
+    bounds: Iterable[tuple[float | None, float | None]],
+    n_starts: int = 10,
+    *,
+    x0: Sequence[float] | None = None,
+    args: tuple = (),
+    method: str | None = None,
+    jac: Callable[[np.ndarray], Sequence[float]] | None = None,
+    constraints: Mapping | Iterable[Mapping] | None = None,
+    tol: float | None = None,
+    options: Mapping[str, Any] | None = None,
+    seed: int | None = 0,
+    workers: int = 1,
+) -> OptimizeResult:
+    """Run :func:`minimize` from several starting points and return the best result.
+
+    This is local search from ``n_starts`` points, not a global optimizer:
+    it finds the best of the basins those starts fall into and nothing
+    else. Starts are drawn uniformly inside ``bounds`` (every bound must be
+    finite unless ``x0`` is given, in which case unbounded coordinates are
+    sampled within ``x0 +- max(1, |x0|)``); ``x0`` itself, when given, is
+    the first start. ``seed`` makes the draw reproducible.
+
+    Results are ranked by feasibility first (``maxcv`` within the solver's
+    constraint tolerance), then by ``usable``, then by ``fun``. The returned
+    :class:`OptimizeResult` is the best run's, with three extra fields:
+    ``starts`` (all results, in start order), ``distinct`` (the number of
+    distinct objective values among feasible runs, to ``1e-6`` relative) and
+    ``nfev_total``. ``workers > 1`` runs starts on a thread pool; the engine
+    releases the GIL while it works, so this overlaps the numerical work,
+    while Python callbacks still serialize on the GIL.
+    """
+    if n_starts < 1:
+        raise ValueError("n_starts must be at least 1")
+    bl = list(bounds)
+    lo = np.array([-np.inf if b[0] is None else float(b[0]) for b in bl])
+    hi = np.array([np.inf if b[1] is None else float(b[1]) for b in bl])
+    n = lo.size
+    if np.any(hi < lo):
+        raise ValueError("every upper bound must be at least its lower bound")
+    center = None if x0 is None else np.asarray(x0, dtype=float).ravel()
+    if center is not None and center.size != n:
+        raise ValueError(f"x0 has {center.size} entries but bounds has {n}")
+    lo_s, hi_s = lo.copy(), hi.copy()
+    infinite = ~np.isfinite(lo) | ~np.isfinite(hi)
+    if np.any(infinite):
+        if center is None:
+            raise ValueError("bounds must be finite in every coordinate unless x0 is given")
+        spread = np.maximum(1.0, np.abs(center))
+        lo_s = np.where(np.isfinite(lo), lo, center - spread)
+        hi_s = np.where(np.isfinite(hi), hi, center + spread)
+        lo_s = np.maximum(lo_s, lo)
+        hi_s = np.minimum(hi_s, hi)
+    rng = np.random.default_rng(seed)
+    starts = [] if center is None else [center]
+    while len(starts) < n_starts:
+        starts.append(lo_s + rng.random(n) * (hi_s - lo_s))
+
+    def solve(start):
+        return minimize(fun, start, args=args, method=method, jac=jac, bounds=bl,
+                        constraints=constraints, tol=tol, options=options)
+
+    if workers > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(solve, starts))
+    else:
+        results = [solve(s) for s in starts]
+
+    ctol = float((options or {}).get("ctol", 1e-6))
+
+    def rank(r):
+        feasible = r["maxcv"] <= ctol
+        return (not feasible, not r.get("usable", False), r["fun"])
+
+    best = min(results, key=rank)
+    feasible_values = sorted(r["fun"] for r in results if r["maxcv"] <= ctol)
+    distinct = 0
+    last = None
+    for v in feasible_values:
+        if last is None or abs(v - last) > 1e-6 * max(1.0, abs(last)):
+            distinct += 1
+            last = v
+    out = OptimizeResult(best)
+    out["starts"] = results
+    out["distinct"] = distinct
+    out["nfev_total"] = int(sum(r["nfev"] for r in results))
     return out

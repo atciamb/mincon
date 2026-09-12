@@ -47,7 +47,24 @@ pub struct DenseBfgs {
     rescale_cooldown: usize,
     since_rebuild: usize,
     rebuilds: usize,
+    /// Rebuilds taken through the scale route (quotients consistent with
+    /// the error on 80 % of the pair's weight).
+    rebuilds_scale: usize,
+    /// Rebuilds taken through the shape route only (the model's diagonal
+    /// explains the pair, its off-diagonal does not).
+    rebuilds_shape: usize,
+    /// `(accepted updates before the rebuild, tau, via the scale route)` for
+    /// the first [`REBUILD_LOG_CAP`] rebuilds, reported in the notes.
+    rebuild_log: Vec<(usize, f64, bool)>,
+    /// `tau` observed at the accepted updates that followed each rebuild
+    /// (up to two per rebuild), to see whether the rebuild fixed the model.
+    post_rebuild_tau: Vec<f64>,
+    /// Updates still to be logged into `post_rebuild_tau`.
+    post_rebuild_pending: usize,
 }
+
+/// Rebuilds remembered in [`DenseBfgs::rebuild_log`].
+const REBUILD_LOG_CAP: usize = 16;
 
 /// Per-coordinate curvature quotients `y_i / s_i` (a diagonal model), clamped
 /// to four orders of magnitude around the scalar estimate `gamma` and falling
@@ -105,6 +122,11 @@ impl DenseBfgs {
             rescale_cooldown: 5,
             since_rebuild: 5,
             rebuilds: 0,
+            rebuilds_scale: 0,
+            rebuilds_shape: 0,
+            rebuild_log: Vec::new(),
+            post_rebuild_tau: Vec::new(),
+            post_rebuild_pending: 0,
         }
     }
 
@@ -159,6 +181,35 @@ impl DenseBfgs {
         self.rebuilds
     }
 
+    /// Rebuilds split by route: `(scale, shape-only)`. Reported in the
+    /// solver notes so every record says which test admitted each rebuild.
+    /// The shape route rebuilds to the quotients although its test validated
+    /// the model's diagonal; guarding it (keep the model's entry wherever a
+    /// quotient disagrees by more than the factor) was tried and rejected —
+    /// it left PORTFOLIO_100 unchanged, whose rebuild comes through the scale
+    /// route, and nearly doubled ELLIPSOID2_200 under the SQP member
+    /// (`bench/results/abl-c8-rejected`).
+    #[must_use]
+    pub fn rebuild_routes(&self) -> (usize, usize) {
+        (self.rebuilds_scale, self.rebuilds_shape)
+    }
+
+    /// Where the rebuilds happened: `(accepted updates before it, tau =
+    /// s^T y / s^T B s at that pair, via the scale route)`, first
+    /// [`REBUILD_LOG_CAP`] only.
+    #[must_use]
+    pub fn rebuild_log(&self) -> &[(usize, f64, bool)] {
+        &self.rebuild_log
+    }
+
+    /// `s^T y / s^T B s` at the (up to two) accepted updates after each
+    /// rebuild, in order: near 1 means the rebuilt model explains the next
+    /// pairs, far from 1 means it did not.
+    #[must_use]
+    pub fn post_rebuild_tau(&self) -> &[f64] {
+        &self.post_rebuild_tau
+    }
+
     /// Replace the matrix by a diagonal.
     fn set_diagonal(&mut self, d: &[f64]) {
         self.b.fill(0.0);
@@ -185,7 +236,13 @@ impl DenseBfgs {
     /// significant and the quotient is a positive finite number, clamped to
     /// four orders of magnitude around the scalar estimate; elsewhere the
     /// model's own diagonal entry, clamped the same way.
-    fn rebuild_diagonal(&self, s: &[f64], y: &[f64], tau: f64, under: bool) -> Option<Vec<f64>> {
+    fn rebuild_diagonal(
+        &self,
+        s: &[f64],
+        y: &[f64],
+        tau: f64,
+        under: bool,
+    ) -> Option<(Vec<f64>, bool)> {
         let n = self.n;
         let f = self.rescale_factor;
         let s_y: f64 = s.iter().zip(y).map(|(a, b)| a * b).sum();
@@ -225,24 +282,23 @@ impl DenseBfgs {
         }
         let lo = gamma / 1e4;
         let hi = 1e4 * gamma;
-        Some(
-            (0..n)
-                .map(|i| {
-                    let bii = self.b[i * n + i];
-                    let q = if s[i].abs() > 1e-12 * (1.0 + s[i].abs()) {
-                        y[i] / s[i]
-                    } else {
-                        bii
-                    };
-                    let q = if q.is_finite() && q > 0.0 { q } else { bii };
-                    if q.is_finite() && q > 0.0 {
-                        q.clamp(lo, hi)
-                    } else {
-                        gamma
-                    }
-                })
-                .collect(),
-        )
+        let d = (0..n)
+            .map(|i| {
+                let bii = self.b[i * n + i];
+                let q = if s[i].abs() > 1e-12 * (1.0 + s[i].abs()) {
+                    y[i] / s[i]
+                } else {
+                    bii
+                };
+                let q = if q.is_finite() && q > 0.0 { q } else { bii };
+                if q.is_finite() && q > 0.0 {
+                    q.clamp(lo, hi)
+                } else {
+                    gamma
+                }
+            })
+            .collect();
+        Some((d, scale_route))
     }
 
     /// The upper-triangular sparsity of the approximation (dense).
@@ -350,6 +406,12 @@ impl DenseBfgs {
             return false;
         }
 
+        if self.post_rebuild_pending > 0 && s_y > 0.0 {
+            self.post_rebuild_pending -= 1;
+            if self.post_rebuild_tau.len() < 2 * REBUILD_LOG_CAP {
+                self.post_rebuild_tau.push(s_y / s_bs);
+            }
+        }
         // Curvature-tracking rebuild (see `set_curvature_rescale`). The raw
         // `y` is used: the damped `r` below is bounded away from zero relative
         // to `s^T B s` and would hide the size of an underestimate.
@@ -362,9 +424,18 @@ impl DenseBfgs {
             let tau = s_y / s_bs;
             let f = self.rescale_factor;
             if tau > f || tau < 1.0 / f {
-                if let Some(d) = self.rebuild_diagonal(s, y, tau, tau > f) {
+                if let Some((d, via_scale)) = self.rebuild_diagonal(s, y, tau, tau > f) {
                     self.set_diagonal(&d);
                     self.rebuilds += 1;
+                    if via_scale {
+                        self.rebuilds_scale += 1;
+                    } else {
+                        self.rebuilds_shape += 1;
+                    }
+                    if self.rebuild_log.len() < REBUILD_LOG_CAP {
+                        self.rebuild_log.push((self.updates, tau, via_scale));
+                    }
+                    self.post_rebuild_pending = 2;
                     self.since_rebuild = 0;
                     self.rescale_cooldown = self.rescale_cooldown.saturating_mul(2);
                     self.multiply(s, &mut bs);
@@ -460,6 +531,19 @@ impl DenseBfgs {
     pub fn get(&self, i: usize, j: usize) -> f64 {
         self.b[i * self.n + j]
     }
+}
+
+/// The rebuild log as `"3 [scale, tau 1.2e3], 17 [shape, tau 4.5e-2]"` for the notes.
+pub fn rebuild_log_text(log: &[(usize, f64, bool)]) -> String {
+    log.iter()
+        .map(|(k, tau, scale)| {
+            format!(
+                "{k} [{}, tau {tau:.1e}]",
+                if *scale { "scale" } else { "shape" }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[cfg(test)]
@@ -675,6 +759,39 @@ mod tests {
                 b.get(i, j)
             );
         }
+    }
+
+    #[test]
+    fn rebuild_routes_are_counted_separately() {
+        // Same accumulated matrix as above, B = [[100, -99], [-99, 100]], and a
+        // pair along (1, 1) whose second quotient (0.005) is nothing like the
+        // diagonal (100): the scale route cannot fire (no coordinate is
+        // consistent with the 50x error), the shape route does, and the
+        // rebuild installs that stray quotient, clamped to 0.01 - the matrix
+        // the shape test never examined. Recorded here so the behaviour is
+        // explicit; guarding it was tried and rejected
+        // (`bench/results/abl-c8-rejected`).
+        let mut b = DenseBfgs::new(2);
+        assert!(b.update(&[1.0, -1.0], &[199.0, -199.0]));
+        b.set_curvature_rescale(10.0);
+        let s = [1.0, 1.0];
+        let y = [100.0, 0.005];
+        let tau = 100.005 / 2.0;
+        let (d, via_scale) = b
+            .rebuild_diagonal(&s, &y, tau, true)
+            .expect("shape route fires");
+        assert!(!via_scale);
+        assert!((d[0] - 100.0).abs() < 1e-9);
+        assert!(d[1] < 0.02, "the stray quotient is installed ({})", d[1]);
+        assert!(b.update(&s, &y));
+        assert_eq!(b.rebuilds(), 1);
+        assert_eq!(b.rebuild_routes(), (0, 1));
+
+        // A separable pair on a unit matrix goes through the scale route.
+        let mut c = DenseBfgs::new(2);
+        c.set_curvature_rescale(10.0);
+        assert!(c.update(&[0.5, 0.5], &[50.0, 500.0]));
+        assert_eq!(c.rebuild_routes(), (1, 0));
     }
 
     #[test]

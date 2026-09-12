@@ -1,0 +1,216 @@
+{
+ "n_problems": 11,
+ "duplicates_overwritten": 0,
+ "solvers": {
+  "fmincon-interior-point": {
+   "attained": 5,
+   "scorable": 11,
+   "kkt": 1,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  },
+  "fmincon-sqp": {
+   "attained": 8,
+   "scorable": 11,
+   "kkt": 2,
+   "kkt_recovered": 2,
+   "not_ok": 0,
+   "n": 11
+  },
+  "mincon": {
+   "attained": 9,
+   "scorable": 11,
+   "kkt": 0,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  },
+  "mincon-ip": {
+   "attained": 9,
+   "scorable": 11,
+   "kkt": 0,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  },
+  "mincon-ip@bfgs_rescale=0": {
+   "attained": 9,
+   "scorable": 11,
+   "kkt": 1,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  },
+  "mincon-sqp": {
+   "attained": 9,
+   "scorable": 11,
+   "kkt": 1,
+   "kkt_recovered": 2,
+   "not_ok": 0,
+   "n": 11
+  },
+  "mincon-sqp@bfgs_rescale=0": {
+   "attained": 9,
+   "scorable": 11,
+   "kkt": 2,
+   "kkt_recovered": 3,
+   "not_ok": 0,
+   "n": 11
+  },
+  "mincon@bfgs_rescale=0": {
+   "attained": 9,
+   "scorable": 11,
+   "kkt": 1,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  },
+  "scipy-slsqp": {
+   "attained": 11,
+   "scorable": 11,
+   "kkt": 0,
+   "kkt_recovered": 0,
+   "not_ok": 0,
+   "n": 11
+  }
+ },
+ "paired": {
+  "fmincon-interior-point": {
+   "both": 5,
+   "only_solver": 0,
+   "only_baseline": 4,
+   "neither": 2,
+   "diff_pp": -36.36363636363637,
+   "diff_ci": [
+    -58.333333333333336,
+    -11.11111111111111
+   ],
+   "geo_mean_ratio": 1.1485018840028385,
+   "ratio_ci": [
+    0.5919527568651752,
+    1.940320232896652
+   ],
+   "n_common": 5
+  },
+  "fmincon-sqp": {
+   "both": 7,
+   "only_solver": 1,
+   "only_baseline": 2,
+   "neither": 1,
+   "diff_pp": -9.090909090909092,
+   "diff_ci": [
+    -33.33333333333333,
+    20.0
+   ],
+   "geo_mean_ratio": 1.2220949945424766,
+   "ratio_ci": [
+    0.8249111603864017,
+    1.70693987670987
+   ],
+   "n_common": 7
+  },
+  "mincon": {
+   "both": 9,
+   "only_solver": 0,
+   "only_baseline": 0,
+   "neither": 2,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    0.0,
+    0.0
+   ],
+   "geo_mean_ratio": 1.2401208990395514,
+   "ratio_ci": [
+    0.9901573297786732,
+    1.6681305329097116
+   ],
+   "n_common": 9
+  },
+  "mincon-ip": {
+   "both": 9,
+   "only_solver": 0,
+   "only_baseline": 0,
+   "neither": 2,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    0.0,
+    0.0
+   ],
+   "geo_mean_ratio": 1.2069716471431773,
+   "ratio_ci": [
+    0.9572958241837722,
+    1.6180509903732334
+   ],
+   "n_common": 9
+  },
+  "mincon-sqp": {
+   "both": 9,
+   "only_solver": 0,
+   "only_baseline": 0,
+   "neither": 2,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    0.0,
+    0.0
+   ],
+   "geo_mean_ratio": 0.9023229474439294,
+   "ratio_ci": [
+    0.6860848815970595,
+    1.2971333364389956
+   ],
+   "n_common": 9
+  },
+  "mincon-sqp@bfgs_rescale=0": {
+   "both": 9,
+   "only_solver": 0,
+   "only_baseline": 0,
+   "neither": 2,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    0.0,
+    0.0
+   ],
+   "geo_mean_ratio": 0.789642755883331,
+   "ratio_ci": [
+    0.6648971572772718,
+    0.95270878913839
+   ],
+   "n_common": 9
+  },
+  "mincon@bfgs_rescale=0": {
+   "both": 9,
+   "only_solver": 0,
+   "only_baseline": 0,
+   "neither": 2,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    0.0,
+    0.0
+   ],
+   "geo_mean_ratio": 0.996474590954575,
+   "ratio_ci": [
+    0.9881514751463285,
+    1.0
+   ],
+   "n_common": 9
+  },
+  "scipy-slsqp": {
+   "both": 9,
+   "only_solver": 2,
+   "only_baseline": 0,
+   "neither": 0,
+   "diff_pp": 18.181818181818183,
+   "diff_ci": [
+    0.0,
+    33.33333333333333
+   ],
+   "geo_mean_ratio": 0.7994697770858539,
+   "ratio_ci": [
+    0.42440194554786564,
+    1.4563779462301607
+   ],
+   "n_common": 9
+  }
+ }
+}

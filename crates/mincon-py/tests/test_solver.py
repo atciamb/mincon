@@ -103,3 +103,16 @@ def test_check_gradients_reports_conclusiveness():
     assert r.passed and r.conclusive and r.comparisons >= 1
     bad = mincon.check_gradients(lambda x: float(x[0]**2), [1.5], lambda x: [float("nan")])
     assert not bad.passed and not bad.conclusive  # the binding reports NaN as a failed callback
+
+
+def test_bfgs_rescale_option_is_validated():
+    import pytest
+    f = lambda x: float((x[0] - 1.0) ** 2 + (x[1] + 2.0) ** 2)  # noqa: E731
+    for bad in (0.5, 1.0, -3.0):
+        with pytest.raises(ValueError, match="bfgs_rescale"):
+            minimize(f, [0.0, 0.0], options={"bfgs_rescale": bad})
+    # 0 turns the rule off; a factor above 1 is accepted.
+    for opts in ({"bfgs_rescale": 0}, {"bfgs_rescale": 25.0}):
+        r = minimize(f, [0.0, 0.0], options=opts)
+        assert r.success, r
+        np.testing.assert_allclose(r.x, [1.0, -2.0], atol=1e-5)

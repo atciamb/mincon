@@ -43,12 +43,25 @@ Optional constraint arguments use MATLAB's conventions:
 | `A`, `b` | `A @ x <= b` |
 | `Aeq`, `beq` | `Aeq @ x == beq` |
 | `lb`, `ub` | Lower/upper bounds, scalars or vectors |
-| `nonlcon` | Returns `(c, ceq)` with `c <= 0`, `ceq == 0`; use `[]` for an absent component |
+| `nonlcon` | Returns `(c, ceq)` with `c <= 0`, `ceq == 0`; use `[]` for an absent component. May instead return `(c, ceq, Jc, Jceq)` with the Jacobians as `(rows, n)` arrays, or pass `nonlcon_jac` separately |
 
 For example, `fmincon(fun, x0, A=[[1, 1]], b=[1], lb=0)` uses only linear
 constraints and bounds. The result is a Python object, not MATLAB's output
-tuple. `result.multipliers` groups multipliers with MATLAB's signs. Options
-use Python names such as `options={"maxiter": 500}`, not MATLAB option names.
+tuple. `result.multipliers` groups multipliers with MATLAB's signs, readable
+as `result.multipliers["eqlin"]` or `result.multipliers.eqlin`. Options use
+Python names such as `options={"maxiter": 500}`, not MATLAB option names;
+`options={"disp": True}` prints the iteration table and the final line when
+the solve returns (`"display": "final"` prints only the last), and
+`"scaling": True` / `False` map to the default gradient scaling / none.
+
+## Several starting points
+
+`mincon.multistart(fun, bounds, n_starts=10, x0=..., jac=..., constraints=...,
+seed=0, workers=1)` runs `minimize` from `x0` and random points inside the
+bounds and returns the best feasible result, with every run in
+`result.starts` and the number of distinct feasible objective values in
+`result.distinct`. It is local search from several points, not a global
+optimizer; `workers > 1` overlaps the engine's work on a thread pool.
 
 ## SciPy-style inputs
 

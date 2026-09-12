@@ -230,7 +230,12 @@ pub struct Options {
     /// in `mincon-ip`). The trace study `bench/results/r5-large-n` found both
     /// members spending hundreds of iterations repairing one direction per
     /// update on problems whose curvature grows by two orders of magnitude
-    /// along the path. `f64::INFINITY` disables the rule.
+    /// along the path. `f64::INFINITY` disables the rule, and is the
+    /// default: the rule (candidate C7, factor 10) cut evaluations on the
+    /// development corpus but cost 1.24× [0.99, 1.67] on the sealed round-4
+    /// set, whose dense coupled problems it rebuilds to a wrong diagonal
+    /// (`bench/results/s6v4-final4`). It stays available as an opt-in for
+    /// separable problems.
     pub bfgs_curvature_rescale: f64,
 
     /// Finite-difference flavour.
@@ -313,7 +318,7 @@ impl Default for Options {
             hessian: HessianMode::Auto,
             lbfgs_history: 10,
             bfgs_guarded_scaling: true,
-            bfgs_curvature_rescale: 10.0,
+            bfgs_curvature_rescale: f64::INFINITY,
 
             fd_type: FdType::Adaptive,
             fd_step: None,
