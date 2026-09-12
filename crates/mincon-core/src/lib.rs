@@ -45,7 +45,7 @@ mod sparsity;
 pub use error::{EvalError, SolveError};
 pub use options::{
     Algorithm, BarrierUpdate, DerivativeCheck, Display, FdType, HessianMode, IterationCallback,
-    LinearSolverKind, Options, RegularizationMode, ScalingMode, Tolerances,
+    LinearSolverKind, Options, RegularizationMode, ScalingMode, Tolerances, VariableScaling,
 };
 pub use problem::{validate, Capabilities, EvalCounters, Nlp, NlpDims};
 pub use result::{ExitFlag, IterationRecord, Solution, SolveReport, Timings};

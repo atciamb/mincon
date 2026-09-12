@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 use mincon_core::{
     Algorithm, BarrierUpdate, Capabilities, DerivativeCheck, EvalError, ExitFlag, FdType,
     IterationCallback, IterationRecord, Nlp, NlpDims, Options, ScalingMode, Sparsity, Tolerances,
-    INF_BOUND,
+    VariableScaling, INF_BOUND,
 };
 use numpy::{PyArray1, PyReadonlyArray1, ToPyArray};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -456,6 +456,28 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
     }
     if let Some(v) = get!("fd_error_aware", bool) {
         o.fd_error_aware = v;
+    }
+    if let Some(v) = d.get_item("scale_variables")? {
+        if !v.is_none() {
+            o.scale_variables = if let Ok(b) = v.extract::<bool>() {
+                if b {
+                    VariableScaling::On
+                } else {
+                    VariableScaling::Off
+                }
+            } else {
+                match v.extract::<String>()?.as_str() {
+                    "off" | "none" => VariableScaling::Off,
+                    "auto" => VariableScaling::Auto,
+                    "on" | "always" => VariableScaling::On,
+                    other => {
+                        return Err(PyValueError::new_err(format!(
+                            "unknown scale_variables '{other}'; use True, False or 'auto'"
+                        )))
+                    }
+                }
+            };
+        }
     }
     if let Some(v) = get!("barrier", String) {
         o.barrier_update = match v.as_str() {

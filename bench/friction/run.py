@@ -76,12 +76,17 @@ def _bounds_arrays(p):
     return can.xl, can.xu
 
 
+MINCON_OPTIONS: dict = {}   # set from --options; the default audit passes nothing
+
+
 def run_mincon_fmincon(p, cnt):
     import mincon
     kw = dict(A=p.A, b=p.b, Aeq=p.Aeq, beq=p.beq, lb=p.lb, ub=p.ub,
               nonlcon=cnt.nonlcon if p.nonlcon is not None else None, args=p.args)
     if p.user_jac is not None:
         kw["jac"] = p.user_jac
+    if MINCON_OPTIONS:
+        kw["options"] = dict(MINCON_OPTIONS)
     r = mincon.fmincon(cnt.fun, p.x0, **kw)
     return dict(x=np.asarray(r.x, float), f=float(r.fun), status=int(r.status), message=str(r.message),
                 reported_success=bool(r.success), usable=bool(r.usable), nit=int(r.nit), nfev_reported=int(r.nfev),
@@ -214,7 +219,10 @@ def main():
     ap.add_argument("--solvers", default=",".join(SOLVERS))
     ap.add_argument("--problems", default=",".join(problems.all_names()))
     ap.add_argument("--tag", default="", help="suffix for the output file name (e.g. a candidate wheel)")
+    ap.add_argument("--options", default="", help="JSON dict of mincon options for a candidate run (default: none)")
     a = ap.parse_args()
+    if a.options:
+        MINCON_OPTIONS.update(json.loads(a.options))
     os.makedirs(a.out, exist_ok=True)
     env = dict(python=sys.version, platform=platform.platform(), machine=platform.machine())
     try:

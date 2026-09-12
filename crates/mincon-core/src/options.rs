@@ -136,6 +136,20 @@ pub enum FdType {
     Adaptive,
 }
 
+/// Whether the variables are scaled by their starting magnitudes (see
+/// [`Options::scale_variables`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VariableScaling {
+    /// Never.
+    #[default]
+    Off,
+    /// Only when the scale factors `max(|x0_i|, typical_i)` span a factor of
+    /// 1e4 or more, i.e. when the start says the units are mismatched.
+    Auto,
+    /// Always (when any factor differs from 1).
+    On,
+}
+
 /// How user-supplied derivatives are checked before a solve.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DerivativeCheck {
@@ -296,6 +310,14 @@ pub struct Options {
     /// separable problems.
     pub bfgs_curvature_rescale: f64,
 
+    /// Scale the variables internally by `max(|x0_i|, typical_x_i)` (1 where
+    /// both are zero) before solving, so that a start like (1e6, 1e-6) is
+    /// seen by the solver as (1, 1): finite-difference steps, the start push,
+    /// the step bound and the quasi-Newton model all assume variables of
+    /// order one. The solution and the bound multipliers are mapped back.
+    /// Off by default until the whole-corpus ablation says otherwise
+    /// (`docs/22` I8); `fmincon`'s `TypicalX` is the manual version.
+    pub scale_variables: VariableScaling,
     /// Finite-difference flavour.
     pub fd_type: FdType,
     /// Relative finite-difference step, or `None` to use `sqrt(eps)` forward /
@@ -379,6 +401,7 @@ impl Default for Options {
             bfgs_guarded_scaling: true,
             bfgs_curvature_rescale: f64::INFINITY,
 
+            scale_variables: VariableScaling::Off,
             fd_type: FdType::Adaptive,
             fd_step: None,
             fd_respect_bounds: true,

@@ -250,6 +250,12 @@ def minimize(
         finite-difference derivatives can support instead of chasing a tighter
         tolerance), ``bfgs_scaling`` (bool, default True: rescale the initial
         quasi-Newton matrix when the first step had to be cut hard),
+        ``scale_variables`` (``True``, ``False`` (default) or ``'auto'``:
+        solve in variables divided by their starting magnitudes,
+        ``fmincon``'s ``TypicalX`` done for you, the answer mapped back;
+        ``'auto'`` does it only when the magnitudes of ``x0`` span a factor
+        of 1e4 or more; use it when the components of ``x0`` differ by orders
+        of magnitude and each matters),
         ``bfgs_rescale`` (float, default 0 = off: rebuild the quasi-Newton
         matrix from per-coordinate curvature quotients whenever its curvature
         along an accepted step is off by more than this factor; 10 helps
@@ -306,7 +312,7 @@ def minimize(
     display = _display_level(opts)
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
                  "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
-                 "bfgs_rescale"}
+                 "bfgs_rescale", "scale_variables"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; "

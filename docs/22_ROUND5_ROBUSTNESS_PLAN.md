@@ -146,3 +146,65 @@ barrier legitimately leaves multipliers of 5e-3 on bounds 2e-5 away (products 1e
 
 H1 stands: the exit is no longer certified and no attained run changed. The problem itself is
 still not solved by any member; that is H8's question.
+
+### 7.2 I2, the infeasibility diagnosis (D12), September 12
+
+Mechanism refined by `MINCON_SQP_DEBUG=1`: after the rejected first step the step bound
+shrinks to a fraction of `max(1, |x_j|)`, which for a 1e-6 variable no longer admits the 4e-6
+move the linearised row needs, so the elastic QP inside that box reports a positive linearised
+violation and the exit logic calls it a stationary point of the violation. The fix asks the
+linearisation without the step bound (`linearisation_can_improve`): only when the violation
+cannot fall there is `LocallyInfeasible` a diagnosis; otherwise the bound is reset, the penalty
+raised to what the merit needs (uncapped, since the step reaches the linearised feasible set)
+and the iteration retried, at most three times, then `NumericalFailure` with a message saying
+the step was rejected. On bad_scaling the SQP member then converges in 9 iterations to the
+row-constrained point f = 16.44, the same first-order point fmincon-interior-point certifies
+(oracle: KKT, relative stationarity 2e-12), which the friction table marks `k`, not `!`.
+Fixtures: `TORTURE_INFEASIBLE` and the INFEASIBLE_* diagnostics unchanged (sqp 55/56, HS13
+only). Whole-corpus ablation `abl-i2` (with the diagnostic problems included, 172): filled in
+from `bench/results/abl-i2/README.md` when the run ends.
+
+### 7.3 I3, the directional derivative check (H3), September 12
+
+Two evaluations along one bounds-respecting direction at x0; the first version compared the
+h-scaled quantities and the checker's absolute floor of 1 hid a 10x gradient error, fixed by
+comparing directional derivatives per unit of the direction. wrong_gradient now stops before
+iterating: "The supplied derivatives disagree with finite differences along a test direction
+at x0 (relative error 3.8e-1) ... grad f [1]  4.0 vs -4.0" (11 evaluations: two for the
+direction, the rest for the full check at x0 that names the component). Falsifier: the whole
+corpus with exact derivatives (track C, 172 problems, the `spec` derivatives) through the check:
+silent on all 172, no mild note, no false alarm. Cost on track C: two evaluations per solve.
+`DerivativeCheck::Directional` is the default; `True`/`Full` keeps fmincon's semantics.
+
+### 7.4 I4, the iteration callback (H5), September 12
+
+`Options.callback` is called by both members after every iteration's record; `true` stops the
+solve (`StoppedByUser`, note "Stopped by the user's callback at iteration N"). Python
+`callback=` receives the trace row; `disp=True` streams the table through it. A no-op Python
+callback on box_lsq (166 iterations): 33.4 ms against 35.9 ms without (noise). No record changes
+by construction (the harness passes no callback).
+
+### 7.5 I7, `hess=` and `method=` in Python (H7), September 12: falsified as built
+
+Both members already consumed an exact Hessian; the binding now passes one (the Lagrangian
+Hessian with the engine's multiplier convention; the facade converts to MATLAB's `HessianFcn`
+groups). Measured with exact Hessians: a 2-variable quadratic converges in 1 iteration (5 with
+BFGS), a bound-constrained one in 1 (IP: 5); but with nonlinear constraints the current handling
+of an indefinite Lagrangian Hessian makes the solve *slower*: one equality, SQP 17 iterations
+against 7 with BFGS (IP 7 either way); HS71, SQP 5 -> 370 iterations (`Acceptable`), IP 10 -> 56.
+The SQP shifts the full-space Hessian by 1e-4 x 10^k until the QP is convex, which damps the
+step whenever the reduced Hessian is fine but the full one is not; the IP's inertia correction
+is IPOPT's Algorithm IC with its parameters, so its 56 iterations need a study of their own.
+H7 is falsified for constrained problems as built; `hess=` stays in the API, documented as
+experimental, and the regularisation of indefinite exact Hessians is the next study (S-E).
+
+### 7.6 I8, variable scaling from the start (H8), September 12 (ablation pending)
+
+`ScaledNlp` (crate `mincon`, `scaled.rs`): the solver sees `x/d`, the model sees `x`, with the
+chain rule on gradient, Jacobian columns, Hessian entries and Hessian-vector products; bound
+multipliers are mapped back by `1/d`. `Options::scale_variables` is `Off` (default), `Auto`
+(factors spanning at least 1e4) or `On`. Friction audit: `On` attains 13/14 (bad_scaling in 27
+evaluations) but costs evaluations elsewhere (portfolio_risk 111 -> 247, pressure_vessel 57 ->
+128, box_lsq 8595 -> 12677, infeasible_start_far 99 -> 62); `Auto` attains 13/14 with every
+other record identical to the default's. Rust test `variable_scaling_solves_the_units_problem`.
+Whole-corpus ablation of `Auto` and `On` (`abl-i8`): pending; `Auto` is the candidate default.

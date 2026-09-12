@@ -37,12 +37,13 @@
 
 pub mod builder;
 pub mod portfolio;
+pub mod scaled;
 
 pub use builder::{to_fmincon_multipliers, FminconMultipliers, Problem};
 pub use mincon_core::{
     Algorithm, Capabilities, DerivativeCheck, Display, EvalError, ExitFlag, FdType, HessianMode,
     IterationRecord, LinearSolverKind, Nlp, NlpDims, Options, RegularizationMode, ScalingMode,
-    Solution, SolveError, SolveReport, Sparsity, Timings, Tolerances,
+    Solution, SolveError, SolveReport, Sparsity, Timings, Tolerances, VariableScaling,
 };
 pub use mincon_diff::{check_derivatives, check_derivatives_directional, CheckReport};
 pub use portfolio::PortfolioReport;
@@ -57,6 +58,35 @@ pub use portfolio::PortfolioReport;
 /// algorithm failed outright. A solve that ran but did not converge is *not* an
 /// error — check [`SolveReport::exit_flag`].
 pub fn minimize<P: Nlp + Sync + ?Sized>(
+    nlp: &P,
+    opts: &Options,
+) -> Result<SolveReport, SolveError> {
+    if opts.scale_variables != VariableScaling::Off {
+        if let Some(d) = scaled::factors_from_start(nlp, opts.scale_variables) {
+            let s = scaled::ScaledNlp::new(nlp, d);
+            let mut r = minimize_unscaled(&s, opts)?;
+            r.solution.x = s.unscale_x(&r.solution.x);
+            r.solution.z_l = s.unscale_bound_multipliers(&r.solution.z_l);
+            r.solution.z_u = s.unscale_bound_multipliers(&r.solution.z_u);
+            let (lo, hi) = s
+                .factors()
+                .iter()
+                .fold((f64::INFINITY, 0.0_f64), |(lo, hi), v| {
+                    (lo.min(*v), hi.max(*v))
+                });
+            r.notes.insert(
+                0,
+                format!(
+                    "Variables scaled by their starting magnitudes (factors from {lo:.2e} to {hi:.2e}); the trace's step norms are in scaled units."
+                ),
+            );
+            return Ok(r);
+        }
+    }
+    minimize_unscaled(nlp, opts)
+}
+
+fn minimize_unscaled<P: Nlp + Sync + ?Sized>(
     nlp: &P,
     opts: &Options,
 ) -> Result<SolveReport, SolveError> {
@@ -264,6 +294,41 @@ mod tests {
         // evaluations and names the component through the full check at x0.
         let err = minimize(&p, &Options::default()).expect_err("the default check must reject it");
         assert!(err.to_string().contains("grad f [    1]"), "{err}");
+    }
+
+    #[test]
+    fn variable_scaling_solves_the_units_problem() {
+        // bench/results/s7-friction bad_scaling: x = (1e6, 1e-6), optimum f = 0.16935553839
+        let p = Problem::new(2, |x| {
+            (x[0] / 3.0e6 - 1.0).powi(2) + (x[1] / 1.0e-6 - 1.0).powi(2)
+        })
+        .start_at(&[1.0e6, 1.0e-6])
+        .lower_bounds(&[1.0, 1.0e-9])
+        .inequality(1, |x, c| c[0] = 5.0 - x[0] * x[1]);
+        let off = minimize(&p, &Options::default()).unwrap();
+        assert!(
+            (off.solution.f - 0.169_355_538).abs() > 1e-3,
+            "the unscaled default is not expected to solve this: f = {}",
+            off.solution.f
+        );
+        let on = minimize(
+            &p,
+            &Options {
+                scale_variables: VariableScaling::Auto, // the factors span 1e12
+                ..Options::default()
+            },
+        )
+        .unwrap();
+        assert!(
+            (on.solution.f - 0.169_355_538).abs() < 1e-6,
+            "f = {} at {:?} ({:?})",
+            on.solution.f,
+            on.solution.x,
+            on.exit_flag
+        );
+        assert!(on.notes[0].contains("Variables scaled"), "{:?}", on.notes);
+        // bound multipliers come back in the model's units
+        assert_eq!(on.solution.z_l.len(), 2);
     }
 
     #[test]
