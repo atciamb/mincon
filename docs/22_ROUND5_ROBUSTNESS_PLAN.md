@@ -224,6 +224,17 @@ first iteration and 0.005 near the solution, where it was 46.9 throughout. Fixtu
 are unaffected (no exact Hessians there); gates 56/56, 56/56, 55/56, Python 34. The interior-point
 member's exact-Hessian path (56 iterations) is unchanged and remains the S-E study.
 
+**S-C conclusion, and what I5 should be.** With its exact (constant) Hessian, box_lsq takes 2
+SQP iterations and 3 evaluations (153 with finite-difference gradients) instead of 139 and 140
+(8595 through the facade), and 16 interior-point iterations instead of 166; COVQP_120 with exact
+derivatives already takes 19 / 23 with the C7 rule off. The 3-5x iteration gap to SLSQP on
+convex QPs is therefore the curvature model, not the QP step, and routing on size would not
+close it. I5 becomes: detect a quadratic objective at the start (two secant pairs with
+consistent curvature along two directions), build its Hessian by differencing the gradient
+(n + 1 gradient evaluations, colouring when the Jacobian probe found structure), and run the
+SQP member with that Hessian; falsifier as in H4 (no attainment loss on the corpus, box_lsq /
+OBSTACLE / COVQP at most 0.5x). Not built this session.
+
 ### 7.6 I8, variable scaling from the start (H8), September 12 (ablation pending)
 
 `ScaledNlp` (crate `mincon`, `scaled.rs`): the solver sees `x/d`, the model sees `x`, with the
