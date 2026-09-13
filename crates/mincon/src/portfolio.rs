@@ -232,6 +232,7 @@ pub fn solve<P: Nlp + Sync + ?Sized>(
                         rep.f_evals += q.f_evals;
                         rep.c_evals += q.c_evals;
                         rep.g_evals += q.g_evals;
+                        rep.j_evals += q.j_evals;
                         rep.notes.insert(0, q.note.clone());
                         rep
                     })

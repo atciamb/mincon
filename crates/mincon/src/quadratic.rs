@@ -14,9 +14,14 @@
 //!
 //! Along two random bounds-respecting lines through the (projected) start the
 //! objective is sampled at `x0 + k h d`, `k = 0..3`; a quadratic has a zero
-//! third difference (`f3 - 3 f2 + 3 f1 - f0`) up to rounding, and a linear
-//! constraint row a zero second difference. The first failing test ends the
-//! probe, so a general nonlinear problem pays three objective evaluations.
+//! third difference (`f3 - 3 f2 + 3 f1 - f0`) up to rounding, a linear
+//! constraint row a zero second difference and a quadratic one a zero third
+//! difference. The first failing test ends the probe, so a general nonlinear
+//! problem pays three objective evaluations. A quadratic row is accepted only
+//! when it keeps the feasible set convex (a convex function bounded above or
+//! a concave one bounded below; never an equality), its Hessian is built by
+//! the same differencing of the constraint vector (every quadratic row at
+//! once), and the model's Lagrangian Hessian sums them with the multipliers.
 //! When both lines pass, the Hessian is built by differencing (the gradient
 //! when the model supplies one, `n` calls; function values otherwise,
 //! `n (n + 3) / 2` calls for a dense one, so that build is skipped when it
@@ -39,7 +44,8 @@
 //! is a few more iterations, never a wrong answer.
 
 use mincon_core::{
-    is_free, Capabilities, EvalError, Nlp, NlpDims, Options, QuadraticBuild, Sparsity,
+    is_free, Capabilities, EvalError, Nlp, NlpDims, Options, QuadraticBuild, QuadraticRows,
+    Sparsity,
 };
 
 /// Largest `n` for which the Hessian is built from function values alone.
@@ -47,6 +53,9 @@ use mincon_core::{
 pub const FD_BUILD_MAX_N: usize = 500;
 /// Largest `n` for which the Hessian is built from a supplied gradient.
 pub const GRADIENT_BUILD_MAX_N: usize = 5000;
+/// Largest total dense storage, in entries, of the quadratic rows' Hessians
+/// during their build (`rows x n x n`; 128 MB of doubles).
+pub const ROW_BUILD_MAX_ENTRIES: usize = 16_000_000;
 /// Relative tolerance of the third-difference and model-fit tests. A true
 /// quadratic's third difference is rounding, about 1e-13 of the variation at
 /// the probe's step; a model with 1e-9 simulator noise on a variation of
@@ -63,6 +72,8 @@ pub struct QuadraticModel<'a, P: Nlp + ?Sized> {
     n: usize,
     /// Lower triangle, column-major in the order of `structure`.
     hess_lower: Vec<f64>,
+    /// The quadratic constraint rows' Hessians, same layout, by row index.
+    rows: Vec<(usize, Vec<f64>)>,
     structure: Sparsity,
     /// Objective, constraint and gradient evaluations spent by the probe and
     /// the build.
@@ -71,6 +82,8 @@ pub struct QuadraticModel<'a, P: Nlp + ?Sized> {
     pub c_evals: u64,
     /// See `f_evals`.
     pub g_evals: u64,
+    /// See `f_evals`.
+    pub j_evals: u64,
     /// What was detected and what it cost, for the report's notes.
     pub note: String,
 }
@@ -85,6 +98,8 @@ enum Decline {
     Failed(String),
     ModelMisfit(f64),
     Unstructured(usize),
+    NotQuadraticRow(usize, usize),
+    NonconvexRow(usize),
 }
 
 impl std::fmt::Display for Decline {
@@ -109,6 +124,13 @@ impl std::fmt::Display for Decline {
             Self::Unstructured(bands) => write!(
                 f,
                 "no diagonal or banded Hessian within {bands} off-diagonal bands, and the dense build is outside the size or budget limits"
+            ),
+            Self::NotQuadraticRow(line, row) => {
+                write!(f, "constraint row {row} is neither linear nor quadratic along line {line}")
+            }
+            Self::NonconvexRow(row) => write!(
+                f,
+                "quadratic constraint row {row} does not keep the feasible set convex (an equality, a ranged row, or the wrong curvature for its bound)"
             ),
         }
     }
@@ -164,6 +186,13 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
     let mut f_evals = 0u64;
     let mut c_evals = 0u64;
     let mut g_evals = 0u64;
+    let mut j_evals = 0u64;
+    // Quadratic rows: the Jacobian variant needs the model's Jacobian.
+    let rows_mode = match opts.quadratic_rows {
+        QuadraticRows::Jacobian if !caps.jacobian => QuadraticRows::Off,
+        mode => mode,
+    };
+    let (cl, cu) = nlp.c_bounds();
     if n == 0 {
         return Err((Decline::TooLarge(0), 0));
     }
@@ -241,8 +270,12 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
             .map_err(|e| (Decline::Failed(e.to_string()), f_evals))?;
     }
 
-    // Six line points, kept for the model check.
+    // Six line points, kept for the model check, with the constraint values
+    // at each (a quadratic row's model is checked against them too).
     let mut line_points: Vec<(Vec<f64>, f64)> = Vec::with_capacity(6);
+    let mut line_c: Vec<Vec<f64>> = Vec::with_capacity(6);
+    // Per row: found quadratic (not linear) along at least one line.
+    let mut row_quadratic = vec![false; m];
     for (line, d) in directions.iter().enumerate() {
         let mut fs = [f0, 0.0, 0.0, 0.0];
         let mut xs: Vec<Vec<f64>> = Vec::with_capacity(3);
@@ -278,28 +311,76 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
                 let d1 = c1 - c0[i];
                 let d2a = c2 - 2.0 * c1 + c0[i];
                 let d2b = c3 - 2.0 * c2 + c1;
+                let d3 = c3 - 3.0 * c2 + 3.0 * c1 - c0[i];
                 let scale = c0[i].abs().max(c1.abs()).max(c2.abs()).max(c3.abs());
                 let variation = d1.abs().max((c2 - c1).abs()).max((c3 - c2).abs());
-                if d2a.abs() > REL_TOL * variation + ABS_TOL * scale
-                    || d2b.abs() > REL_TOL * variation + ABS_TOL * scale
-                {
-                    return Err((Decline::NotLinear(line, i), f_evals));
+                let tol = REL_TOL * variation + ABS_TOL * scale;
+                if d2a.abs() > tol || d2b.abs() > tol {
+                    if rows_mode == QuadraticRows::Off {
+                        return Err((Decline::NotLinear(line, i), f_evals));
+                    }
+                    // Not linear: a quadratic row has a zero third difference.
+                    let variation = d1.abs().max(d2a.abs()).max(d2b.abs());
+                    let tol = REL_TOL * variation + ABS_TOL * scale;
+                    if d3.abs() > tol {
+                        return Err((Decline::NotQuadraticRow(line, i), f_evals));
+                    }
+                    // The feasible set stays convex only for a convex row
+                    // bounded above or a concave one bounded below; the second
+                    // differences are the row's curvature along the line, so
+                    // an equality, a ranged row or the wrong sign declines
+                    // before anything is built.
+                    let sign = match (is_free(cl[i]), is_free(cu[i])) {
+                        (true, false) => 1.0,
+                        (false, true) => -1.0,
+                        _ => return Err((Decline::NonconvexRow(i), f_evals)),
+                    };
+                    if sign * d2a < -tol || sign * d2b < -tol {
+                        return Err((Decline::NonconvexRow(i), f_evals));
+                    }
+                    row_quadratic[i] = true;
                 }
             }
+            line_c.extend(cs);
         }
         for (x, f) in xs.into_iter().zip(fs[1..].iter()) {
             line_points.push((x, *f));
         }
     }
+    // A quadratic row is handed over only when it keeps the feasible set
+    // convex: a convex function bounded above, or a concave one bounded below
+    // (`sign` says which side its Hessian must be definite on). An equality
+    // or a ranged quadratic row makes a nonconvex set, where the Newton path
+    // could end in another basin than the quasi-Newton path (HS44's lesson).
+    let mut qrows: Vec<usize> = Vec::new();
+    let mut qrow_sign: Vec<f64> = Vec::new();
+    for i in 0..m {
+        if row_quadratic[i] {
+            match (is_free(cl[i]), is_free(cu[i])) {
+                (true, false) => {
+                    qrows.push(i);
+                    qrow_sign.push(1.0);
+                }
+                (false, true) => {
+                    qrows.push(i);
+                    qrow_sign.push(-1.0);
+                }
+                _ => return Err((Decline::NonconvexRow(i), f_evals)),
+            }
+        }
+    }
+    let nq = qrows.len();
+    if nq.saturating_mul(n).saturating_mul(n) > ROW_BUILD_MAX_ENTRIES {
+        return Err((Decline::TooLarge(n), f_evals));
+    }
+    let rows_by_jacobian = nq > 0 && caps.jacobian;
 
-    // Build the Hessian and the gradient at x0.
-    let mut hess = vec![0.0; n * n]; // full, row-major H[i * n + j]
-    let mut g0 = vec![0.0; n];
+    // Build the Hessians and the gradients at x0.
     let build_by_gradient = caps.gradient;
-    let structured = !build_by_gradient && opts.quadratic_build == QuadraticBuild::Structured;
-    // What the first phase costs: `n` gradient calls, the diagonal alone
-    // (`2n` function values, which also give the gradient) under the
-    // structured build, or the whole dense build.
+    let structured = opts.quadratic_build == QuadraticBuild::Structured;
+    // What the objective's first phase costs: `n` gradient calls, the
+    // diagonal alone (`2n` function values, which also give the gradient)
+    // under the structured build, or the whole dense build.
     let build_cost: u64 = if build_by_gradient {
         0
     } else if structured {
@@ -321,13 +402,19 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
         }
     }
     // The build must leave at least half of a wall-time budget to the solve;
-    // the probe's own evaluations say what one costs.
+    // the probe's own evaluations say what one costs. The rows' first phase
+    // costs `n` Jacobian or `2n` constraint evaluations more.
     if let Some(limit) = opts.max_seconds {
         let per_eval = probe_clock.elapsed().as_secs_f64() / f_evals as f64;
-        let predicted =
-            per_eval * (build_cost.max(if build_by_gradient { n as u64 } else { 0 })) as f64;
+        let row_cost: u64 = match (nq > 0, rows_by_jacobian) {
+            (false, _) => 0,
+            (true, true) => n as u64,
+            (true, false) => 2 * n as u64,
+        };
+        let predicted = per_eval
+            * (build_cost.max(if build_by_gradient { n as u64 } else { 0 }) + row_cost) as f64;
         if predicted > 0.5 * limit {
-            return Err((Decline::Budget(build_cost), f_evals));
+            return Err((Decline::Budget(build_cost + row_cost), f_evals));
         }
     }
     let step = |j: usize| side[j] * h[j].max(1e-8 * x0[j].abs().max(1.0));
@@ -336,6 +423,11 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
         .iter()
         .map(|(x, _)| x.iter().zip(&x0).map(|(a, b)| a - b).collect())
         .collect();
+    let wall_deadline = opts.max_seconds.map(|l| 0.5 * l);
+
+    // The objective.
+    let mut hess = vec![0.0; n * n]; // full, row-major H[i * n + j]
+    let mut g0 = vec![0.0; n];
     // The structure the build ended with: the half-bandwidth it stopped at
     // (0 diagonal), or `None` for dense.
     let mut bandwidth: Option<usize> = None;
@@ -371,127 +463,43 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
             }
         }
     } else {
-        let mut x = x0.clone();
-        let mut fj = vec![0.0; n];
-        for j in 0..n {
-            let hj = step(j);
-            x[j] = x0[j] + hj;
-            fj[j] = eval_f(&x, &mut f_evals)?;
-            x[j] = x0[j] + 2.0 * hj;
-            let f2 = eval_f(&x, &mut f_evals)?;
-            x[j] = x0[j];
-            let hjj = (f2 - 2.0 * fj[j] + f0) / (hj * hj);
-            hess[j * n + j] = hjj;
-            g0[j] = (fj[j] - f0) / hj - 0.5 * hj * hjj;
-        }
-        // One pair (i, j): its mixed second difference.
-        let pair = |i: usize,
-                    j: usize,
-                    x: &mut Vec<f64>,
-                    f_evals: &mut u64|
-         -> Result<f64, (Decline, u64)> {
-            let (hi, hj) = (step(i), step(j));
-            x[i] = x0[i] + hi;
-            x[j] = x0[j] + hj;
-            let fij = eval_f(x, f_evals)?;
-            x[i] = x0[i];
-            x[j] = x0[j];
-            Ok((fij - fj[i] - fj[j] + f0) / (hi * hj))
+        let line_f: Vec<Vec<f64>> = line_points.iter().map(|(_, f)| vec![*f]).collect();
+        let built = fd_build(
+            |x| match nlp.objective(x) {
+                Ok(v) if v.is_finite() => Ok(vec![v]),
+                Ok(_) => Err(Decline::Failed("non-finite objective".into())),
+                Err(e) => Err(Decline::Failed(e.to_string())),
+            },
+            &FdBuildSpec {
+                n,
+                x0: &x0,
+                f0: &[f0],
+                step: &step,
+                dxs: &dxs,
+                line_vals: &line_f,
+                signs: &[1.0],
+                structured,
+                eval_limit: opts.max_evaluations.map(|l| l.saturating_sub(f_evals + 8)),
+                clock: &probe_clock,
+                wall_deadline,
+                evals_before: f_evals,
+            },
+        );
+        let built = match built {
+            Ok(b) => b,
+            Err((why, spent)) => return Err((why, f_evals + spent)),
         };
-        if structured {
-            // The model's value at the six line points, accumulated one band
-            // at a time; the check after each band is the one the dense build
-            // gets at the end, so the build stops at the first structure that
-            // reproduces the points and a dense Hessian costs exactly the
-            // dense build. The corpus's dear cases had diagonal (QUADSPHERE,
-            // LQTRAJ), zero (MANY_INEQ) or tridiagonal (OBSTACLE) Hessians.
-            let mut q: Vec<f64> = dxs
-                .iter()
-                .map(|dx| {
-                    let mut v = f0;
-                    for i in 0..n {
-                        v += g0[i] * dx[i] + 0.5 * hess[i * n + i] * dx[i] * dx[i];
-                    }
-                    v
-                })
-                .collect();
-            // A band model that reproduces the line points to 1e-8 can still
-            // fail the convexity check at 1e-10 when the true Hessian is
-            // ill-conditioned with a decaying tail (box_lsq's Gaussian kernel:
-            // fitted at half-bandwidth 23, convex only with every band), so
-            // the search goes on until the model both fits and is convex.
-            let mut band = 0usize;
-            let mut fit = model_fit(&line_points, &q, f0);
-            let mut convex = fit.is_ok() && is_positive_semidefinite(&hess, n, band);
-            if !(fit.is_ok() && convex) {
-                // Whether the dense build is affordable; when it is not, the
-                // band search may spend as much again as the diagonal did
-                // (`2n`, four gradients' worth) before it declines.
-                let dense_rest = (n * (n - 1) / 2) as u64;
-                let per_eval = probe_clock.elapsed().as_secs_f64() / f_evals as f64;
-                let dense_ok = n <= FD_BUILD_MAX_N
-                    && opts
-                        .max_evaluations
-                        .is_none_or(|l| f_evals + dense_rest + 8 <= l)
-                    && opts
-                        .max_seconds
-                        .is_none_or(|l| per_eval * dense_rest as f64 <= 0.5 * l);
-                let band_budget: u64 = if dense_ok { dense_rest } else { 2 * n as u64 };
-                let mut band_spent: u64 = 0;
-                while !(fit.is_ok() && convex) {
-                    band += 1;
-                    let cost = (n - band) as u64;
-                    if band >= n || band_spent + cost > band_budget {
-                        return Err((
-                            if fit.is_ok() {
-                                Decline::NotConvex
-                            } else {
-                                Decline::Unstructured(band - 1)
-                            },
-                            f_evals,
-                        ));
-                    }
-                    if let Some(limit) = opts.max_evaluations {
-                        if f_evals + cost + 8 > limit {
-                            return Err((Decline::Budget(cost), f_evals));
-                        }
-                    }
-                    if let Some(limit) = opts.max_seconds {
-                        if probe_clock.elapsed().as_secs_f64() > 0.5 * limit {
-                            return Err((Decline::Budget(cost), f_evals));
-                        }
-                    }
-                    for i in 0..n - band {
-                        let j = i + band;
-                        let v = pair(i, j, &mut x, &mut f_evals)?;
-                        hess[i * n + j] = v;
-                        hess[j * n + i] = v;
-                        for (qp, dx) in q.iter_mut().zip(&dxs) {
-                            *qp += v * dx[i] * dx[j];
-                        }
-                    }
-                    band_spent += cost;
-                    fit = model_fit(&line_points, &q, f0);
-                    convex = fit.is_ok() && is_positive_semidefinite(&hess, n, band);
-                }
-            }
-            bandwidth = Some(band);
-        } else {
-            for j in 0..n {
-                for i in 0..j {
-                    let v = pair(i, j, &mut x, &mut f_evals)?;
-                    hess[i * n + j] = v;
-                    hess[j * n + i] = v;
-                }
-            }
-        }
+        f_evals += built.evals;
+        hess = built.hess.into_iter().next().unwrap_or_default();
+        g0 = built.g0.into_iter().next().unwrap_or_default();
+        bandwidth = built.bandwidth;
     }
 
     // Only a convex quadratic is handed over: every KKT point of a convex QP is
     // its global minimum, so the Newton path cannot end in a different basin
     // from the quasi-Newton one (HS44, a nonconvex QP with several local
     // minima, did exactly that in the first ablation, `abl-i5-rejected`).
-    if !is_positive_semidefinite(&hess, n, bandwidth.unwrap_or(n - 1)) {
+    if !is_positive_semidefinite(&hess, n, bandwidth.unwrap_or(n - 1), 1.0) {
         return Err((Decline::NotConvex, f_evals));
     }
 
@@ -500,26 +508,101 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
     // repeated on the final matrix for the record).
     let q: Vec<f64> = dxs
         .iter()
-        .map(|dx| {
-            let mut v = f0;
-            for i in 0..n {
-                v += g0[i] * dx[i];
-                let mut hv = 0.0;
-                for j in 0..n {
-                    hv += hess[i * n + j] * dx[j];
-                }
-                v += 0.5 * dx[i] * hv;
-            }
-            v
-        })
+        .map(|dx| f0 + quadratic_increment(&g0, &hess, n, dx))
         .collect();
-    let worst = match model_fit(&line_points, &q, f0) {
+    let mut worst = match model_fit(&line_points, &q, f0) {
         Ok(worst) => worst,
         Err(err) => return Err((Decline::ModelMisfit(err), f_evals)),
     };
 
-    // Lower triangle, column-major, within the structure found.
-    let half_band = bandwidth.unwrap_or(n - 1);
+    // The quadratic rows, all at once from the constraint vector (an
+    // evaluation gives every row), by the same structured differencing; a
+    // row's Hessian must be definite on the side its bound needs.
+    let mut row_hess: Vec<Vec<f64>> = Vec::new();
+    let mut row_bandwidth: Option<usize> = Some(0);
+    let mut row_build_evals: u64 = 0;
+    if rows_by_jacobian {
+        let built = match jacobian_row_build(nlp, &x0, &step, &qrows, &mut j_evals) {
+            Ok(b) => b,
+            Err(why) => return Err((why, f_evals)),
+        };
+        // The rows' models must reproduce the constraint values at the line
+        // points, which did not build them (a wrong Jacobian fails here).
+        for (k, &i) in qrows.iter().enumerate() {
+            let q: Vec<f64> = dxs
+                .iter()
+                .map(|dx| c0[i] + quadratic_increment(&built.g0[k], &built.hess[k], n, dx))
+                .collect();
+            let points: Vec<(Vec<f64>, f64)> = line_c.iter().map(|c| (Vec::new(), c[i])).collect();
+            match model_fit(&points, &q, c0[i]) {
+                Ok(w) => worst = worst.max(w),
+                Err(err) => return Err((Decline::ModelMisfit(err), f_evals)),
+            }
+        }
+        row_bandwidth = built.bandwidth;
+        for (k, hk) in built.hess.iter().enumerate() {
+            let bw = built.bandwidth.unwrap_or(n - 1);
+            if !is_positive_semidefinite(hk, n, bw, qrow_sign[k]) {
+                return Err((Decline::NonconvexRow(qrows[k]), f_evals));
+            }
+        }
+        row_hess = built.hess;
+    } else if nq > 0 && rows_mode == QuadraticRows::Values {
+        let c0q: Vec<f64> = qrows.iter().map(|&i| c0[i]).collect();
+        let line_q: Vec<Vec<f64>> = line_c
+            .iter()
+            .map(|c| qrows.iter().map(|&i| c[i]).collect())
+            .collect();
+        let built = fd_build(
+            |x| {
+                let mut c = vec![0.0; m];
+                nlp.constraints(x, &mut c)
+                    .map_err(|e| Decline::Failed(e.to_string()))?;
+                if c.iter().any(|v| !v.is_finite()) {
+                    return Err(Decline::Failed("non-finite constraint".into()));
+                }
+                Ok(qrows.iter().map(|&i| c[i]).collect())
+            },
+            &FdBuildSpec {
+                n,
+                x0: &x0,
+                f0: &c0q,
+                step: &step,
+                dxs: &dxs,
+                line_vals: &line_q,
+                signs: &qrow_sign,
+                structured,
+                eval_limit: None,
+                clock: &probe_clock,
+                wall_deadline,
+                evals_before: c_evals,
+            },
+        );
+        let built = match built {
+            Ok(b) => b,
+            Err((why, _spent)) => return Err((why, f_evals)),
+        };
+        c_evals += built.evals;
+        row_build_evals = built.evals;
+        row_bandwidth = built.bandwidth;
+        worst = worst.max(built.worst);
+        for (k, hk) in built.hess.iter().enumerate() {
+            let bw = built.bandwidth.unwrap_or(n - 1);
+            if !is_positive_semidefinite(hk, n, bw, qrow_sign[k]) {
+                return Err((Decline::NonconvexRow(qrows[k]), f_evals));
+            }
+        }
+        row_hess = built.hess;
+    } else if nq > 0 {
+        // Unreachable: `rows_mode` is `Off` only when no row was accepted.
+        return Err((Decline::NotLinear(0, qrows[0]), f_evals));
+    }
+
+    // Lower triangle, column-major, within the widest structure found.
+    let half_band = match (bandwidth, row_bandwidth) {
+        (Some(a), Some(b)) => a.max(b),
+        _ => n - 1,
+    };
     let mut triplets = Vec::with_capacity(n * (half_band + 1));
     for j in 0..n {
         for i in j..n.min(j + half_band + 1) {
@@ -528,13 +611,22 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
     }
     let structure =
         Sparsity::from_triplets(n, n, &triplets).map_err(|e| (Decline::Failed(e), f_evals))?;
-    let mut hess_lower = Vec::with_capacity(n * (n + 1) / 2);
-    for j in 0..n {
-        for &i in structure.col(j) {
-            hess_lower.push(hess[i * n + j]);
+    let lower = |dense: &[f64]| -> Vec<f64> {
+        let mut out = Vec::with_capacity(structure.nnz());
+        for j in 0..n {
+            for &i in structure.col(j) {
+                out.push(dense[i * n + j]);
+            }
         }
-    }
-    let shape = match bandwidth {
+        out
+    };
+    let hess_lower = lower(&hess);
+    let rows: Vec<(usize, Vec<f64>)> = qrows
+        .iter()
+        .zip(&row_hess)
+        .map(|(&i, hk)| (i, lower(hk)))
+        .collect();
+    let shape = |b: Option<usize>| match b {
         Some(0) => "diagonal".to_string(),
         Some(b) if b + 1 < n => format!("half-bandwidth {b}"),
         _ => "dense".to_string(),
@@ -542,20 +634,364 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
     let how = if build_by_gradient {
         format!("{g_evals} gradient evaluations, dense")
     } else {
-        format!("{} objective evaluations, {shape}", f_evals - 7)
+        format!(
+            "{} objective evaluations, {}",
+            f_evals - 7,
+            shape(bandwidth)
+        )
     };
-    let note = format!(
-        "Quadratic objective and linear constraints detected at the start (7 evaluations along two lines); its constant Hessian was built by differencing ({how}) and verified at the line points (worst fit {worst:.1e} of the tolerance), and the SQP member ran with it."
-    );
+    let rows_text = if nq > 0 {
+        format!(
+            " and {nq} quadratic constraint row{} (from {}, {})",
+            if nq == 1 { "" } else { "s" },
+            if rows_by_jacobian {
+                format!("{j_evals} Jacobian evaluations")
+            } else {
+                format!("{row_build_evals} constraint evaluations")
+            },
+            shape(row_bandwidth)
+        )
+    } else {
+        String::new()
+    };
+    let note = if nq > 0 {
+        format!(
+            "Quadratic objective, linear and convex quadratic constraint rows detected at the start (7 evaluations along two lines); the constant Hessians were built by differencing ({how}){rows_text} and verified at the line points (worst fit {worst:.1e} of the tolerance), and the SQP member ran with them."
+        )
+    } else {
+        format!(
+            "Quadratic objective and linear constraints detected at the start (7 evaluations along two lines); its constant Hessian was built by differencing ({how}) and verified at the line points (worst fit {worst:.1e} of the tolerance), and the SQP member ran with it."
+        )
+    };
     Ok(QuadraticModel {
         inner: nlp,
         n,
         hess_lower,
+        rows,
         structure,
         f_evals,
         c_evals,
         g_evals,
+        j_evals,
         note,
+    })
+}
+
+/// The quadratic rows' Hessians from differencing the model's Jacobian along
+/// each coordinate (`n + 1` calls for every row at once), symmetrised; the
+/// half-bandwidth is that of the exact nonzeros (a constant Jacobian entry
+/// differences to exactly zero).
+fn jacobian_row_build<P: Nlp + ?Sized>(
+    nlp: &P,
+    x0: &[f64],
+    step: &dyn Fn(usize) -> f64,
+    qrows: &[usize],
+    j_evals: &mut u64,
+) -> Result<Built, Decline> {
+    let NlpDims { n, m } = nlp.dims();
+    let dense;
+    let pat: &Sparsity = if let Some(p) = nlp.jacobian_structure() {
+        p
+    } else {
+        dense = Sparsity::dense(m, n);
+        &dense
+    };
+    let nnz = pat.nnz();
+    let mut slot = vec![usize::MAX; m];
+    for (k, &i) in qrows.iter().enumerate() {
+        slot[i] = k;
+    }
+    let mut jac = |x: &[f64], out: &mut [f64]| -> Result<(), Decline> {
+        *j_evals += 1;
+        nlp.jacobian(x, out)
+            .map_err(|e| Decline::Failed(e.to_string()))?;
+        if out.iter().any(|v| !v.is_finite()) {
+            return Err(Decline::Failed("non-finite Jacobian".into()));
+        }
+        Ok(())
+    };
+    let nq = qrows.len();
+    let mut j0 = vec![0.0; nnz];
+    jac(x0, &mut j0)?;
+    let mut g0 = vec![vec![0.0; n]; nq];
+    for col in 0..n {
+        let base = pat.col_ptr()[col];
+        for (p, &row) in pat.col(col).iter().enumerate() {
+            if slot[row] != usize::MAX {
+                g0[slot[row]][col] = j0[base + p];
+            }
+        }
+    }
+    let mut hess = vec![vec![0.0; n * n]; nq];
+    let mut jj = vec![0.0; nnz];
+    let mut x = x0.to_vec();
+    for j in 0..n {
+        let hj = step(j);
+        x[j] = x0[j] + hj;
+        jac(&x, &mut jj)?;
+        x[j] = x0[j];
+        for col in 0..n {
+            let base = pat.col_ptr()[col];
+            for (p, &row) in pat.col(col).iter().enumerate() {
+                if slot[row] != usize::MAX {
+                    hess[slot[row]][col * n + j] = (jj[base + p] - j0[base + p]) / hj;
+                }
+            }
+        }
+    }
+    let mut band = 0usize;
+    for hk in &mut hess {
+        for i in 0..n {
+            for j in 0..i {
+                let v = 0.5 * (hk[i * n + j] + hk[j * n + i]);
+                hk[i * n + j] = v;
+                hk[j * n + i] = v;
+                if v != 0.0 {
+                    band = band.max(i - j);
+                }
+            }
+        }
+    }
+    Ok(Built {
+        hess,
+        g0,
+        bandwidth: Some(band),
+        worst: 0.0,
+        evals: *j_evals,
+    })
+}
+
+/// `g' dx + 0.5 dx' H dx` for a dense row-major `H`.
+fn quadratic_increment(g: &[f64], hess: &[f64], n: usize, dx: &[f64]) -> f64 {
+    let mut v = 0.0;
+    for i in 0..n {
+        v += g[i] * dx[i];
+        let mut hv = 0.0;
+        for j in 0..n {
+            hv += hess[i * n + j] * dx[j];
+        }
+        v += 0.5 * dx[i] * hv;
+    }
+    v
+}
+
+/// Inputs of a function-value build of `k` quadratic functions sampled
+/// together (the objective alone, or every quadratic constraint row).
+struct FdBuildSpec<'a> {
+    n: usize,
+    x0: &'a [f64],
+    /// The `k` values at `x0`.
+    f0: &'a [f64],
+    step: &'a dyn Fn(usize) -> f64,
+    /// The line points relative to `x0`.
+    dxs: &'a [Vec<f64>],
+    /// The `k` sampled values at each line point.
+    line_vals: &'a [Vec<f64>],
+    /// Per function, the side its Hessian must be definite on: `1.0`
+    /// positive semidefinite, `-1.0` negative semidefinite.
+    signs: &'a [f64],
+    structured: bool,
+    /// Evaluations this build may spend, when they are budgeted.
+    eval_limit: Option<u64>,
+    clock: &'a std::time::Instant,
+    /// Seconds on `clock` after which no further band is started.
+    wall_deadline: Option<f64>,
+    /// Evaluations of this kind the probe spent before the build, so that
+    /// `clock` over the running total prices one.
+    evals_before: u64,
+}
+
+/// What a function-value build produced: per function the dense Hessian and
+/// the gradient at `x0`, the half-bandwidth the build stopped at (`None`
+/// dense), the worst line-point fit and the evaluations spent.
+struct Built {
+    hess: Vec<Vec<f64>>,
+    g0: Vec<Vec<f64>>,
+    bandwidth: Option<usize>,
+    worst: f64,
+    evals: u64,
+}
+
+/// The function-value build: the diagonal first (`2n` evaluations, which also
+/// give the gradients), then, under the structured build, one off-diagonal
+/// band at a time with every function's model checked against the line
+/// points and its convexity after each band, so the build stops at the first
+/// structure that passes both and a dense Hessian costs exactly the dense
+/// build. A band model that reproduces the line points to 1e-8 can still
+/// fail the convexity check at 1e-10 when the true Hessian is
+/// ill-conditioned with a decaying tail (box_lsq's Gaussian kernel: fitted at
+/// half-bandwidth 23, convex only with every band), which is why the search
+/// goes on until both pass. On a failure the error carries the evaluations
+/// spent.
+#[allow(clippy::too_many_lines)]
+fn fd_build<E>(mut eval: E, spec: &FdBuildSpec<'_>) -> Result<Built, (Decline, u64)>
+where
+    E: FnMut(&[f64]) -> Result<Vec<f64>, Decline>,
+{
+    let n = spec.n;
+    let k = spec.f0.len();
+    let mut evals = 0u64;
+    let mut hess = vec![vec![0.0; n * n]; k];
+    let mut g0 = vec![vec![0.0; n]; k];
+    let mut x = spec.x0.to_vec();
+    let mut fj = vec![vec![0.0; n]; k];
+    let mut ev = |x: &[f64], evals: &mut u64| -> Result<Vec<f64>, (Decline, u64)> {
+        *evals += 1;
+        eval(x).map_err(|why| (why, *evals))
+    };
+    for j in 0..n {
+        let hj = (spec.step)(j);
+        x[j] = spec.x0[j] + hj;
+        let v1 = ev(&x, &mut evals)?;
+        x[j] = spec.x0[j] + 2.0 * hj;
+        let v2 = ev(&x, &mut evals)?;
+        x[j] = spec.x0[j];
+        for f in 0..k {
+            fj[f][j] = v1[f];
+            let hjj = (v2[f] - 2.0 * v1[f] + spec.f0[f]) / (hj * hj);
+            hess[f][j * n + j] = hjj;
+            g0[f][j] = (v1[f] - spec.f0[f]) / hj - 0.5 * hj * hjj;
+        }
+    }
+    // The models' values at the line points, accumulated band by band.
+    let mut q: Vec<Vec<f64>> = (0..k)
+        .map(|f| {
+            spec.dxs
+                .iter()
+                .map(|dx| {
+                    let mut v = spec.f0[f];
+                    for i in 0..n {
+                        v += g0[f][i] * dx[i] + 0.5 * hess[f][i * n + i] * dx[i] * dx[i];
+                    }
+                    v
+                })
+                .collect()
+        })
+        .collect();
+    let points_of = |f: usize| -> Vec<(Vec<f64>, f64)> {
+        spec.line_vals
+            .iter()
+            .map(|vals| (Vec::new(), vals[f]))
+            .collect()
+    };
+    let points: Vec<Vec<(Vec<f64>, f64)>> = (0..k).map(points_of).collect();
+    let check = |hess: &[Vec<f64>], q: &[Vec<f64>], band: usize| -> (Result<f64, f64>, bool) {
+        let mut worst = 0.0_f64;
+        let mut fit: Result<f64, f64> = Ok(0.0);
+        let mut convex = true;
+        for f in 0..k {
+            match model_fit(&points[f], &q[f], spec.f0[f]) {
+                Ok(w) => worst = worst.max(w),
+                Err(e) => {
+                    fit = Err(e);
+                    break;
+                }
+            }
+        }
+        if fit.is_ok() {
+            fit = Ok(worst);
+            convex = (0..k).all(|f| is_positive_semidefinite(&hess[f], n, band, spec.signs[f]));
+        }
+        (fit, convex)
+    };
+    // One pair (i, j): its mixed second differences, one per function.
+    let mut pair = |i: usize, j: usize, x: &mut Vec<f64>, evals: &mut u64| {
+        let (hi, hj) = ((spec.step)(i), (spec.step)(j));
+        x[i] = spec.x0[i] + hi;
+        x[j] = spec.x0[j] + hj;
+        let vij = ev(x, evals);
+        x[i] = spec.x0[i];
+        x[j] = spec.x0[j];
+        vij.map(|v| {
+            (0..k)
+                .map(|f| (v[f] - fj[f][i] - fj[f][j] + spec.f0[f]) / (hi * hj))
+                .collect::<Vec<f64>>()
+        })
+    };
+    let mut bandwidth: Option<usize> = None;
+    let worst;
+    if spec.structured {
+        let mut band = 0usize;
+        let (mut fit, mut convex) = check(&hess, &q, band);
+        if !(fit.is_ok() && convex) {
+            // Whether the dense build is affordable; when it is not, the band
+            // search may spend as much again as the diagonal did (`2n`, four
+            // gradients' worth) before it declines.
+            let dense_rest = (n * (n - 1) / 2) as u64;
+            let per_eval =
+                spec.clock.elapsed().as_secs_f64() / (spec.evals_before + evals).max(1) as f64;
+            let dense_ok = n <= FD_BUILD_MAX_N
+                && spec.eval_limit.is_none_or(|l| evals + dense_rest <= l)
+                && spec
+                    .wall_deadline
+                    .is_none_or(|l| per_eval * dense_rest as f64 <= l);
+            let band_budget: u64 = if dense_ok { dense_rest } else { 2 * n as u64 };
+            let mut band_spent: u64 = 0;
+            while !(fit.is_ok() && convex) {
+                band += 1;
+                let cost = (n - band) as u64;
+                if band >= n || band_spent + cost > band_budget {
+                    return Err((
+                        if fit.is_ok() {
+                            Decline::NotConvex
+                        } else {
+                            Decline::Unstructured(band - 1)
+                        },
+                        evals,
+                    ));
+                }
+                if let Some(limit) = spec.eval_limit {
+                    if evals + cost > limit {
+                        return Err((Decline::Budget(cost), evals));
+                    }
+                }
+                if let Some(limit) = spec.wall_deadline {
+                    if spec.clock.elapsed().as_secs_f64() > limit {
+                        return Err((Decline::Budget(cost), evals));
+                    }
+                }
+                for i in 0..n - band {
+                    let j = i + band;
+                    let v = pair(i, j, &mut x, &mut evals)?;
+                    for f in 0..k {
+                        hess[f][i * n + j] = v[f];
+                        hess[f][j * n + i] = v[f];
+                        for (qp, dx) in q[f].iter_mut().zip(spec.dxs) {
+                            *qp += v[f] * dx[i] * dx[j];
+                        }
+                    }
+                }
+                band_spent += cost;
+                (fit, convex) = check(&hess, &q, band);
+            }
+        }
+        bandwidth = Some(band);
+        worst = fit.unwrap_or(0.0);
+    } else {
+        for j in 0..n {
+            for i in 0..j {
+                let v = pair(i, j, &mut x, &mut evals)?;
+                for f in 0..k {
+                    hess[f][i * n + j] = v[f];
+                    hess[f][j * n + i] = v[f];
+                    for (qp, dx) in q[f].iter_mut().zip(spec.dxs) {
+                        *qp += v[f] * dx[i] * dx[j];
+                    }
+                }
+            }
+        }
+        let (fit, _) = check(&hess, &q, n - 1);
+        worst = match fit {
+            Ok(w) => w,
+            Err(e) => return Err((Decline::ModelMisfit(e), evals)),
+        };
+    }
+    Ok(Built {
+        hess,
+        g0,
+        bandwidth,
+        worst,
+        evals,
     })
 }
 
@@ -584,7 +1020,10 @@ fn model_fit(line_points: &[(Vec<f64>, f64)], q: &[f64], f0: f64) -> Result<f64,
 /// `half_band` is the matrix's half-bandwidth (`n - 1` for a dense one): the
 /// factor has the same band, so the check costs `O(n b^2)` and its storage
 /// `n (b + 1)`, which keeps a diagonal check at `n = 5000` trivial.
-fn is_positive_semidefinite(hess: &[f64], n: usize, half_band: usize) -> bool {
+///
+/// `sign` is `1.0` for positive semidefinite and `-1.0` to test `-H`
+/// instead (a concave constraint row bounded below).
+fn is_positive_semidefinite(hess: &[f64], n: usize, half_band: usize, sign: f64) -> bool {
     let b = half_band.min(n - 1);
     let w = b + 1;
     let mut max_diag = 1.0_f64;
@@ -595,7 +1034,7 @@ fn is_positive_semidefinite(hess: &[f64], n: usize, half_band: usize) -> bool {
     // `l[i * w + (i - k)]` holds `L_ik` for `i - b <= k <= i`.
     let mut l = vec![0.0; n * w];
     for j in 0..n {
-        let mut d = hess[j * n + j] + delta;
+        let mut d = sign * hess[j * n + j] + delta;
         for k in j.saturating_sub(b)..j {
             let v = l[j * w + (j - k)];
             d -= v * v;
@@ -606,7 +1045,7 @@ fn is_positive_semidefinite(hess: &[f64], n: usize, half_band: usize) -> bool {
         let ljj = d.sqrt();
         l[j * w] = ljj;
         for i in j + 1..n.min(j + w) {
-            let mut s = hess[i * n + j];
+            let mut s = sign * hess[i * n + j];
             for k in i.saturating_sub(b)..j {
                 s -= l[i * w + (i - k)] * l[j * w + (j - k)];
             }
@@ -658,13 +1097,21 @@ impl<P: Nlp + ?Sized> Nlp for QuadraticModel<'_, P> {
         &self,
         _x: &[f64],
         sigma: f64,
-        _lambda: &[f64],
+        lambda: &[f64],
         out: &mut [f64],
     ) -> Result<(), EvalError> {
-        // The constraints are linear, so the Lagrangian's Hessian is sigma
-        // times the objective's.
+        // Every Hessian is constant: sigma times the objective's plus each
+        // quadratic row's times its multiplier (linear rows contribute nothing).
         for (o, h) in out.iter_mut().zip(&self.hess_lower) {
             *o = sigma * h;
+        }
+        for (row, hr) in &self.rows {
+            let l = lambda.get(*row).copied().unwrap_or(0.0);
+            if l != 0.0 {
+                for (o, h) in out.iter_mut().zip(hr) {
+                    *o += l * h;
+                }
+            }
         }
         Ok(())
     }
@@ -672,21 +1119,30 @@ impl<P: Nlp + ?Sized> Nlp for QuadraticModel<'_, P> {
         &self,
         _x: &[f64],
         sigma: f64,
-        _lambda: &[f64],
+        lambda: &[f64],
         v: &[f64],
         out: &mut [f64],
     ) -> Result<(), EvalError> {
         out.iter_mut().for_each(|o| *o = 0.0);
         let n = self.n;
-        for j in 0..n {
-            let col = self.structure.col(j);
-            let base = self.structure.col_ptr()[j];
-            for (k, &i) in col.iter().enumerate() {
-                let hij = self.hess_lower[base + k];
-                out[i] += sigma * hij * v[j];
-                if i != j {
-                    out[j] += sigma * hij * v[i];
+        let mut add = |weight: f64, lower: &[f64]| {
+            for j in 0..n {
+                let col = self.structure.col(j);
+                let base = self.structure.col_ptr()[j];
+                for (k, &i) in col.iter().enumerate() {
+                    let hij = weight * lower[base + k];
+                    out[i] += hij * v[j];
+                    if i != j {
+                        out[j] += hij * v[i];
+                    }
                 }
+            }
+        };
+        add(sigma, &self.hess_lower);
+        for (row, hr) in &self.rows {
+            let l = lambda.get(*row).copied().unwrap_or(0.0);
+            if l != 0.0 {
+                add(l, hr);
             }
         }
         Ok(())
@@ -759,6 +1215,34 @@ mod tests {
             quadratic_build: QuadraticBuild::Structured,
             ..Options::default()
         }
+    }
+
+    /// The structured build with quadratic constraint rows accepted from
+    /// constraint values (the default since `abl-i5-rows`).
+    fn with_rows() -> Options {
+        Options {
+            quadratic_rows: QuadraticRows::Values,
+            ..structured()
+        }
+    }
+
+    /// The projection onto an ellipsoid: a diagonal quadratic objective and a
+    /// diagonal convex row bounded above.
+    fn ellipsoid_projection(n: usize) -> Problem<'static> {
+        let p_pt: Vec<f64> = (0..n).map(|i| 1.5 - 0.4 * (i % 5) as f64).collect();
+        let r: Vec<f64> = (0..n).map(|i| 0.5 + 0.3 * (i % 6) as f64).collect();
+        Problem::new(n, move |x| {
+            x.iter().zip(&p_pt).map(|(a, b)| (a - b) * (a - b)).sum()
+        })
+        .start_at(&vec![0.0; n])
+        .inequality(1, move |x, c| {
+            c[0] = x
+                .iter()
+                .zip(&r)
+                .map(|(a, b)| (a / b) * (a / b))
+                .sum::<f64>()
+                - 1.0;
+        })
     }
 
     fn band_qp(n: usize, half_band: usize) -> Problem<'static> {
@@ -949,11 +1433,82 @@ mod tests {
     }
 
     #[test]
-    fn a_quadratic_with_a_nonlinear_constraint_is_declined() {
-        let p = Problem::new(2, |x| x[0] * x[0] + 2.0 * x[1] * x[1])
+    fn a_convex_quadratic_row_is_accepted_and_solved_with_newton_steps() {
+        let n = 6;
+        let r: Vec<f64> = (0..n).map(|i| 0.5 + 0.3 * (i % 6) as f64).collect();
+        let p = ellipsoid_projection(n);
+        // `Off` reproduces the behaviour before `abl-i5-rows`: any nonlinear
+        // row declines the probe.
+        assert!(probe(
+            &p,
+            &Options {
+                quadratic_rows: QuadraticRows::Off,
+                ..structured()
+            }
+        )
+        .is_none());
+        let q = probe(&p, &with_rows()).expect("a convex quadratically constrained QP");
+        assert_eq!(q.f_evals, 7 + 2 * n as u64, "{}", q.note);
+        // 1 at x0, 6 at the line points, 2n for the row's diagonal build.
+        assert_eq!(q.c_evals, 7 + 2 * n as u64, "{}", q.note);
+        assert!(q.note.contains("1 quadratic constraint row"), "{}", q.note);
+        let opts = Options {
+            algorithm: mincon_core::Algorithm::Sqp,
+            ..with_rows()
+        };
+        let newton = mincon_sqp::solve(&q, &opts).unwrap();
+        assert!(newton.exit_flag.is_success(), "{:?}", newton.exit_flag);
+        let quasi = mincon_sqp::solve(&p, &opts).unwrap();
+        assert!(quasi.exit_flag.is_success(), "{:?}", quasi.exit_flag);
+        assert!(
+            (newton.solution.f - quasi.solution.f).abs() < 1e-6 * quasi.solution.f.abs().max(1.0),
+            "{} vs {}",
+            newton.solution.f,
+            quasi.solution.f
+        );
+        assert!(
+            newton.iterations < quasi.iterations,
+            "{} vs {}",
+            newton.iterations,
+            quasi.iterations
+        );
+        // The Lagrangian Hessian carries the row's curvature times its multiplier.
+        let mut out = vec![0.0; q.hessian_structure().unwrap().nnz()];
+        q.hessian_lagrangian(&[0.0; 6], 1.0, &[2.0], &mut out)
+            .unwrap();
+        let s = q.hessian_structure().unwrap();
+        for j in 0..n {
+            let diag = out[s.col_ptr()[j]];
+            let expected = 2.0 + 2.0 * 2.0 / (r[j] * r[j]);
+            assert!((diag - expected).abs() < 1e-6, "({j}) {diag} vs {expected}");
+        }
+    }
+
+    #[test]
+    fn quadratic_rows_that_do_not_keep_the_set_convex_are_declined() {
+        // An equality sphere (the feasible set is not convex).
+        let sphere = Problem::new(2, |x| x[0] * x[0] + 2.0 * x[1] * x[1])
             .start_at(&[0.5, 0.5])
-            .inequality(1, |x, c| c[0] = x[0] * x[0] + x[1] * x[1] - 1.0);
-        assert!(probe(&p, &Options::default()).is_none());
+            .equality(1, |x, c| c[0] = x[0] * x[0] + x[1] * x[1] - 1.0);
+        assert!(probe(&sphere, &with_rows()).is_none());
+        // A convex function bounded below: the outside of a disc.
+        let outside = Problem::new(2, |x| x[0] * x[0] + 2.0 * x[1] * x[1])
+            .start_at(&[1.5, 0.5])
+            .inequality(1, |x, c| c[0] = 1.0 - x[0] * x[0] - x[1] * x[1]);
+        assert!(probe(&outside, &with_rows()).is_none());
+        // A saddle row bounded above: convex along one probe line and concave
+        // along another, so neither the line test nor the Cholesky may pass it.
+        let saddle = Problem::new(2, |x| x[0] * x[0] + 2.0 * x[1] * x[1])
+            .start_at(&[0.3, 0.4])
+            .inequality(1, |x, c| c[0] = x[0] * x[0] - x[1] * x[1] - 1.0);
+        assert!(probe(&saddle, &with_rows()).is_none());
+        // A cubic row is neither linear nor quadratic.
+        let cubic = Problem::new(2, |x| x[0] * x[0] + 2.0 * x[1] * x[1])
+            .start_at(&[0.5, 0.5])
+            .inequality(1, |x, c| c[0] = x[0] * x[0] * x[0] + x[1] - 1.0);
+        let (q, spent) = probe_counted(&cubic, &with_rows());
+        assert!(q.is_none());
+        assert_eq!(spent, 4);
     }
 
     #[test]

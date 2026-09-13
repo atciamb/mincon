@@ -1,0 +1,23 @@
+COVQP_120              cand: status 1 evals 10054 att True wall 13.2 | base: status 1 evals 6314 att True wall 6.3
+COVQP_30               cand: status 1 evals 1127 att True wall 0.1 | base: status 1 evals 1382 att True wall 0.1
+COVQP_300              cand: status 0 evals 11447 att False wall 62.2 | base: status 0 evals 11448 att False wall 62.3
+DECONV_200             cand: status 0 evals 14473 att False wall 60.3 | base: status 0 evals 8443 att False wall 61.0
+DENSELAP_250           cand: status 0 evals 17120 att True wall 60.2 | base: status 0 evals 15104 att True wall 61.5
+ELLIPSOID2_20          cand: status 6 evals 3976 att True wall 0.0 | base: status 6 evals 2746 att True wall 0.0
+ELLIPSOID2_200         cand: status 1 evals 9308 att True wall 0.6 | base: status 6 evals 170824 att True wall 8.3
+ELLIPSOID_5            cand: status 1 evals 192 att True wall 0.0 | base: status 1 evals 286 att True wall 0.0
+ELLIPSOID_50           cand: status 6 evals 16736 att True wall 0.3 | base: status 6 evals 13966 att True wall 0.4
+ELLIPSOID_500          cand: status 6 evals 202186 att True wall 32.7 | base: status 0 evals 201410 att False wall 28.2
+HS10                   cand: status 1 evals 133 att True wall 0.0 | base: status 1 evals 90 att True wall 0.0
+HS11                   cand: status 1 evals 68 att True wall 0.0 | base: status 1 evals 72 att True wall 0.0
+HS113                  cand: status 1 evals 262 att True wall 0.0 | base: status 1 evals 414 att True wall 0.0
+HS12                   cand: status 1 evals 91 att True wall 0.0 | base: status 1 evals 74 att True wall 0.0
+HS14                   cand: status 1 evals 64 att True wall 0.0 | base: status 1 evals 50 att True wall 0.0
+HS22                   cand: status 1 evals 58 att True wall 0.0 | base: status 1 evals 44 att True wall 0.0
+HS31                   cand: status 1 evals 127 att True wall 0.0 | base: status 1 evals 106 att True wall 0.0
+HS43                   cand: status 1 evals 134 att True wall 0.0 | base: status 1 evals 172 att True wall 0.0
+HS65                   cand: status 1 evals 88 att True wall 0.0 | base: status 1 evals 94 att True wall 0.0
+INFEASIBLE_NL          cand: status -4 evals 728 att None wall 0.0 | base: status -4 evals 452 att None wall 0.0
+TCPORT_100             cand: status 1 evals 6778 att True wall 6.2 | base: status 1 evals 5882 att True wall 3.4
+TCPORT_20              cand: status 1 evals 632 att True wall 0.0 | base: status 1 evals 702 att True wall 0.0
+changed records: 22 of 185

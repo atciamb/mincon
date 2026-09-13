@@ -116,3 +116,24 @@ def test_bfgs_rescale_option_is_validated():
         r = minimize(f, [0.0, 0.0], options=opts)
         assert r.success, r
         np.testing.assert_allclose(r.x, [1.0, -2.0], atol=1e-5)
+def test_quadratic_rows_option_is_validated_and_on_by_default():
+    import pytest
+    # A projection onto an ellipsoid: the curvature lives in the constraint row,
+    # not in the objective's Hessian.
+    a = np.array([3.0, 2.0, 1.5])
+    s = np.array([1.0, 4.0, 9.0])
+    f = lambda x: float((x - a) @ (x - a))  # noqa: E731
+    row = {"type": "ineq", "fun": lambda x: float(1.0 - (x * x / s).sum())}
+
+    with pytest.raises(ValueError, match="quadratic_rows"):
+        minimize(f, [0.0, 0.0, 0.0], constraints=[row], options={"quadratic_rows": "rows"})
+
+    on = minimize(f, [0.0, 0.0, 0.0], constraints=[row])
+    off = minimize(f, [0.0, 0.0, 0.0], constraints=[row], options={"quadratic_rows": False})
+    assert on.success and off.success, (on, off)
+    np.testing.assert_allclose(on.x, off.x, atol=1e-5)
+    assert (on.x * on.x / s).sum() <= 1.0 + 1e-8
+    # The default builds the row's Hessian and says so; `False` reproduces the
+    # behaviour before `abl-i5-rows`.
+    assert any("quadratic constraint row" in n for n in on.notes), on.notes
+    assert not any("quadratic constraint row" in n for n in off.notes), off.notes

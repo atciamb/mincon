@@ -274,6 +274,11 @@ def minimize(
         time until the model reproduces the probe's line points, so a
         diagonal Hessian costs 2n evaluations and a tridiagonal one 3n
         instead of n(n+3)/2; a dense one costs the same either way),
+        ``quadratic_rows`` (``False`` (default), ``'jacobian'`` or
+        ``'values'``: whether the probe also accepts quadratic constraint
+        rows that keep the feasible set convex, such as a variance limit,
+        building their Hessians from a supplied ``nonlcon_jac`` or, with
+        ``'values'``, from constraint values),
         ``bfgs_rescale`` (float, default 0 = off: rebuild the quasi-Newton
         matrix from per-coordinate curvature quotients whenever its curvature
         along an accepted step is off by more than this factor; 10 helps
@@ -337,7 +342,8 @@ def minimize(
     display = _display_level(opts)
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
                  "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
-                 "bfgs_rescale", "scale_variables", "kkt_pivot_signs", "quadratic_probe", "quadratic_build"}
+                 "bfgs_rescale", "scale_variables", "kkt_pivot_signs", "quadratic_probe", "quadratic_build",
+                 "quadratic_rows"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; "

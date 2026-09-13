@@ -79,7 +79,7 @@ let r = minimize(&p, &Options::default())?;
 > (`bench/results/s7-friction`) went from 12/14 to 13/14 as D11 and D12 were
 > fixed (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`). Development
 > gate: Rust tests, 56/56 fixtures with independent checks for the portfolio
-> and each member (SQP alone: 55/56, HS13 within 4e-4), 36 Python tests.
+> and each member (SQP alone: 55/56, HS13 within 4e-4), 37 Python tests.
 
 `fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface

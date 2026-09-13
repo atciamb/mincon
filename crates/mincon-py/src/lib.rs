@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 use mincon_core::{
     Algorithm, BarrierUpdate, Capabilities, DerivativeCheck, EvalError, ExitFlag, FdType,
     IterationCallback, IterationRecord, Nlp, NlpDims, Options, PivotSigns, QuadraticBuild,
-    ScalingMode, Sparsity, Tolerances, VariableScaling, INF_BOUND,
+    QuadraticRows, ScalingMode, Sparsity, Tolerances, VariableScaling, INF_BOUND,
 };
 use numpy::{PyArray1, PyReadonlyArray1, ToPyArray};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -469,6 +469,28 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
                     return Err(PyValueError::new_err(format!(
                         "unknown quadratic_build '{other}'; use 'structured' or 'dense'"
                     )))
+                }
+            };
+        }
+    }
+    if let Some(v) = d.get_item("quadratic_rows")? {
+        if !v.is_none() {
+            o.quadratic_rows = if let Ok(b) = v.extract::<bool>() {
+                if b {
+                    QuadraticRows::Values
+                } else {
+                    QuadraticRows::Off
+                }
+            } else {
+                match v.extract::<String>()?.as_str() {
+                    "off" => QuadraticRows::Off,
+                    "jacobian" => QuadraticRows::Jacobian,
+                    "values" | "all" => QuadraticRows::Values,
+                    other => {
+                        return Err(PyValueError::new_err(format!(
+                            "unknown quadratic_rows '{other}'; use False, 'jacobian' or 'values'"
+                        )))
+                    }
                 }
             };
         }

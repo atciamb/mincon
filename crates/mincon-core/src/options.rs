@@ -212,6 +212,25 @@ pub enum QuadraticBuild {
     Dense,
 }
 
+/// Whether the quadratic-program probe also accepts quadratic constraint rows
+/// (see [`Options::quadratic_rows`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QuadraticRows {
+    /// Only linear rows: a row that is not linear along a probe line declines
+    /// the probe (the behaviour of `abl-i5` and `abl-i5-build`).
+    Off,
+    /// Quadratic rows are accepted when the model supplies exact Jacobians:
+    /// each row's constant Hessian comes from differencing the Jacobian,
+    /// `n + 1` Jacobian calls for every row at once.
+    Jacobian,
+    /// As [`Self::Jacobian`], and without a Jacobian from constraint values:
+    /// one constraint evaluation gives every row, so the build costs what the
+    /// objective's does (`2n` evaluations for diagonal rows, `n (n + 3) / 2`
+    /// for dense ones).
+    #[default]
+    Values,
+}
+
 /// A warm start (round 5 I6): the multipliers of a previous solve of the same
 /// problem, in the user's units and the report's sign convention (`Solution`),
 /// optionally with the barrier parameter the previous solve reached. Both
@@ -405,6 +424,20 @@ pub struct Options {
     /// zero Hessians, OBSTACLE's is tridiagonal, and a dense Hessian costs
     /// the same either way.
     pub quadratic_build: QuadraticBuild,
+    /// Whether the probe also accepts quadratic constraint rows. A row is
+    /// accepted only when it keeps the feasible set convex (a convex function
+    /// bounded above or a concave one bounded below, never an equality or a
+    /// ranged row, checked first by the sign of its curvature along the probe
+    /// lines and then by a Cholesky of its built Hessian); every row's
+    /// constant Hessian is then added to the Lagrangian's with its
+    /// multiplier. Default [`QuadraticRows::Values`] since
+    /// `bench/results/abl-i5-rows`: one more problem attained on track A
+    /// (a 500-variable ellipsoid projection whose control run ended the
+    /// evaluation budget at an infeasible point), one more certified
+    /// (ELLIPSOID2_200 at 0.05x the evaluations), nothing lost, cost
+    /// 0.99 [0.92, 1.01] with finite differences and 0.98 [0.85, 1.06] with
+    /// exact derivatives counted in full.
+    pub quadratic_rows: QuadraticRows,
     /// Finite-difference flavour.
     pub fd_type: FdType,
     /// Relative finite-difference step, or `None` to use `sqrt(eps)` forward /
@@ -497,6 +530,7 @@ impl Default for Options {
             scale_variables: VariableScaling::Auto,
             quadratic_probe: true,
             quadratic_build: QuadraticBuild::Structured,
+            quadratic_rows: QuadraticRows::Values,
             fd_type: FdType::Adaptive,
             fd_step: None,
             fd_respect_bounds: true,

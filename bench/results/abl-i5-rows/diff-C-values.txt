@@ -1,0 +1,20 @@
+COVQP_120              cand: status 1 evals 37 att True wall 0.3 | base: status 1 evals 67 att True wall 0.1
+COVQP_30               cand: status 1 evals 35 att True wall 0.0 | base: status 1 evals 55 att True wall 0.0
+COVQP_300              cand: status 1 evals 37 att True wall 5.3 | base: status 1 evals 79 att True wall 1.0
+ELLIPSOID2_20          cand: status 1 evals 49 att True wall 0.0 | base: status 1 evals 249 att True wall 0.0
+ELLIPSOID2_200         cand: status 1 evals 55 att True wall 0.2 | base: status 1 evals 4357 att True wall 1.2
+ELLIPSOID_5            cand: status 1 evals 83 att True wall 0.0 | base: status 1 evals 107 att True wall 0.0
+ELLIPSOID_50           cand: status 1 evals 49 att True wall 0.0 | base: status 1 evals 631 att True wall 0.0
+ELLIPSOID_500          cand: status 1 evals 55 att True wall 1.2 | base: status 1 evals 12745 att True wall 24.6
+HS10                   cand: status 1 evals 75 att True wall 0.0 | base: status 1 evals 41 att True wall 0.0
+HS113                  cand: status 1 evals 71 att True wall 0.0 | base: status 1 evals 123 att True wall 0.0
+HS12                   cand: status 1 evals 53 att True wall 0.0 | base: status 1 evals 41 att True wall 0.0
+HS14                   cand: status 1 evals 31 att True wall 0.0 | base: status 1 evals 25 att True wall 0.0
+HS22                   cand: status 1 evals 29 att True wall 0.0 | base: status 1 evals 23 att True wall 0.0
+HS31                   cand: status 1 evals 59 att True wall 0.0 | base: status 1 evals 53 att True wall 0.0
+HS43                   cand: status 1 evals 57 att True wall 0.0 | base: status 1 evals 79 att True wall 0.0
+HS65                   cand: status 1 evals 41 att True wall 0.0 | base: status 1 evals 49 att True wall 0.0
+INFEASIBLE_NL          cand: status -4 evals 3537 att None wall 0.0 | base: status -5 evals 1641 att None wall 0.0
+TCPORT_100             cand: status 1 evals 31 att True wall 0.2 | base: status 1 evals 67 att True wall 0.1
+TCPORT_20              cand: status 1 evals 45 att True wall 0.0 | base: status 1 evals 57 att True wall 0.0
+changed records: 19 of 185

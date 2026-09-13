@@ -485,3 +485,46 @@ four jumps the owner named now sit below their quasi-Newton baselines. The falsi
 the quasi-Newton path solved in few iterations (PORTFOLIO_100 1.71x, POLYQP_100 1.47x and
 certified, NNLS_SIMPLEX_120 1.05x); a low-rank-plus-diagonal build (PORTFOLIO's Hessian is rank 3
 plus a diagonal) is the next structure to measure, not a rule to write now.
+
+### 7.13 I5's last extension: convex quadratic constraint rows, September 13
+
+The probe built only the objective's Hessian, so any problem with a nonlinear constraint row was
+declined even when the row was a plain quadratic (COVQP's risk row, ELLIPSOID's sphere, TCPORT's
+variance row). Measured before writing the rule: across the corpus's quadratic-objective
+problems with quadratic rows, the ones the quasi-Newton path found expensive all have a
+**diagonal** row Hessian — ELLIPSOID_50 at 128 iterations, ELLIPSOID2_200 at 412, ELLIPSOID_500
+at 196 — so the structured build of §7.12 costs `2n` there, not `n (n + 3) / 2`, and the row is
+where the curvature lives (an ellipsoid projection has an identity objective Hessian).
+
+`Options::quadratic_rows` (`QuadraticRows::{Off, Jacobian, Values}`, Python `quadratic_rows`).
+A row is accepted only when it keeps the feasible set **convex**: a convex function bounded
+above or a concave one bounded below, never an equality, never a ranged row. That is checked
+twice — first by the sign of the row's second differences along the two probe lines, so an
+equality or a wrong-sign row declines before anything is built, and again by a banded Cholesky
+of the built Hessian on the side its bound needs. Every accepted row is built together, since
+one constraint or Jacobian evaluation returns them all: `n + 1` Jacobian calls under `Jacobian`,
+or the objective's own structured schedule under `Values` (`2n` for diagonal rows). The model's
+Lagrangian Hessian is then the objective's times `sigma` plus each row's times its multiplier,
+and `hessian_vector` sums the same way; the stored structure is the widest band found. The
+restriction is the same argument as the convexity check of §7.9: with a convex objective over a
+convex feasible set every KKT point is the global minimum, so the Newton path cannot end in a
+basin the quasi-Newton path would not.
+
+**Ablation `abl-i5-rows`** (`bench/results/abl-i5-rows`, all 185 problems, the same wheel with
+the option off as the control, two arms on track A and three on track C): track A **172/171
+attained** — ELLIPSOID_500 is gained, nothing is lost — at cost 0.99 [0.92, 1.01]; track C
+175/175 at 0.91 [0.67, 1.00] on objective and constraint calls and 0.98 [0.85, 1.06] once
+gradient and Jacobian calls are counted. The `Jacobian` and `Values` arms are identical on every
+track-C record, since the corpus supplies Jacobians there. The gain is concentrated where the
+measurement said it would be: ELLIPSOID_500's control ends the evaluation budget at an
+*infeasible* point (f = 1995.49, violation 0.85) where the candidate returns the reference to
+1.6e-14 in 26 iterations instead of 196; ELLIPSOID2_200 goes from a step-tolerance exit at
+170 824 evaluations to `Optimal` at 9308, 0.05x and certified where it was not. The cost is
+concentrated where it was predicted too: the problems whose *objective* Hessian is already dense
+(COVQP_120 1.59x on track A, COVQP_300 143 -> 657 model calls on track C, TCPORT_100 121 -> 245)
+pay for rows that buy them little. Diagnostics are preserved, and INFEASIBLE_NL on track C
+improves from `-5` (numerical failure) to `-4` (the documented locally infeasible diagnosis).
+**`quadratic_rows='values'` becomes the default.** The friction audit at that tree is 13/14 as
+before with one record changed, `portfolio_risk` 248 model calls in 11 iterations -> 166 in 3;
+the other thirteen are identical. A rule that skips the row build when the objective's Hessian
+came back dense is the next thing to measure and is not written now.
