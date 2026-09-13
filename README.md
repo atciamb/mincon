@@ -72,9 +72,12 @@ let r = minimize(&p, &Options::default())?;
 > Wall time on this cheap-model set is 0.28× [0.11, 0.78] `fmincon-sqp` and
 > 0.05× [0.027, 0.107] `fmincon-interior-point`, on top of a model-language
 > confound of up to 8.8× per evaluation. The round's quadratic-program probe
-> changed no attainment outcome on the sealed set. Its one miss is an
-> interior-point stall on a 200-variable deconvolution that its own SQP
-> member solves — the portfolio spent the whole 60 s on the wrong member.
+> changed no attainment outcome on the sealed set, and neither did the
+> quadratic-row default that postdates the run
+> (`bench/results/s6v5-final5-rows`, a disclosed second look). mincon's one
+> miss is an interior-point stall on a 200-variable deconvolution that its
+> own SQP member solves — the portfolio spent the whole 60 s on the wrong
+> member.
 > Earlier in the round a friction audit of fourteen realistic problems
 > (`bench/results/s7-friction`) went from 12/14 to 13/14 as D11 and D12 were
 > fixed (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`). Development

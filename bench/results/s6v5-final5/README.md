@@ -272,3 +272,14 @@ changed no outcome); that mincon's clean false-certificate record distinguishes 
 fmincon-interior-point here (both had three opportunities and took none).
 
 After this run final5 is development material, like its predecessors.
+
+## 9. One increment landed after this run
+
+`quadratic_rows='values'` (commit `3aac1e5`, `bench/results/abl-i5-rows`) became the default
+*after* the run above, and two of the sealed problems (TCPORT_20, TCPORT_100) are in the family it
+touches, so the mincon arm was re-run at HEAD and the difference is reported in
+`../s6v5-final5-rows/README.md`: **no attainment or status change on either track**
+(+0.0 pp [+0.0, +0.0]), cost 1.00 [1.00, 1.01] on track A and 0.93 [0.79, 1.00] on track C, with
+the option-off arm reproducing these records bit for bit. That is a disclosed **second look** at a
+sealed set, so it is filed as a disclosure and not as a claim; the numbers in this file and in
+`docs/17` items 19-21 stand as first measured, and a further claim needs a new sealed round.
