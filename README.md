@@ -129,10 +129,15 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   is quadratic and every constraint row linear; if so the constant Hessian
   is built by differencing, checked for convexity, and the SQP member takes
   Newton steps with it (a 50-variable bounded least-squares deconvolution:
-  8595 evaluations and 166 iterations become 1485 and 2). On the corpus no
-  attainment changed and the evaluation cost is a wash (1.04 [0.90, 1.16]:
-  0.2x to 0.8x where the quasi-Newton path churned, 1.5x to 6.6x on dense
-  quadratics it solved in a few iterations; `bench/results/abl-i5`).
+  8595 evaluations and 166 iterations become 1232 and 2). The Hessian is
+  built by structure (`quadratic_build='structured'`): the diagonal first,
+  then one band at a time until the model reproduces the probe's line
+  points, so a diagonal Hessian costs 2n evaluations, a tridiagonal one 3n
+  and a dense one n(n+3)/2. On the corpus one more problem is attained (a
+  500-variable obstacle problem that every earlier run left at the budget)
+  and the evaluation cost is 0.93 [0.62, 1.04] of the quasi-Newton path
+  (`bench/results/abl-i5`, `abl-i5-build`); dense quadratics the
+  quasi-Newton path solved in a few iterations still pay 1.1x to 1.7x.
 * **Variable scaling from the start** — by default (`scale_variables='auto'`)
   the solve runs in variables divided by their starting magnitudes when those
   span a factor of 1e4 (fmincon's `TypicalX` done for you); on the corpus it

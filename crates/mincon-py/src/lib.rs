@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex};
 
 use mincon_core::{
     Algorithm, BarrierUpdate, Capabilities, DerivativeCheck, EvalError, ExitFlag, FdType,
-    IterationCallback, IterationRecord, Nlp, NlpDims, Options, PivotSigns, ScalingMode, Sparsity,
-    Tolerances, VariableScaling, INF_BOUND,
+    IterationCallback, IterationRecord, Nlp, NlpDims, Options, PivotSigns, QuadraticBuild,
+    ScalingMode, Sparsity, Tolerances, VariableScaling, INF_BOUND,
 };
 use numpy::{PyArray1, PyReadonlyArray1, ToPyArray};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -459,6 +459,19 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
     }
     if let Some(v) = get!("quadratic_probe", bool) {
         o.quadratic_probe = v;
+    }
+    if let Some(v) = d.get_item("quadratic_build")? {
+        if !v.is_none() {
+            o.quadratic_build = match v.extract::<String>()?.as_str() {
+                "structured" => QuadraticBuild::Structured,
+                "dense" => QuadraticBuild::Dense,
+                other => {
+                    return Err(PyValueError::new_err(format!(
+                        "unknown quadratic_build '{other}'; use 'structured' or 'dense'"
+                    )))
+                }
+            };
+        }
     }
     if let Some(v) = d.get_item("kkt_pivot_signs")? {
         if !v.is_none() {

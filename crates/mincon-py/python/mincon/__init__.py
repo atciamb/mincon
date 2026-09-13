@@ -268,7 +268,12 @@ def minimize(
         linear, seven evaluations along two lines, and if so build the
         constant Hessian by differencing, check it is convex, and run the SQP
         member with it: a bounded least-squares deconvolution then takes 2
-        iterations instead of 166),
+        iterations instead of 166), ``quadratic_build`` (``'structured'``
+        (default) or ``'dense'``: with function values only, build that
+        Hessian by structure, the diagonal first and then one band at a
+        time until the model reproduces the probe's line points, so a
+        diagonal Hessian costs 2n evaluations and a tridiagonal one 3n
+        instead of n(n+3)/2; a dense one costs the same either way),
         ``bfgs_rescale`` (float, default 0 = off: rebuild the quasi-Newton
         matrix from per-coordinate curvature quotients whenever its curvature
         along an accepted step is off by more than this factor; 10 helps
@@ -332,7 +337,7 @@ def minimize(
     display = _display_level(opts)
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
                  "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
-                 "bfgs_rescale", "scale_variables", "kkt_pivot_signs", "quadratic_probe"}
+                 "bfgs_rescale", "scale_variables", "kkt_pivot_signs", "quadratic_probe", "quadratic_build"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; "

@@ -194,6 +194,24 @@ pub enum PivotSigns {
     Free,
 }
 
+/// How the quadratic-program probe builds the objective's constant Hessian
+/// when it has function values only (see [`Options::quadratic_build`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QuadraticBuild {
+    /// The diagonal first (`2n` evaluations, which also give the gradient),
+    /// then one off-diagonal band at a time, the model checked against the
+    /// probe's six line points after each; the build stops at the first
+    /// structure that reproduces them. A diagonal Hessian costs `2n`, a
+    /// tridiagonal one `3n - 1`, a dense one exactly what [`Self::Dense`]
+    /// costs, in a different order. Above the dense size limit, or when the
+    /// dense build would exceed the budget, the band search may spend `2n`
+    /// evaluations more before it declines.
+    #[default]
+    Structured,
+    /// Every pair at once, `n (n + 3) / 2` evaluations, up to `n = 500`.
+    Dense,
+}
+
 /// A warm start (round 5 I6): the multipliers of a previous solve of the same
 /// problem, in the user's units and the report's sign convention (`Solution`),
 /// optionally with the barrier parameter the previous solve reached. Both
@@ -379,6 +397,14 @@ pub struct Options {
     /// iteration-heavy QPs, 1.5x to 6.6x on dense ones the quasi-Newton path
     /// solved in few iterations), POLYQP_100 certified, box_lsq 0.17x.
     pub quadratic_probe: bool,
+    /// How the probe builds the Hessian from function values: by structure
+    /// (diagonal, then bands, stopping at the first that fits the line
+    /// points) or dense at once. Default [`QuadraticBuild::Structured`]
+    /// since `bench/results/abl-i5-build`: the QPs the dense build made
+    /// 1.5x to 8x dearer (QUADSPHERE, LQTRAJ, MANY_INEQ) have diagonal or
+    /// zero Hessians, OBSTACLE's is tridiagonal, and a dense Hessian costs
+    /// the same either way.
+    pub quadratic_build: QuadraticBuild,
     /// Finite-difference flavour.
     pub fd_type: FdType,
     /// Relative finite-difference step, or `None` to use `sqrt(eps)` forward /
@@ -470,6 +496,7 @@ impl Default for Options {
 
             scale_variables: VariableScaling::Auto,
             quadratic_probe: true,
+            quadratic_build: QuadraticBuild::Structured,
             fd_type: FdType::Adaptive,
             fd_step: None,
             fd_respect_bounds: true,

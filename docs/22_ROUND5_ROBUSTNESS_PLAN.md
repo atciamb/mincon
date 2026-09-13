@@ -415,3 +415,70 @@ equal on four and worse on three (chainrosen20, infeasible_start_far and with_ar
 early curvature model is a worse start than the identity). No default changes: the warm start only runs when the user passes a previous result,
 so no corpus ablation applies; the API is the increment. The round-4 budget exits (COVQP_300,
 OBSTACLE_500) are wall-time exits on this machine and were not re-run.
+
+### 7.12 I5's evaluation cost: the structured Hessian build, September 13
+
+The owner called the probe's evaluation jumps a first-class open item (LQTRAJ_50 1855 -> 12 257,
+QUADSPHERE_100 3030 -> 5770, QUADSPHERE2_300 27 092 -> 47 872, MANY_INEQ 36 -> 92 in `abl-i5`).
+Measured before any rule was written: the baseline quasi-Newton iteration counts of the 35
+detected QPs against `n` (`abl-c7` records). Every gain has `nit / n >= 0.48` (OBSTACLE_200 1.26,
+OBSTACLE_50 1.54, NNLS_SIMPLEX_30 1.50, QUADSPHERE2_30 1.20, QUADSPHERE_10 2.20) and every loss
+`nit / n <= 0.40` (LQTRAJ_50 0.05, QUADSPHERE_100 0.12, QUADSPHERE2_300 0.12, EQQP6 0.17,
+LQTRAJ_10 0.23, PORTFOLIO_100 0.29, POLYQP_100 0.34, MANY_INEQ 0.40), which is the break-even
+`n (n + 3) / 2` against `nit (n + 1)` of §7.9. The three candidates of the hand-off against those
+numbers: (b) a size rule cannot separate them (OBSTACLE_200 at n = 200 is a 0.40x gain,
+QUADSPHERE_100 at n = 100 a 3.8x loss, LQTRAJ_10 and QUADSPHERE2_30 are both n = 30); (c) the only
+honest test of "few iterations needed" is the quasi-Newton path itself, and a capped run before
+the build (the I6 hand-over would make it cheap) gives back part of every gain (OBSTACLE_200
+20 910 -> about 31 000 at a cap of half the build) while the cap that protects QUADSPHERE2_300
+(13 245 quasi-Newton evaluations against a 45 450 build) is too large to protect OBSTACLE, so
+no cap satisfies the falsifier; (a) the problems' Hessians: QUADSPHERE and QUADSPHERE2 are
+diagonal (`a_i x_i^2`), LQTRAJ is diagonal (`dt u_k^2` on the control block, zero elsewhere),
+EQQP6 is the identity, MANY_INEQ's objective is linear (a zero Hessian), OBSTACLE's is
+tridiagonal; PORTFOLIO, POLYQP and NNLS_SIMPLEX are dense. The losses are structure the dense
+build ignores.
+
+The increment is `Options::quadratic_build` (`QuadraticBuild::{Structured, Dense}`, Python
+`quadratic_build`), the function-value build reordered by structure: the diagonal first (`2n`
+evaluations, which also give the gradient), then one off-diagonal band at a time, the model
+checked against the probe's six line points after each band and handed over at the first
+structure that both reproduces them and passes the convexity check. A diagonal Hessian costs
+`2n`, a tridiagonal one `3n - 1`, a dense one exactly the dense build's `n (n + 3) / 2` in a
+different order, so on a dense QP nothing changes. The check after each band is the one the
+dense build applied at the end, so a wrong early stop needs the off-band entries to cancel
+along two random directions to 1e-8, and even then the SQP member's line search and first-order
+certificate do not depend on the Hessian. One case the first version got wrong: box_lsq's
+Gaussian kernel `K'K` decays away from the diagonal, a band model fits the line points at
+half-bandwidth 23 while the truncated matrix fails the convexity check at 1e-10 (the kernel is
+ill-conditioned), and the probe declined "not convex" (9576 evaluations, the quasi-Newton path);
+the search now continues until the model both fits and is convex (box_lsq 1485 -> 1232). The
+convexity check is a banded Cholesky (`O(n b^2)`), so a diagonal check at n = 5000 is trivial.
+Limits: the structured build runs up to the gradient build's `n = 5000` (the diagonal phase
+costs `2n`); when the dense continuation is unaffordable (n > 500, or outside the evaluation or
+wall budget) the band search may spend `2n` more, four gradients' worth, before it declines, so
+a dense QP at n = 1000 wastes 4n evaluations against 7 today; the corpus has no such problem.
+
+Spot check on the problems that decided it (`quadratic_build=structured` against `abl-i5`,
+model-boundary evaluations): QUADSPHERE_100 5359 -> **409**, LQTRAJ_50 11 933 -> **758**,
+QUADSPHERE2_300 46 360 -> **1510**, LQTRAJ_10 593 -> 158, MANY_INEQ 50 -> 40, EQQP6 68 -> 53
+(all below their quasi-Newton baselines except MANY_INEQ at 12 and EQQP6 at 34); OBSTACLE_50 1485
+-> 309 and OBSTACLE_200 20 910 -> 1209 (the tridiagonal build); **OBSTACLE_500, a 100 000-evaluation
+budget exit in every round-4 run, certified in 3009**; QUADSPHERE_1000 16 023 -> 4009 and
+LQTRAJ_200 6605 -> 3008, both above the old dense limit; NNLS_SIMPLEX_120, POLYQP_100,
+PORTFOLIO_100 unchanged (dense); COVQP_120 and HS44 still declined. Friction audit with the option:
+box_lsq 1232, every other record as `final5`.
+
+**Ablation `abl-i5-build`** (`bench/results/abl-i5-build`, one arm `mincon@quadratic_build=structured`,
+all 172 problems, scored against the recipe baseline and against the `abl-i5` arm it replaces):
+**159/158 attained** either way (OBSTACLE_500 certified in 3009 evaluations where every earlier
+run ended at the 100 000 budget), cost 0.93 [0.62, 1.04] against the quasi-Newton baseline and
+**0.90 [0.65, 0.97] against the dense build**, 31 records changed against it and every one cheaper
+or equal: OBSTACLE_200 20 910 -> 1209, QUADSPHERE2_300 47 872 -> 3022, QUADSPHERE_100 5770 -> 820,
+LQTRAJ_50 12 257 -> 1082, QUADSPHERE_1000 34 048 -> 8020 and LQTRAJ_200 7873 -> 4232 (both above
+the old dense limit, where the probe used to decline), HS118 223 -> 118, MANY_INEQ 92 -> 82; the
+dense QPs (NNLS_SIMPLEX, POLYQP, PORTFOLIO) and the declined ones (HS44, COVQP) unchanged. The
+four jumps the owner named now sit below their quasi-Newton baselines. The falsifier holds and
+**`quadratic_build='structured'` is the default.** What remains of the trade-off is the dense QPs
+the quasi-Newton path solved in few iterations (PORTFOLIO_100 1.71x, POLYQP_100 1.47x and
+certified, NNLS_SIMPLEX_120 1.05x); a low-rank-plus-diagonal build (PORTFOLIO's Hessian is rank 3
+plus a diagonal) is the next structure to measure, not a rule to write now.
