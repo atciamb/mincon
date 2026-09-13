@@ -74,7 +74,7 @@ let r = minimize(&p, &Options::default())?;
 > confound of up to 8.8× per evaluation. The round's quadratic-program probe
 > changed no attainment outcome on the sealed set, and neither did the
 > quadratic-row default that postdates the run
-> (`bench/results/s6v5-final5-rows`, a disclosed second look). mincon's one
+> (`bench/results/s6v5-final5-rows`, a disclosed re-run). mincon's one
 > miss is an interior-point stall on a 200-variable deconvolution that its
 > own SQP member solves — the portfolio spent the whole 60 s on the wrong
 > member.

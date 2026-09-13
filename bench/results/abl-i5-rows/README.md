@@ -19,6 +19,12 @@ objective and at least one quadratic row, the ones the quasi-Newton path found e
 (ELLIPSOID_50 128 iterations, ELLIPSOID2_200 412, ELLIPSOID_500 196) all have a **diagonal** row
 Hessian, so the row build costs `2n`, not `n (n + 3) / 2`.
 
+The corpus is now **185 problems because the 13 sealed round-5 problems were folded into it after
+the round-5 qualification run**, the way every earlier held-out set was. So this ablation is not
+independent of `final5`. It does not rest on it either: removing those 13 leaves the verdict
+unchanged — track A 160/159 attained at 0.988 on 159 common, track C 162/162 at 0.908 on 162 — and
+the one gained attainment (ELLIPSOID_500) is a development problem.
+
 Run: all 185 corpus problems including the three diagnostics, defaults otherwise, single thread,
 60 s / 100 000 evaluations, targets v6, wheel `wheels-i5rows`. Two arms on track A
 (`mincon` as the control, `mincon@quadratic_rows=values`) and three on track C (adding

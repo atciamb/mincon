@@ -280,6 +280,6 @@ After this run final5 is development material, like its predecessors.
 touches, so the mincon arm was re-run at HEAD and the difference is reported in
 `../s6v5-final5-rows/README.md`: **no attainment or status change on either track**
 (+0.0 pp [+0.0, +0.0]), cost 1.00 [1.00, 1.01] on track A and 0.93 [0.79, 1.00] on track C, with
-the option-off arm reproducing these records bit for bit. That is a disclosed **second look** at a
+the option-off arm reproducing these records bit for bit. That is a re-run of an already-spent
 sealed set, so it is filed as a disclosure and not as a claim; the numbers in this file and in
 `docs/17` items 19-21 stand as first measured, and a further claim needs a new sealed round.
