@@ -528,3 +528,29 @@ improves from `-5` (numerical failure) to `-4` (the documented locally infeasibl
 before with one record changed, `portfolio_risk` 248 model calls in 11 iterations -> 166 in 3;
 the other thirteen are identical. A rule that skips the row build when the objective's Hessian
 came back dense is the next thing to measure and is not written now.
+
+### 7.14 The early-resume blend that was measured and not written, September 13
+
+The I6 measurement of §7.11 left one open question: resumed early the warm start was better on
+three problems, equal on four and worse on three, so should an early resume **blend** the
+handed-over quasi-Newton model toward an identity rather than use it raw? Measured before any
+rule (`bench/friction/warm_start_blend.py`, `bench/results/i6-warmstart/blend.json`), and
+measured with no code change, since `warm_start` accepts a mapping and a modified `hess_approx`
+passes straight through: ten problems, six cut fractions from 0.15 to 0.80, five arms, 60
+resumes, every one attaining the reference. Against the cold restart the geometric means of total
+model evaluations are 0.906 for the model handed over whole, 0.927 for `0.5 H + 0.5 I`, 0.977 for
+`0.5 H + 0.5 (tr H / n) I` and 1.018 for `(tr H / n) I` alone. Against the shipped warm start
+itself the three blends are 1.02x, 1.08x and 1.12x: **every blend is worse, and the more of the
+model that survives the better the resume, at every cut fraction measured.** Where blending was
+supposed to help it does not: on the thirty cuts at a third or earlier the half-identity blend is
+1.003 of cold where the raw model is 1.004, while on the thirty late cuts it gives back a fifth
+of the raw model's gain (0.856 against 0.817).
+
+Nor can a rule be keyed on the model. The four cuts (of 60) where the warm start loses have
+iteration counts 1-35 against the other fifty-six's 0-133, condition numbers 5-91 against
+1-9.1e7 and distances from the scaled identity 0.25-0.69 against 0.00-0.85 -- inside the range on
+every statistic taken. Two of the four are one cut of `infeasible_start_far` whose cold restart
+costs 55 evaluations against the *uninterrupted* solve's 99, which is a lucky cold start rather
+than a bad warm model; of the other two, blending fixes `chainrosen20` at 1/3 and makes
+`with_args` at 1/3 worse. **No rule is written**, and the shipped behaviour -- hand the model over
+whole whenever the user passes a previous result -- stands.
