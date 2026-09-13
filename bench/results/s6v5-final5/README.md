@@ -97,6 +97,10 @@ Ten of the thirteen problems are attained by all seven solvers on track A and el
 Outside the deconv and tcport families nothing separated anybody: pkfit, logistic, ncboxqp,
 noisyqp and engineering3 — five of the seven families — are 9/9 for every solver on both tracks.
 
+One number puts the budget asymmetry in proportion: over all thirteen track-A problems
+fmincon-interior-point spent 12 404 objective evaluations in total, fewer than the 16 885 mincon
+spent on DECONV_200 alone.
+
 ## 3. Per problem, track C (objective + constraint evaluations, then gradient + Jacobian calls)
 
 | problem | n | m | mincon | mincon-ip | mincon-sqp | fmincon-ip | fmincon-sqp | slsqp | trust-constr |
