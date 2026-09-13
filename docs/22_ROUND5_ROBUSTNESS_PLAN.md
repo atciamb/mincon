@@ -554,3 +554,104 @@ costs 55 evaluations against the *uninterrupted* solve's 99, which is a lucky co
 than a bad warm model; of the other two, blending fixes `chainrosen20` at 1/3 and makes
 `with_args` at 1/3 worse. **No rule is written**, and the shipped behaviour -- hand the model over
 whole whenever the user passes a previous result -- stands.
+
+### 7.15 DECONV_200: the scheduling question answered and the stall diagnosed, September 13
+
+`docs/17` items 20a and 20b left two follow-ups on the round-5 miss: whether the portfolio's
+shared budget deserves a scheduling rule, and what the interior-point member is actually doing.
+Both are now measured. **No code changed. One item is answered "leave it alone", the other is
+diagnosed to a single number, and the evidence cited for it in item 20b turns out not to support
+it.** The reproduction is a numpy model of the same quadratic (`0.5 x'Qx + c'x + const`,
+`Q = K'K`, built from `_deconv(200, 522)`); it reproduces the harness's stored track-A record to
+seven significant figures in `f` and its track-C gaps exactly, so the numerics carry over. Wall
+clocks do not: the harness evaluates a 20 100-term sympy sum at about 4.34 ms a call against
+numpy's 0.02 ms, so every clock question below was converted into an evaluation-count question.
+
+**20a: no share of the clock rescues DECONV_200, so the scheduler stands.** The 60 s clock bought
+`mincon-sqp` 13 668 evaluations. Sweeping the budget:
+
+| evaluations | share of the clock | gap | |
+|---:|---|---:|---|
+| 3 417 | a quarter | 1.8275e-3 | miss |
+| 6 834 | **a half** | **3.4413e-4** | **miss, 3.4x the bar** |
+| 10 050 | three quarters | 1.5505e-4 | miss |
+| 13 065 | | 1.0055e-4 | miss |
+| 13 266 | | 9.9682e-5 | attained |
+| 13 668 | all of it | 9.8570e-5 | attained |
+
+The 1e-4 crossing is **one SQP iteration wide**, between iteration 64 and iteration 65, and it
+needs 97.1 % of the evaluations the whole clock bought. Its margin under the bar is 1.4e-6, 1.4 %
+of the band. Half the clock is 3.4x outside it. `mincon-ip` attains at no budget at all, including
+its own voluntary stop. Nor does reordering help: put the SQP member first and the quadratic
+probe's 804 evaluations come out of its share, leaving 12 663 and a gap of 1.0261e-4 -- still a
+miss. **Every rearrangement of the existing members' clock loses the attainment it was meant to
+win, so no scheduling rule is written.** Note also that `mincon-sqp` is not the member the
+portfolio would be handing time to: at `n = 200 > SQP_FIRST_MAX_N = 20` the order puts
+`ip-default` first (`crates/mincon/src/portfolio.rs:102-110, 144`), and the standalone SQP run is
+a different thing from the skipped member.
+
+**20b: the stall is real, and it is a frozen barrier parameter.** The solution has **173 of 200
+bounds active** (143 lower, 30 upper, 27 free), so the barrier duality gap is exactly `173 mu` and
+entering the 1e-4 bar needs `mu <= 5.7803e-7`. The per-iteration trace (`result["trace"]`, on by
+default) shows what happens instead: the adaptive rule oscillates `mu` over six orders for
+fourteen iterations (1e-1, 1e-7, 6.27e-2, 1e-7, 8.43e-3, 1e-7, ...), each swing resetting the
+filter; at iteration 18 it switches to the monotone schedule; and from iteration 19 to iteration
+199 **`mu` is frozen at 6.0220e-7** -- 180 of 199 iterations at one barrier parameter. `173 x
+6.0220e-7 = 1.042e-4`, which is 88 % of the measured 1.17781e-4 gap. The monotone rule cuts `mu`
+only when the subproblem error falls to `10 mu = 6.02e-6`, and a dense quasi-Newton model on this
+barrier Hessian plateaus at about 5e-5, so the cut never fires again and nothing in the solver can
+raise `mu`, loosen the gate or re-centre. The exit is the acceptable-point streak at
+`crates/mincon-ip/src/solver.rs:937-950` (`E_0 <= 1e-4` for 15 consecutive iterations).
+
+That it is a stall and not a budget artefact is settled by restarting the member from its own
+returned point with a fresh 60 s / 100 000 budget five times: gaps 1.16090e-4, 1.17355e-4,
+1.20589e-4, 1.03744e-4, 1.00107e-4, **always zero active bounds**. `mincon-sqp` restarted the same
+way converges in fifteen iterations and stays attained. The lever confirms the mechanism -- `ftol`
+sets `tol.optimality`, which sets the barrier floor `mu_min = tol.optimality / 10`
+(`crates/mincon-py/src/lib.rs:405-407`, `crates/mincon-ip/src/solver.rs:1023`):
+
+| run | final `mu` | `173 mu` | gap | |
+|---|---:|---:|---:|---|
+| default | 6.022e-7 | 1.042e-4 | 1.17781e-4 | miss |
+| `ftol=1e-10` | 2.012e-7 | 3.481e-5 | 5.95662e-5 | attained |
+| `ftol=1e-12` | 4.017e-7 | 6.949e-5 | 8.80580e-5 | attained |
+
+The returned gap tracks wherever `mu` happens to freeze, and it is not monotone in `ftol` because
+where the adaptive phase leaves `mu` before the switch is arbitrary. **That is the defect, and it
+is not written as a rule here**: the candidate it points at -- force a `mu` reduction when the
+monotone schedule has left `mu` unchanged for many iterations while the subproblem error has
+plateaued above the gate -- is one problem's worth of evidence and needs a whole-corpus ablation
+behind an option before it is anything.
+
+**The evidence item 20b cites does not support it.** Item 20b rests on "recovered stationarity
+1.514e-2". That number is not a solver quantity: it is the bench oracle's post-hoc value
+(`bench/harness/oracle.py:139-170`). At the returned point every bound is barely *inactive* --
+minimum slack 3.9e-5 against the oracle's 1e-5 active tolerance -- so the oracle finds no active
+bound, takes its `if not cols` branch and reports `||grad f||_inf / (1 + ||grad f||_inf)`; and the
+harness fills `lam` only when `m > 0` (`bench/harness/worker_python.py:97`), so on a bounds-only
+problem the solver's own bound multipliers are discarded. **A converged run of the same problem
+with an analytic Hessian (16 iterations, `Optimal`, `E_0 = 6.7e-7`) yields the same 1.513e-2.**
+The number cannot tell a stall from a success and must not be quoted as if it could. The stall
+stands on the restart evidence above instead.
+
+**A third finding, which is the actual gate on track A.** The round-5 report recorded that the
+quadratic probe declined on DECONV_200/A "because no banded Hessian is found within two
+off-diagonal bands". The reason the search stops at two bands is
+`crates/mincon/src/quadratic.rs:928`, `band_budget = if dense_ok { dense_rest } else { 2 * n }`:
+when the **dense** build is unaffordable the **band** search is capped at `2n = 400` evaluations,
+which buys bands 1 and 2 (199 + 198) and then returns `Decline::Unstructured(2)` after 804
+objective evaluations. Only the wall conjunct of `dense_ok` fails -- it needs
+`per_eval <= 30 / 19 900 = 1.508 ms` and the recorded rate is 4.34 ms; the size and evaluation
+conjuncts both pass. But the band search itself is far cheaper than the dense build it is being
+priced against: mincon's own line-point fit check accepts at **half-bandwidth 27**, which costs
+5 022 pair evaluations plus the 400-evaluation diagonal, **5 422 evaluations, 25.2 % of the 19 900
+dense pairs** and comfortably inside the 30 s half-budget at the recorded rate. This is not an
+undocumented defect -- the `2n` cap is the documented rule
+(`crates/mincon-core/src/options.rs:206-208`) -- but on this problem shape the documented rule
+declines a build it could afford. DECONV_60 takes the other branch (`dense_ok` true, probe fires,
+half-bandwidth 27, 1362 evaluations), so the cap bites only once `n(n-1)/2 x per_eval` exceeds half
+the time budget. **Nothing is changed here either**: the in-loop wall guard
+(`quadratic.rs:948-951`) breaks even at 5.71 ms a call against the recorded 4.34 ms, a margin of
+about 31 %, so a raised band budget would spend up to the whole build deadline and then decline on
+a slower model; and the effect on the rest of the corpus is untested. It is recorded as the
+measured reason the probe declines, and as the most promising of the three threads.
