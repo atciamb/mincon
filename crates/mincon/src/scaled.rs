@@ -111,6 +111,31 @@ impl<'a, P: Nlp + ?Sized> ScaledNlp<'a, P> {
         zt.iter().zip(&self.d).map(|(v, dj)| v / dj).collect()
     }
 
+    /// A dense row-major `n x n` Hessian in the user's variables -> the scaled
+    /// ones (`H_ij d_i d_j`).
+    pub fn scale_hessian(&self, h: &mut [f64]) {
+        let n = self.d.len();
+        if h.len() == n * n {
+            for i in 0..n {
+                for j in 0..n {
+                    h[i * n + j] *= self.d[i] * self.d[j];
+                }
+            }
+        }
+    }
+
+    /// The inverse of [`ScaledNlp::scale_hessian`].
+    pub fn unscale_hessian(&self, h: &mut [f64]) {
+        let n = self.d.len();
+        if h.len() == n * n {
+            for i in 0..n {
+                for j in 0..n {
+                    h[i * n + j] /= self.d[i] * self.d[j];
+                }
+            }
+        }
+    }
+
     fn jac_pattern(&self) -> &Sparsity {
         self.inner
             .jacobian_structure()

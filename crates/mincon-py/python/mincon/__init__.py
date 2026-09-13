@@ -183,6 +183,7 @@ def minimize(
     tol: float | None = None,
     options: Mapping[str, Any] | None = None,
     callback: Callable[[Mapping[str, Any]], Any] | None = None,
+    warm_start: Mapping[str, Any] | None = None,
 ) -> OptimizeResult:
     """Minimize a scalar function subject to bounds and constraints.
 
@@ -262,16 +263,25 @@ def minimize(
         perturbs a pivot whose sign differs from its block's or keeps it and
         counts the inertia; ``'auto'`` counts with a supplied Hessian, whose
         primal block may legitimately be indefinite, and expects with a
-        quasi-Newton one), ``quadratic_probe`` (bool, default False: test at
+        quasi-Newton one), ``quadratic_probe`` (bool, default True: test at
         the start whether the objective is quadratic and every constraint row
         linear, seven evaluations along two lines, and if so build the
-        constant Hessian by differencing and run the SQP member with it),
+        constant Hessian by differencing, check it is convex, and run the SQP
+        member with it: a bounded least-squares deconvolution then takes 2
+        iterations instead of 166),
         ``bfgs_rescale`` (float, default 0 = off: rebuild the quasi-Newton
         matrix from per-coordinate curvature quotients whenever its curvature
         along an accepted step is off by more than this factor; 10 helps
         separable large problems and hurts dense coupled ones, so it is
         opt-in).
 
+    warm_start : result or mapping, optional
+        A previous result for the same problem (``res``): the solve starts
+        from its multipliers (``res['lambda']``, ``res.z_l``, ``res.z_u``), its
+        quasi-Newton curvature model (``res.hess_approx``, an ``(n, n)`` array
+        when the winning member built one) and, for the interior-point member,
+        the barrier parameter its trace ended at, instead of rebuilding them.
+        Pass ``x0=res.x`` to resume a solve that a budget interrupted.
     callback : callable, optional
         ``callback(row)`` after every iteration with the same dict as a
         ``res.trace`` row (``iter``, ``nfev``, ``f``, ``maxcv``,
@@ -346,6 +356,7 @@ def minimize(
         options=opts,
         hess=hess,
         callback=_streaming_callback(display, callback),
+        warm_start=_warm_start_dict(warm_start),
     )
     result = OptimizeResult(raw)
     if display != "none":
@@ -353,9 +364,29 @@ def minimize(
     return result
 
 
+def _warm_start_dict(warm_start):
+    """A previous result (or any mapping with ``lambda``, ``z_l``, ``z_u`` and optionally
+    ``trace`` / ``mu``) -> the dict the engine takes; ``None`` stays ``None``."""
+    if warm_start is None:
+        return None
+    try:
+        lam, zl, zu = warm_start["lambda"], warm_start["z_l"], warm_start["z_u"]
+    except (KeyError, TypeError) as e:
+        raise ValueError("warm_start must be a previous result (or a mapping with 'lambda', 'z_l' and 'z_u')") from e
+    mu = warm_start.get("mu") if hasattr(warm_start, "get") else None
+    if mu is None:
+        trace = warm_start.get("trace") if hasattr(warm_start, "get") else None
+        if trace:
+            mu = trace[-1].get("mu")
+    hess_approx = warm_start.get("hess_approx") if hasattr(warm_start, "get") else None
+    return {"lambda": np.asarray(lam, float).ravel(), "z_l": np.asarray(zl, float).ravel(),
+            "z_u": np.asarray(zu, float).ravel(), "mu": (None if mu is None or not mu > 0 else float(mu)),
+            "hess_approx": None if hess_approx is None else np.asarray(hess_approx, float)}
+
+
 def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
             nonlcon=None, options=None, *, jac=None, nonlcon_jac=None, hess=None, args=(), tol=None,
-            method=None, callback=None):
+            method=None, callback=None, warm_start=None):
     """Minimize with MATLAB-style constraint inputs and automatic defaults.
 
     ``A @ x <= b``, ``Aeq @ x == beq``, ``lb <= x <= ub`` and
@@ -513,7 +544,8 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
                 start += size
             return hess(x, groups, *args)
     result = minimize(objective, x0, jac=gradient, hess=hessian, bounds=bounds,
-                      constraints=cons, tol=tol, options=options, method=method, callback=callback)
+                      constraints=cons, tol=tol, options=options, method=method, callback=callback,
+                      warm_start=warm_start)
     multipliers = Multipliers()
     start = 0
     for name, size, sign in zip(

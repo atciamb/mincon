@@ -1,0 +1,41 @@
+{
+ "n_problems": 172,
+ "duplicates_overwritten": 0,
+ "solvers": {
+  "mincon@bfgs_rescale=0": {
+   "attained": 158,
+   "scorable": 166,
+   "kkt": 88,
+   "kkt_recovered": 130,
+   "not_ok": 0,
+   "n": 169
+  },
+  "mincon@quadratic_probe=true": {
+   "attained": 158,
+   "scorable": 166,
+   "kkt": 88,
+   "kkt_recovered": 136,
+   "not_ok": 0,
+   "n": 172
+  }
+ },
+ "paired": {
+  "mincon@quadratic_probe=true": {
+   "both": 158,
+   "only_solver": 0,
+   "only_baseline": 0,
+   "neither": 8,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    0.0,
+    0.0
+   ],
+   "geo_mean_ratio": 1.0410973157410375,
+   "ratio_ci": [
+    0.8960803186965492,
+    1.1644596709376787
+   ],
+   "n_common": 158
+  }
+ }
+}

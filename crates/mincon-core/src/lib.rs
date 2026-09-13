@@ -46,7 +46,7 @@ pub use error::{EvalError, SolveError};
 pub use options::{
     Algorithm, BarrierUpdate, DerivativeCheck, Display, FdType, HessianMode, IterationCallback,
     LinearSolverKind, Options, PivotSigns, RegularizationMode, ScalingMode, Tolerances,
-    VariableScaling,
+    VariableScaling, WarmStart,
 };
 pub use problem::{validate, Capabilities, EvalCounters, Nlp, NlpDims};
 pub use result::{ExitFlag, IterationRecord, Solution, SolveReport, Timings};
@@ -68,8 +68,16 @@ pub fn is_free(v: f64) -> bool {
     !v.is_finite() || v.abs() >= INF_BOUND
 }
 
-/// The gradient span above which a start that carries no scale gets a hint.
+/// The gradient span above which a start that carries no scale gets a hint
+/// (with an exact gradient).
 pub const NO_SCALE_HINT_GRADIENT_SPAN: f64 = 1e6;
+/// The same span with a finite-difference gradient: the truncation error of a
+/// forward difference (100 h^3 on a Rosenbrock term at a zero coordinate,
+/// about 1e-6 at the adaptive step) sits above the rounding floor below and
+/// reads as a 1e6 span against an O(1) component; the corpus problems
+/// ROSEN_SPHERE_4 and ROSEN_SPHERE_10 did exactly that (`abl-i5-hint`), while
+/// a unit mismatch worth a note spans 1e12 (UNITS).
+pub const NO_SCALE_HINT_GRADIENT_SPAN_FD: f64 = 1e8;
 /// The span of the start's magnitudes from which the automatic variable
 /// scaling takes its factors, so no hint is needed.
 pub const NO_SCALE_HINT_START_SPAN: f64 = 1e4;
@@ -81,16 +89,29 @@ pub const NO_SCALE_HINT_START_SPAN: f64 = 1e4;
 /// factors (a zero coordinate has no magnitude; nonzero magnitudes within
 /// [`NO_SCALE_HINT_START_SPAN`] are what `VariableScaling::Auto` leaves
 /// alone). A note only: it changes nothing about the solve.
+///
+/// With a finite-difference gradient (`approximate`), components below the
+/// difference's own accuracy, `10 sqrt(eps) max(1, |f0|)`, count as zero:
+/// an exact zero component (HS60 at its start has gradient (2, 0, 0)) comes
+/// back as 1e-9 noise, which would otherwise read as a 1e9 span.
 #[must_use]
-pub fn no_scale_hint(x0: &[f64], grad: &[f64]) -> Option<String> {
+pub fn no_scale_hint(x0: &[f64], grad: &[f64], f0: f64, approximate: bool) -> Option<String> {
     let n = x0.len();
     if n < 2 || grad.len() != n {
         return None;
     }
+    let (floor, span) = if approximate {
+        (
+            10.0 * EPS.sqrt() * f0.abs().max(1.0),
+            NO_SCALE_HINT_GRADIENT_SPAN_FD,
+        )
+    } else {
+        (0.0, NO_SCALE_HINT_GRADIENT_SPAN)
+    };
     let (mut gmin, mut gmax, mut imin, mut imax) = (f64::INFINITY, 0.0_f64, 0usize, 0usize);
     for (i, g) in grad.iter().enumerate() {
         let a = g.abs();
-        if !a.is_finite() || a == 0.0 {
+        if !a.is_finite() || a <= floor {
             continue;
         }
         if a < gmin {
@@ -102,7 +123,7 @@ pub fn no_scale_hint(x0: &[f64], grad: &[f64]) -> Option<String> {
             imax = i;
         }
     }
-    if gmin == f64::INFINITY || gmax < NO_SCALE_HINT_GRADIENT_SPAN * gmin {
+    if gmin == f64::INFINITY || gmax < span * gmin {
         return None;
     }
     let mut zeros = 0usize;

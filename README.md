@@ -118,7 +118,21 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   member 10, against 5 and 10 with their quasi-Newton models.
 * **Seeing and steering a run** — `callback=` after every iteration with the
   trace row (return `True` to stop), `disp=True` streams the iteration table,
-  `method=` on the `fmincon` facade, `mincon.multistart` for several starts.
+  `method=` on the `fmincon` facade, `mincon.multistart` for several starts,
+  and `warm_start=res` resumes from a previous result's multipliers and
+  quasi-Newton model (`res.hess_approx`): resumed at two thirds of its
+  evaluations, a solve lands within 5 % of the uninterrupted count on four of
+  the ten friction problems where a cold restart costs 1.1x to 1.5x more
+  (`bench/results/i6-warmstart`).
+* **Quadratic programs are recognised** — by default (`quadratic_probe=True`)
+  seven evaluations along two lines at the start tell whether the objective
+  is quadratic and every constraint row linear; if so the constant Hessian
+  is built by differencing, checked for convexity, and the SQP member takes
+  Newton steps with it (a 50-variable bounded least-squares deconvolution:
+  8595 evaluations and 166 iterations become 1485 and 2). On the corpus no
+  attainment changed and the evaluation cost is a wash (1.04 [0.90, 1.16]:
+  0.2x to 0.8x where the quasi-Newton path churned, 1.5x to 6.6x on dense
+  quadratics it solved in a few iterations; `bench/results/abl-i5`).
 * **Variable scaling from the start** — by default (`scale_variables='auto'`)
   the solve runs in variables divided by their starting magnitudes when those
   span a factor of 1e4 (fmincon's `TypicalX` done for you); on the corpus it

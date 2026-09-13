@@ -542,7 +542,7 @@ fn parse_algorithm(method: Option<&str>) -> PyResult<Algorithm> {
 /// Deliberately shaped like `scipy.optimize.minimize`, so an existing script
 /// needs only a changed import.
 #[pyfunction]
-#[pyo3(signature = (fun, x0, jac=None, bounds=None, constraints=None, method=None, options=None, hess=None, callback=None))]
+#[pyo3(signature = (fun, x0, jac=None, bounds=None, constraints=None, method=None, options=None, hess=None, callback=None, warm_start=None))]
 #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
 fn minimize(
     py: Python<'_>,
@@ -555,6 +555,7 @@ fn minimize(
     options: Option<Bound<'_, PyDict>>,
     hess: Option<Py<PyAny>>,
     callback: Option<Py<PyAny>>,
+    warm_start: Option<Bound<'_, PyDict>>,
 ) -> PyResult<Py<PyAny>> {
     let x0v: Vec<f64> = x0.as_slice()?.to_vec();
     let n = x0v.len();
@@ -671,6 +672,56 @@ fn minimize(
     let m = cl.len();
     let mut opts = parse_options(py, options.as_ref())?;
     opts.algorithm = parse_algorithm(method)?;
+    if let Some(w) = &warm_start {
+        let vec_of = |key: &str| -> PyResult<Vec<f64>> {
+            match w.get_item(key)? {
+                Some(v) if !v.is_none() => Ok(v
+                    .extract::<PyReadonlyArray1<'_, f64>>()?
+                    .as_slice()?
+                    .to_vec()),
+                _ => Ok(Vec::new()),
+            }
+        };
+        let lambda = vec_of("lambda")?;
+        let z_l = vec_of("z_l")?;
+        let z_u = vec_of("z_u")?;
+        if lambda.len() != m || z_l.len() != n || z_u.len() != n {
+            return Err(PyValueError::new_err(format!(
+                "warm_start does not match this problem: it carries {} constraint and {} / {} bound multipliers, the problem has {m} constraint rows and {n} variables",
+                lambda.len(),
+                z_l.len(),
+                z_u.len()
+            )));
+        }
+        let mu = match w.get_item("mu")? {
+            Some(v) if !v.is_none() => Some(v.extract::<f64>()?),
+            _ => None,
+        };
+        let quasi_newton = match w.get_item("hess_approx")? {
+            Some(v) if !v.is_none() => {
+                let np = py.import("numpy")?;
+                let flat: Vec<f64> = np
+                    .call_method1("asarray", (v, "float64"))
+                    .and_then(|a| a.call_method0("ravel"))?
+                    .extract()?;
+                if flat.len() != n * n {
+                    return Err(PyValueError::new_err(format!(
+                        "warm_start['hess_approx'] has {} values; expected an ({n}, {n}) matrix",
+                        flat.len()
+                    )));
+                }
+                Some(flat)
+            }
+            _ => None,
+        };
+        opts.warm_start = Some(mincon_core::WarmStart {
+            lambda,
+            z_l,
+            z_u,
+            mu,
+            quasi_newton,
+        });
+    }
     // The user's callback runs with the GIL re-acquired for the call only; an
     // exception inside it stops the solve and is re-raised afterwards.
     let callback_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -773,6 +824,14 @@ fn minimize(
     d.set_item("lambda", report.solution.lambda.to_pyarray(py))?;
     d.set_item("z_l", report.solution.z_l.to_pyarray(py))?;
     d.set_item("z_u", report.solution.z_u.to_pyarray(py))?;
+    match &report.quasi_newton {
+        Some(q) => {
+            let n = report.solution.x.len();
+            let arr = q.to_pyarray(py);
+            d.set_item("hess_approx", arr.call_method1("reshape", ((n, n),))?)?;
+        }
+        None => d.set_item("hess_approx", py.None())?,
+    }
     d.set_item("notes", PyList::new(py, &report.notes)?)?;
     let trace = PyList::empty(py);
     for t in &report.trace {

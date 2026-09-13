@@ -198,6 +198,11 @@ pub struct SolveReport {
     /// Human-readable notes: scaling factors applied, restoration entries,
     /// derivative-check discrepancies, why the portfolio chose this answer.
     pub notes: Vec<String>,
+    /// The quasi-Newton model of the Lagrangian Hessian at the exit, dense
+    /// row-major `n x n` in the user's units and variables, when the member
+    /// used one and `n <= 1000`; a warm start (`Options::warm_start`) resumes
+    /// from it. `None` with an exact Hessian or a larger `n`.
+    pub quasi_newton: Option<Vec<f64>>,
 }
 
 impl SolveReport {

@@ -65,10 +65,31 @@ pub fn minimize<P: Nlp + Sync + ?Sized>(
     if opts.scale_variables != VariableScaling::Off {
         if let Some(d) = scaled::factors_from_start(nlp, opts.scale_variables) {
             let s = scaled::ScaledNlp::new(nlp, d);
+            let scaled_opts;
+            let opts = if let Some(w) = opts
+                .warm_start
+                .as_ref()
+                .filter(|w| w.quasi_newton.is_some())
+            {
+                let mut w = w.clone();
+                if let Some(q) = w.quasi_newton.as_mut() {
+                    s.scale_hessian(q);
+                }
+                scaled_opts = Options {
+                    warm_start: Some(w),
+                    ..opts.clone()
+                };
+                &scaled_opts
+            } else {
+                opts
+            };
             let mut r = minimize_unscaled(&s, opts)?;
             r.solution.x = s.unscale_x(&r.solution.x);
             r.solution.z_l = s.unscale_bound_multipliers(&r.solution.z_l);
             r.solution.z_u = s.unscale_bound_multipliers(&r.solution.z_u);
+            if let Some(q) = r.quasi_newton.as_mut() {
+                s.unscale_hessian(q);
+            }
             let (lo, hi) = s
                 .factors()
                 .iter()

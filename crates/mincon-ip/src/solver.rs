@@ -605,6 +605,18 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         let mut v = self.initial_point()?;
 
         let mut mu = self.opts.mu_init;
+        let warm = self
+            .opts
+            .warm_start
+            .as_ref()
+            .filter(|w| w.lambda.len() == m && w.z_l.len() == n && w.z_u.len() == n);
+        if let Some(w) = warm {
+            if let Some(m0) = w.mu {
+                if m0.is_finite() && m0 > 0.0 {
+                    mu = m0.clamp(self.opts.tol.optimality / 10.0, self.opts.mu_init);
+                }
+            }
+        }
         let mut point = self.evaluate(&v, mu).map_err(SolveError::InitialPoint)?;
 
         let mut lambda = vec![0.0; m];
@@ -613,6 +625,37 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
         for j in 0..nv {
             z_l[j] = if self.has_l[j] { 1.0 } else { 0.0 };
             z_u[j] = if self.has_u[j] { 1.0 } else { 0.0 };
+        }
+        // I6: resume from a previous solve's duals (user units -> the member's
+        // scaled units, the inverse of the report's map), then clamp the bound
+        // multipliers to the barrier's neighbourhood of mu as every iteration does.
+        if let Some(w) = warm {
+            for i in 0..m {
+                lambda[i] = w.lambda[i] * self.d_f / self.d_c[i];
+            }
+            for j in 0..n {
+                if self.has_l[j] {
+                    z_l[j] = (w.z_l[j] * self.d_f).max(1e-12);
+                }
+                if self.has_u[j] {
+                    z_u[j] = (w.z_u[j] * self.d_f).max(1e-12);
+                }
+            }
+            self.reset_bound_multipliers(&v, mu, &mut z_l, &mut z_u);
+            let mut curvature = "";
+            if let (Some(q), Hess::Bfgs(b)) = (w.quasi_newton.as_ref(), &mut self.hess) {
+                let scaled: Vec<f64> = q.iter().map(|v| v * self.d_f).collect();
+                if b.set_dense(&scaled) {
+                    curvature = " and its quasi-Newton curvature model";
+                }
+            }
+            self.notes.push(format!(
+                "Warm start: multipliers{curvature} taken from the previous solve, barrier parameter {mu:.1e}."
+            ));
+        } else if self.opts.warm_start.is_some() {
+            self.notes.push(
+                "Warm start ignored: the multipliers' lengths do not match this problem.".into(),
+            );
         }
 
         let mut grad_f = vec![0.0; n];
@@ -623,7 +666,10 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             *g *= self.d_f;
         }
         if self.eval.nlp().typical_x().is_none() {
-            if let Some(hint) = mincon_core::no_scale_hint(&v[..n], &grad_f) {
+            let approximate = self.eval.gradient_is_approximate();
+            if let Some(hint) =
+                mincon_core::no_scale_hint(&v[..n], &grad_f, point.f / self.d_f, approximate)
+            {
                 self.notes.push(hint);
             }
         }
@@ -1813,6 +1859,12 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             trace,
             timings,
             notes,
+            quasi_newton: match &self.hess {
+                Hess::Bfgs(b) if n <= 1000 => {
+                    Some(b.dense().iter().map(|v| v / self.d_f).collect())
+                }
+                _ => None,
+            },
         }
     }
 }

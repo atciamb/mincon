@@ -194,6 +194,30 @@ pub enum PivotSigns {
     Free,
 }
 
+/// A warm start (round 5 I6): the multipliers of a previous solve of the same
+/// problem, in the user's units and the report's sign convention (`Solution`),
+/// optionally with the barrier parameter the previous solve reached. Both
+/// members start from them instead of zero (interior point: bound multipliers
+/// clamped to the barrier's neighbourhood of `mu`, which is taken from `mu` or
+/// the default), so a solve interrupted by a budget resumes from `x` and its
+/// duals instead of re-estimating them. Lengths that do not match the problem
+/// are ignored with a note.
+#[derive(Debug, Clone, Default)]
+pub struct WarmStart {
+    /// Constraint multipliers, `m` entries.
+    pub lambda: Vec<f64>,
+    /// Lower-bound multipliers, `n` entries (zero where there is no bound).
+    pub z_l: Vec<f64>,
+    /// Upper-bound multipliers, `n` entries.
+    pub z_u: Vec<f64>,
+    /// Barrier parameter to resume the interior-point member at.
+    pub mu: Option<f64>,
+    /// The previous solve's quasi-Newton model (`SolveReport::quasi_newton`),
+    /// dense row-major `n x n` in the user's units; both members start their
+    /// BFGS model from it instead of the identity.
+    pub quasi_newton: Option<Vec<f64>>,
+}
+
 /// How the KKT matrix is regularized and its inertia established.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RegularizationMode {
@@ -350,7 +374,10 @@ pub struct Options {
     /// is linear along them, the constant Hessian is built by differencing
     /// and the SQP member runs with it as an exact Hessian before the
     /// ordinary portfolio. A general nonlinear problem pays three objective
-    /// evaluations for the test. Off until its whole-corpus ablation.
+    /// evaluations for the test. Default on since `bench/results/abl-i5`: no
+    /// corpus attainment changed, cost 1.04 [0.90, 1.16] (0.2x to 0.8x on
+    /// iteration-heavy QPs, 1.5x to 6.6x on dense ones the quasi-Newton path
+    /// solved in few iterations), POLYQP_100 certified, box_lsq 0.17x.
     pub quadratic_probe: bool,
     /// Finite-difference flavour.
     pub fd_type: FdType,
@@ -389,6 +416,8 @@ pub struct Options {
     /// Fraction-to-boundary floor.
     pub tau_min: f64,
 
+    /// Multipliers to start from (see [`WarmStart`]).
+    pub warm_start: Option<WarmStart>,
     /// KKT regularization strategy.
     pub regularization: RegularizationMode,
     /// What the `LDL^T` does with a pivot whose sign differs from its block's.
@@ -440,7 +469,7 @@ impl Default for Options {
             bfgs_curvature_rescale: f64::INFINITY,
 
             scale_variables: VariableScaling::Auto,
-            quadratic_probe: false,
+            quadratic_probe: true,
             fd_type: FdType::Adaptive,
             fd_step: None,
             fd_respect_bounds: true,
@@ -455,6 +484,7 @@ impl Default for Options {
             mu_init: 0.1,
             tau_min: 0.99,
 
+            warm_start: None,
             regularization: RegularizationMode::Hybrid,
             kkt_pivot_signs: PivotSigns::Auto,
             linear_solver: LinearSolverKind::Auto,

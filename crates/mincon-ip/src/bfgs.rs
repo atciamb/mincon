@@ -362,6 +362,22 @@ impl DenseBfgs {
         self.b.clone()
     }
 
+    /// Replace the matrix by a full row-major `n * n` one (symmetrised); a
+    /// warm start hands a previous solve's curvature model over this way.
+    /// Ignored when the length is wrong or a value is not finite.
+    pub fn set_dense(&mut self, full: &[f64]) -> bool {
+        let n = self.n;
+        if full.len() != n * n || full.iter().any(|v| !v.is_finite()) {
+            return false;
+        }
+        for i in 0..n {
+            for j in 0..n {
+                self.b[i * n + j] = 0.5 * (full[i * n + j] + full[j * n + i]);
+            }
+        }
+        true
+    }
+
     /// `out <- B * v`.
     pub fn multiply(&self, v: &[f64], out: &mut [f64]) {
         for i in 0..self.n {

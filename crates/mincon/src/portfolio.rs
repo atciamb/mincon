@@ -439,6 +439,7 @@ mod tests {
             trace: vec![],
             timings: Timings::default(),
             notes: vec![],
+            quasi_newton: None,
         }
     }
 

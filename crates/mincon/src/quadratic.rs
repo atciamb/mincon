@@ -66,6 +66,7 @@ pub struct QuadraticModel<'a, P: Nlp + ?Sized> {
 
 /// Why the probe declined; only reported under `MINCON_QP_DEBUG=1`.
 enum Decline {
+    NotConvex,
     NotQuadratic(usize),
     NotLinear(usize, usize),
     TooLarge(usize),
@@ -77,6 +78,7 @@ enum Decline {
 impl std::fmt::Display for Decline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::NotConvex => write!(f, "the quadratic is not convex"),
             Self::NotQuadratic(line) => {
                 write!(f, "the objective is not quadratic along line {line}")
             }
@@ -363,6 +365,14 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
         }
     }
 
+    // Only a convex quadratic is handed over: every KKT point of a convex QP is
+    // its global minimum, so the Newton path cannot end in a different basin
+    // from the quasi-Newton one (HS44, a nonconvex QP with several local
+    // minima, did exactly that in the first ablation, `abl-i5-rejected`).
+    if !is_positive_semidefinite(&hess, n) {
+        return Err((Decline::NotConvex, f_evals));
+    }
+
     // The model must reproduce the six line points, which did not build it.
     let mut worst = 0.0_f64;
     for (x, f) in &line_points {
@@ -418,6 +428,38 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
         g_evals,
         note,
     })
+}
+
+/// Cholesky of `H + delta I` with `delta = 1e-10 max(1, max |H_ii|)`: succeeds
+/// exactly when the smallest eigenvalue is above `-delta`, i.e. the quadratic is
+/// convex up to rounding (a singular positive semidefinite Hessian, as in a
+/// rank-deficient least-squares fit, passes).
+fn is_positive_semidefinite(hess: &[f64], n: usize) -> bool {
+    let mut max_diag = 1.0_f64;
+    for i in 0..n {
+        max_diag = max_diag.max(hess[i * n + i].abs());
+    }
+    let delta = 1e-10 * max_diag;
+    let mut l = vec![0.0; n * n];
+    for j in 0..n {
+        let mut d = hess[j * n + j] + delta;
+        for k in 0..j {
+            d -= l[j * n + k] * l[j * n + k];
+        }
+        if d <= 0.0 || !d.is_finite() {
+            return false;
+        }
+        let ljj = d.sqrt();
+        l[j * n + j] = ljj;
+        for i in j + 1..n {
+            let mut s = hess[i * n + j];
+            for k in 0..j {
+                s -= l[i * n + k] * l[j * n + k];
+            }
+            l[i * n + j] = s / ljj;
+        }
+    }
+    true
 }
 
 impl<P: Nlp + ?Sized> Nlp for QuadraticModel<'_, P> {
@@ -567,6 +609,20 @@ mod tests {
         let (q, spent) = probe_counted(&p, &Options::default());
         assert!(q.is_none());
         assert_eq!(spent, 4);
+    }
+
+    #[test]
+    fn a_nonconvex_quadratic_is_declined() {
+        // A saddle: the Newton path could end in a basin the quasi-Newton path
+        // does not (HS44 in abl-i5-rejected).
+        let p = Problem::new(2, |x| x[0] * x[0] - x[1] * x[1] + 0.5 * x[0] * x[1])
+            .start_at(&[0.3, 0.2])
+            .lower_bounds(&[-1.0, -1.0])
+            .upper_bounds(&[1.0, 1.0]);
+        assert!(probe(&p, &Options::default()).is_none());
+        // A singular but positive semidefinite one passes.
+        let q = Problem::new(2, |x| (x[0] + x[1]) * (x[0] + x[1])).start_at(&[0.3, 0.2]);
+        assert!(probe(&q, &Options::default()).is_some());
     }
 
     #[test]

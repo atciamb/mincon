@@ -153,6 +153,8 @@ I3 + the API increments), summarised in `summary-i1.md` and `summary-i3.md`:
 | I1 + I2 + I3 | 12/14 | the SQP member no longer declares infeasibility and certifies the same first-order point fmincon-interior-point certifies (f = 16.44, `k`, 15 evaluations) | stops before iterating: "The supplied derivatives disagree with finite differences along a test direction at x0 (relative error 3.8e-1) ... grad f [1]  4.0 vs -4.0" (11 evaluations) | identical |
 | final tree (I1-I4, I7-I9, `scale_variables='auto'` default), `mincon-fmincon-final.jsonl` | **13/14** | attained, `Optimal`, 27 evaluations: the start (1e6, 1e-6) reveals the units and the solve runs in scaled variables (`abl-i8`) | as above | identical (`-i8-auto` and `-final` runs) |
 
+| final tree of the S-E / I5 / I6 session (`quadratic_probe` default, counted KKT pivot signs, no-scale note), `mincon-fmincon-final5.jsonl`, `summary-final5.md` | **13/14** | as above | as above | **box_lsq 8595 -> 1485** (a convex QP: its constant Hessian is built and the SQP member takes 2 iterations), linear_only 121 -> 78 (same), infeasible_start_far 99 -> 116 (a QP too; the build costs more than it saves at n = 10), noisy_simulator 86 -> 107 (looked quadratic along the two lines, the model was built and declined), every other record +4 evaluations (the probe's first line) |
+
 With the final tree mincon attains every problem in the audit except the one whose supplied
 gradient is wrong, where it is the only solver that refuses to iterate and names the component.
 

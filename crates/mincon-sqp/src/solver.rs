@@ -1021,6 +1021,12 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
             trace,
             timings,
             notes: std::mem::take(&mut self.notes),
+            quasi_newton: match &self.hess {
+                Hess::Bfgs(b) if n <= 1000 => {
+                    Some(b.dense().iter().map(|v| v / self.d_f).collect())
+                }
+                _ => None,
+            },
         }
     }
 
@@ -1098,7 +1104,8 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
         self.project(&mut x0);
         let mut p = self.point(x0).map_err(SolveError::InitialPoint)?;
         if self.eval.nlp().typical_x().is_none() {
-            if let Some(hint) = mincon_core::no_scale_hint(&p.x, &p.g) {
+            let approximate = self.eval.gradient_is_approximate();
+            if let Some(hint) = mincon_core::no_scale_hint(&p.x, &p.g, p.f, approximate) {
                 self.notes.push(hint);
             }
         }
@@ -1119,6 +1126,36 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
         let g0 = p.g.iter().fold(0.0_f64, |a, v| a.max(v.abs()));
         let j0 = p.j.iter().fold(0.0_f64, |a, v| a.max(v.abs())).max(1.0);
         let mut rho = (g0 / j0).max(1.0);
+        // I6: resume from a previous solve's duals (user units -> scaled units,
+        // the inverse of the report's map); the penalty must dominate them.
+        match self.opts.warm_start.as_ref() {
+            Some(w) if w.lambda.len() == m && w.z_l.len() == n && w.z_u.len() == n => {
+                for i in 0..m {
+                    lambda[i] = w.lambda[i] * self.d_f / self.d_c[i];
+                }
+                for j in 0..n {
+                    z_l[j] = w.z_l[j] * self.d_f;
+                    z_u[j] = w.z_u[j] * self.d_f;
+                }
+                let lam_max = lambda.iter().fold(0.0_f64, |a, v| a.max(v.abs()));
+                rho = rho.max(1.1 * lam_max);
+                let mut curvature = "";
+                if let (Some(q), Hess::Bfgs(b)) = (w.quasi_newton.as_ref(), &mut self.hess) {
+                    // User units -> the member's scaled Lagrangian (d_f times).
+                    let scaled: Vec<f64> = q.iter().map(|v| v * self.d_f).collect();
+                    if b.set_dense(&scaled) {
+                        curvature = " and its quasi-Newton curvature model";
+                    }
+                }
+                self.notes.push(format!(
+                    "Warm start: multipliers{curvature} taken from the previous solve."
+                ));
+            }
+            Some(_) => self.notes.push(
+                "Warm start ignored: the multipliers' lengths do not match this problem.".into(),
+            ),
+            None => {}
+        }
 
         let approximate = self.opts.fd_error_aware
             && (self.eval.gradient_is_approximate() || self.eval.jacobian_is_approximate());

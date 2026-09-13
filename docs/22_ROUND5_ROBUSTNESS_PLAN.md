@@ -92,7 +92,7 @@ for fourteen realistic problems: mincon 12/14 first-try attainment against fminc
 | I2 | D12: no `LocallyInfeasible` with v_lin = 0; curvature rescale from a rejected step | none (correctness) | bad_scaling SQP exit; `abl-i2`; diagnostic problems |
 | I3 | directional derivative check when derivatives are supplied | `check_derivatives = "auto"` (new default: two-evaluation directional check; `True` keeps the full check; `False` off) | wrong_gradient message; track C corpus no false alarm |
 | I4 | streaming display, `callback=`, stop from the callback, `maxtime` honoured through it | `disp`, `callback` | `run_testset` timing; records unchanged |
-| I5 | structure routing to the active-set QP for convex QPs | `route = "auto"` / `"size"` (old) | S-C traces; box_lsq, OBSTACLE, COVQP; `abl-i5` |
+| I5 | as planned: structure routing to the active-set QP for convex QPs; as built after S-C (7.7): a quadratic-program probe at the start that hands the SQP member the exact, constant Hessian | `quadratic_probe` (default on after `abl-i5`) | S-C traces; box_lsq, OBSTACLE, COVQP; `abl-i5` |
 | I6 | `resume(result)` warm start | API only | round-4 budget exits re-run with a budget then resumed |
 | I7 | `hess=` in Python; facade `method=` | API only | final4 track C with Hessians |
 | I8 | variable scaling from x0 magnitudes | `scale_variables = False` (opt-in until ablated) | bad_scaling; `abl-i8` on the corpus with it on |
@@ -304,3 +304,114 @@ falsifier holds on both counts; `Auto` stays the default (`bench/results/abl-se/
 
 Both members are now Newton-fast with a supplied Hessian (SQP 7, interior point 10 on HS71,
 against 5 and 10 with quasi-Newton), so `hess=` is no longer documented as experimental.
+
+### 7.9 I5, the quadratic-program probe, September 12
+
+Built as `docs/22` §7.7 concluded, not as the routing rule of §4: `crate mincon`, `quadratic.rs`,
+`Options::quadratic_probe` (Python `quadratic_probe`). At the start the objective is sampled at
+`x0 + k h d`, `k = 0..3`, along two random bounds-respecting lines (`h` a tenth of each
+coordinate's magnitude, never past a bound at three steps); a quadratic has a zero third
+difference and a linear constraint row a zero second difference, both tested at 1e-8 of the
+variation along the line with a 1e-12 floor on the values' magnitude (a true quadratic sits at
+1e-13; the friction problem noisy_simulator, a quadratic plus 1e-9 noise, sat at 1e-7 and was
+first accepted, after which its Newton steps ended in a failed line search and an `Acceptable`
+exit where the quasi-Newton member certifies, so the tolerance was tightened and only an
+`Optimal` exit from the quadratic member now settles the portfolio). The first failing test ends
+the probe, so a general problem pays three objective evaluations (four with `f(x0)`). When both
+lines pass, the constant Hessian is built by differencing the gradient when the model supplies
+one (`n` calls) or function values otherwise (`n (n + 3) / 2` calls, skipped above `n = 500`,
+when the evaluation budget cannot pay for it, or when the probe's own evaluations predict the
+build would take more than half of a wall-time budget) and checked at the six line points,
+which did not build it; the SQP member then runs with it as an exact Lagrangian Hessian (the
+constraints being linear) before the ordinary members, and falls through to them unless it
+certifies. Only the objective's Hessian is built, so a quadratic constraint row (COVQP's risk
+row, QUADSPHERE-style spheres) declines the probe by design: extending it to quadratic rows
+would need their Hessians too.
+
+Friction audit with the probe on (`s7-friction/mincon-fmincon-final5.jsonl`, `summary-final5.md`,
+the final tree of this session at defaults),
+13/14 as before with every record `Optimal`: **box_lsq 8595 -> 1485 evaluations (0.17x, 166 ->
+2 iterations)**, linear_only 121 -> 78, infeasible_start_far 99 -> 116 (a projection onto the
+simplex is a QP; the build costs more than the 10-variable solve saved), noisy_simulator declined
+at 107 against 86 (the two lines pass, the build's 14 evaluations are spent, the model check or
+the tightened line test declines), every nonlinear problem +4 evaluations. Corpus development
+runs before the ablation: OBSTACLE_50 4246 -> 1485, OBSTACLE_200 51 656 -> 20 910,
+QUADSPHERE2_30 1271 -> 595, POLYQP_100 certified (`Optimal` in 1 iteration, 9.5 s) where the
+default stopped on the step tolerance (status 6, 18.3 s) at 5359 against 3648 evaluations;
+losses in evaluations where the quasi-Newton path needed few iterations relative to `n`:
+QUADSPHERE_100 1414 -> 5359, NNLS_SIMPLEX_120 7264 -> 7629, LQTRAJ_10 270 -> 593. The corpus
+problem UNITS is detected as a QP and its Newton step lands on the row-constrained point
+f = 5 that every solver reaches there, with a first-order certificate the oracle also grants
+(the Hessian's condition number of 1e24 is beyond double precision; only scaled variables
+solve it, and the start carries none, which is what the new note says, §7.10).
+
+Whole-corpus ablation, first as built (`abl-i5-rejected`): **157/158, HS44 lost**, a nonconvex
+QP with two local minima where the quasi-Newton path reaches the global one (f = -15) from the
+zero start and the Newton path with the exact indefinite Hessian certifies the other (f = -13),
+the basin failure the falsifier was written for. The fix is a restriction, not a tuning: the
+Hessian is handed over only when it is positive semidefinite (Cholesky of `H + 1e-10 max|H_ii|
+I`), since every KKT point of a convex QP is its global minimum. Re-ablated as `abl-i5`:
+**158/158, no record lost**, cost 1.04 [0.90, 1.16] on 158 (a wash with a wide interval), 35
+convex QPs detected and every one `Optimal`, HS44 declined and kept its global minimum,
+diagnostics unchanged; gains of 0.23x to 0.79x on NNLS_SIMPLEX, OBSTACLE, QUADSPHERE_10,
+QUADSPHERE2_30, HS118, POLYQP and the small HS quadratics, losses of 1.5x to 6.6x on LQTRAJ_50,
+QUADSPHERE_100, QUADSPHERE2_300, MANY_INEQ and the two-variable problems (the build's
+`n (n + 3) / 2` evaluations pay where the quasi-Newton path needed more than about `n / 2`
+iterations). The falsifier holds and the robustness gains are real (POLYQP_100 certified,
+box_lsq 0.17x), so **`quadratic_probe` is the default**; the evaluation trade-off is reported,
+not tuned away. Follow-ups to measure: a build from a supplied gradient or a sparsity pattern
+(OBSTACLE's tridiagonal Hessian), quadratic constraint rows.
+
+### 7.10 A note for starts that carry no scale, September 12
+
+`mincon_core::no_scale_hint`, called by both members after the first gradient: when the
+objective gradient at the start spans a factor 1e6 or more across the variables and the start's
+magnitudes cannot supply the scale factors (a coordinate is zero, or the nonzero magnitudes lie
+within the 1e4 span that `scale_variables='auto'` leaves alone), the report's notes say so and
+point at a start of typical magnitudes or `typical_x`. A note only. Fires on UNITS (gradient span
+1e12 at the zero start). Measured on the whole corpus before any rule was written
+(`abl-i5-rejected`, notes): 11 fires, UNITS and ten false alarms (HS14, HS22, HS32, HS53, HS60,
+HS77, HS79, FLAT_BOUND, ROSEN_SPHERE_4, ROSEN_SPHERE_10) whose exact gradient at the start has
+zero components that finite differences return as 1e-9 noise. With components below the
+difference's rounding accuracy (`10 sqrt(eps) max(1, |f0|)`) counted as zero (`abl-i5-hint`):
+3 fires, UNITS and the two ROSEN_SPHERE problems, where a forward difference's truncation error
+at a zero coordinate (about 1e-6) reads as a 1e6 span. The committed rule keeps the floor and
+asks a span of 1e8 from a finite-difference gradient (1e6 from an exact one), which by
+construction keeps UNITS (1e12) and drops both ROSEN_SPHERE fires: one fire on the corpus.
+
+### 7.11 I6, warm start, September 12
+
+`Options::warm_start` (`WarmStart { lambda, z_l, z_u, mu, quasi_newton }`), Python
+`warm_start=res` on `minimize` and `fmincon`, where `res` is a previous result of the same
+problem: both members start from its multipliers (user units mapped into the member's scaled
+units, the inverse of the report's map) and its quasi-Newton curvature model (`res.hess_approx`,
+the dense `n x n` BFGS matrix every report now carries for `n <= 1000`, mapped through the
+objective and variable scalings); the interior-point member also resumes at the barrier
+parameter the trace ended at and clamps the bound multipliers to its neighbourhood. Measured
+before writing any rule (`bench/friction/warm_start_study.py`, `bench/results/i6-warmstart`):
+every friction problem solved at defaults, interrupted at a third and at two thirds of its
+evaluations, then resumed from `res.x` warm and cold. **Multipliers alone changed nothing**: the
+SQP member re-derives them from its QP every iteration, so warm and cold restarts spent
+identical evaluations on all nine SQP-first problems and the interior-point one differed by
+noise. With the curvature model handed over the picture is:
+
+| problem | uninterrupted | cut at 2/3, warm total | cut at 2/3, cold total | cut at 1/3, warm | cut at 1/3, cold |
+|---|---:|---:|---:|---:|---:|
+| box_lsq (interior point first) | 8595 | 8391 | 11 561 | 8947 | 9459 |
+| odefit | 96 | 100 | 147 | 125 | 125 |
+| pressure_vessel | 57 | 68 | 95 | 68 | 77 |
+| portfolio_risk | 111 | 127 | 171 | 120 | 120 |
+| linear_only | 125 | 132 | 136 | 132 | 169 |
+| hs71 | 32 | 37 | 42 | 37 | 37 |
+| chainrosen20 | 2483 | 2504 | 2725 | 2793 | 2572 |
+| with_args | 99 | 103 | 133 | 103 | 90 |
+| infeasible_start_far | 99 | 177 | 273 | 110 | 55 |
+| equality_circle | 26 | 30 | 30 | 30 | 30 |
+
+Every restart attains the reference. Resumed late, the warm start beats the cold restart on
+eight of ten problems (equal on the other two) and lands within 5 % of the uninterrupted run on
+four, where the cold restart costs 1.1x to 1.5x more; resumed early, it is better on three,
+equal on four and worse on three (chainrosen20, infeasible_start_far and with_args, where the
+early curvature model is a worse start than the identity). No default changes: the warm start only runs when the user passes a previous result,
+so no corpus ablation applies; the API is the increment. The round-4 budget exits (COVQP_300,
+OBSTACLE_500) are wall-time exits on this machine and were not re-run.

@@ -279,3 +279,22 @@ def test_a_start_without_scale_gets_a_hint():
     r2 = mincon.fmincon(f, [1e-6, 1e6], A=[[-1e6, -1e-6]], b=[-3.])
     assert not any("carries no scale" in n for n in r2.notes), r2.notes
     assert r2.success and abs(r2.fun - 0.5) < 1e-4
+
+
+def test_warm_start_resumes_an_interrupted_solve():
+    # Chained Rosenbrock in a box (the friction problem chainrosen20 at n = 8).
+    n = 8
+
+    def f(x):
+        return float(np.sum(100. * (x[1:] - x[:-1] ** 2) ** 2 + (1. - x[:-1]) ** 2))
+    x0 = np.array([-1.2 if i % 2 == 0 else 1. for i in range(n)])
+    kw = dict(lb=-2., ub=2., nonlcon=lambda x: ([x.sum() - n + 0.5], []))
+    full = mincon.fmincon(f, x0, **kw)
+    assert full.success
+    cut = mincon.fmincon(f, x0, options={"maxfev": full.nfev // 3}, **kw)
+    assert not cut.success
+    warm = mincon.fmincon(f, cut.x, warm_start=cut, **kw)
+    assert warm.success and abs(warm.fun - full.fun) < 1e-6 * max(1., abs(full.fun))
+    assert any("Warm start" in note for note in warm.notes)
+    with pytest.raises(ValueError, match="warm_start does not match"):
+        mincon.fmincon(f, x0, warm_start={"lambda": [1., 2.], "z_l": np.zeros(n), "z_u": np.zeros(n)}, **kw)
