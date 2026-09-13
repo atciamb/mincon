@@ -31,8 +31,8 @@ let r = minimize(&p, &Options::default())?;
 ```
 
 > **Status: experimental, measured.** Matched against the installed MATLAB
-> R2025b `fmincon` on a 161-problem single-source corpus with an independent
-> KKT oracle (`docs/15_BENCHMARK_PROTOCOL_V2.md`), three rounds of held-out
+> R2025b `fmincon` on a 185-problem single-source corpus with an independent
+> KKT oracle (`docs/15_BENCHMARK_PROTOCOL_V2.md`), five rounds of held-out
 > qualification. At defaults mincon attained at least as many targets as
 > `fmincon-interior-point` on every split (held-out rounds: 19 vs 18 of 22,
 > 14 vs 12 of 16, 12 vs 10 of 12) and as many as `fmincon-sqp` on the latest
@@ -57,20 +57,29 @@ let r = minimize(&p, &Options::default())?;
 > mincon, and on these model-bound problems mincon's wall time is 1.4–1.9×
 > fmincon's. The curvature-tracking rebuild (`docs/21`) that cut the
 > development corpus to 0.94× cost 1.24× on the sealed set and is off by
-> default (opt-in `bfgs_rescale`). Round 5 (September 12, 2026, development
-> material only, no new claim): a friction audit of fourteen realistic
-> problems written with fmincon's minimal inputs
-> (`bench/results/s7-friction`) has mincon attaining 12/14 on the first try
-> against 11/14 for `fmincon-interior-point` and `fmincon-sqp`, 10/14 for
-> SLSQP and 11/14 for trust-constr; it also found mincon certifying a wrong
-> point on a two-variable problem with a 1e12 unit mismatch (every solver
-> misses that optimum), fixed as D11 and D12 with whole-corpus ablations that
-> changed no attained record; with the round's increments (derivative check,
-> variable scaling from the start) the same audit is 13/14, the miss being
-> the wrong-gradient problem, where mincon alone refuses to iterate and names
-> the component (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`). Development
+> default (opt-in `bfgs_rescale`). Round 5 (September 13, 2026, thirteen
+> sealed problems in seven families, `bench/results/s6v5-final5`): **no
+> attainment difference is resolved and mincon is measurably more expensive
+> than SciPy SLSQP.** With finite differences and minimal inputs mincon
+> attains 12/13, behind `fmincon-sqp`, SLSQP and mincon's own SQP member
+> (13/13 each) and ahead of `fmincon-interior-point` (10/13) and
+> trust-constr (11/13); with exact derivatives 13/13. Every paired interval
+> touches zero, and the lead over `fmincon-interior-point` is that solver's
+> own 3000-evaluation factory default firing after 3 % of the offered
+> budget. mincon claimed no false certificate; the run's one false
+> certificate is trust-constr's. Evaluations: 1.52× [1.13, 2.04] of SLSQP
+> with finite differences and 1.85× [1.47, 2.27] with exact derivatives.
+> Wall time on this cheap-model set is 0.28× [0.11, 0.78] `fmincon-sqp` and
+> 0.05× [0.027, 0.107] `fmincon-interior-point`, on top of a model-language
+> confound of up to 8.8× per evaluation. The round's quadratic-program probe
+> changed no attainment outcome on the sealed set. Its one miss is an
+> interior-point stall on a 200-variable deconvolution that its own SQP
+> member solves — the portfolio spent the whole 60 s on the wrong member.
+> Earlier in the round a friction audit of fourteen realistic problems
+> (`bench/results/s7-friction`) went from 12/14 to 13/14 as D11 and D12 were
+> fixed (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`). Development
 > gate: Rust tests, 56/56 fixtures with independent checks for the portfolio
-> and each member (SQP alone: 55/56, HS13 within 4e-4), 34 Python tests.
+> and each member (SQP alone: 55/56, HS13 within 4e-4), 36 Python tests.
 
 `fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
