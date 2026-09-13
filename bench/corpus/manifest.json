@@ -211,6 +211,25 @@
    "split": "dev"
   },
   {
+   "name": "CORRUGATED_BULKHEAD",
+   "family": "engineering3",
+   "n": 4,
+   "m": 6,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 4,
+   "n_fixed": 0,
+   "linear_rows": 4,
+   "ref_f": 6.8429,
+   "has_ref_x": false,
+   "source": "corrugated bulkhead (Kim and Lee 1998; Rao); best-known 6.8429 at (57.692, 34.148, 57.555, 1.05)",
+   "tags": [
+    "best-known"
+   ],
+   "checksum": "8b94a1cfd4529dae",
+   "split": "final5"
+  },
+  {
    "name": "COVQP_120",
    "family": "covqp",
    "n": 120,
@@ -266,6 +285,44 @@
    ],
    "checksum": "e6679e7a21560aae",
    "split": "final4"
+  },
+  {
+   "name": "DECONV_200",
+   "family": "deconv",
+   "n": 200,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 200,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.03398219671825409,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "4886bbaaa0751d02",
+   "split": "final5"
+  },
+  {
+   "name": "DECONV_60",
+   "family": "deconv",
+   "n": 60,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 60,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.009041426450694168,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "7c30f0669bf0e55f",
+   "split": "final5"
   },
   {
    "name": "DEGEN_LICQ",
@@ -2291,6 +2348,64 @@
    "split": "diagnostic"
   },
   {
+   "name": "I_BEAM",
+   "family": "engineering3",
+   "n": 4,
+   "m": 2,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 4,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.0130741,
+   "has_ref_x": false,
+   "source": "I-beam vertical deflection (Gold and Krishnamurty 1997); best-known 0.0130741 at (80, 50, 0.9, 2.3217)",
+   "tags": [
+    "best-known"
+   ],
+   "checksum": "92fe93ac80ff6113",
+   "split": "final5"
+  },
+  {
+   "name": "LOGISTIC_CLEAN",
+   "family": "logistic",
+   "n": 3,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 3,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 0.0,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "fitting"
+   ],
+   "checksum": "3f54a0b8e79caa4f",
+   "split": "final5"
+  },
+  {
+   "name": "LOGISTIC_NOISY2",
+   "family": "logistic",
+   "n": 3,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 3,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 12.421080864560803,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "fitting",
+    "best-known"
+   ],
+   "checksum": "43421a0e753b5ce2",
+   "split": "final5"
+  },
+  {
    "name": "LOGSUMEXP_10",
    "family": "logsumexp",
    "n": 10,
@@ -2474,6 +2589,46 @@
    "split": "dev"
   },
   {
+   "name": "NCBOXQP_12",
+   "family": "ncboxqp",
+   "n": 12,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 12,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": -12.538279678657219,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "multiple-local-minima",
+    "nonconvex"
+   ],
+   "checksum": "78735e3e993b25d4",
+   "split": "final5"
+  },
+  {
+   "name": "NCBOXQP_8",
+   "family": "ncboxqp",
+   "n": 8,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 8,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": -8.48088884302731,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "multiple-local-minima",
+    "nonconvex"
+   ],
+   "checksum": "aeb5c12b48468963",
+   "split": "final5"
+  },
+  {
    "name": "NEARDEP",
    "family": "adversarial",
    "n": 2,
@@ -2544,6 +2699,25 @@
    "split": "final3"
   },
   {
+   "name": "NOISYQP_20",
+   "family": "noisyqp",
+   "n": 20,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 20,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": -9.657555364652392,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "noisy"
+   ],
+   "checksum": "5b2b068f22353ba5",
+   "split": "final5"
+  },
+  {
    "name": "OBSTACLE_200",
    "family": "obstacle",
    "n": 200,
@@ -2599,6 +2773,45 @@
    ],
    "checksum": "a7e9e1952188352f",
    "split": "final4"
+  },
+  {
+   "name": "PKFIT_CLEAN",
+   "family": "pkfit",
+   "n": 4,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 4,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": 0.0,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "fitting"
+   ],
+   "checksum": "b7edccf2fabe3a06",
+   "split": "final5"
+  },
+  {
+   "name": "PKFIT_NOISY2",
+   "family": "pkfit",
+   "n": 4,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 4,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": 0.020581953413075258,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "fitting",
+    "best-known"
+   ],
+   "checksum": "1e1905b6398b2aff",
+   "split": "final5"
   },
   {
    "name": "POLYQP_10",
@@ -2984,6 +3197,44 @@
    ],
    "checksum": "3631384b9161d442",
    "split": "dev"
+  },
+  {
+   "name": "TCPORT_100",
+   "family": "tcport",
+   "n": 100,
+   "m": 2,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 100,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": -0.13451210498720878,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "da63534ad2022db5",
+   "split": "final5"
+  },
+  {
+   "name": "TCPORT_20",
+   "family": "tcport",
+   "n": 20,
+   "m": 2,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 20,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": -0.1258414253765372,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "95dd25f5cd5bd3a6",
+   "split": "final5"
   },
   {
    "name": "THREEBAR_TRUSS",

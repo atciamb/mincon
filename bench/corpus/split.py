@@ -25,7 +25,10 @@ FAMILY_SPLIT = {"chainrosen": "dev", "lqtraj": "dev", "expfit": "dev", "quadsphe
                 "nnls_simplex": "final3", "maxent": "final3", "logsumexp": "final3", "rosen_sphere": "final3",
                 "sinfit": "final3",
                # Round 4 held-out families (heldout4.py), generated after candidate C7 was frozen.
-               "covqp": "final4", "denselap": "final4", "snl": "final4", "obstacle": "final4"}
+               "covqp": "final4", "denselap": "final4", "snl": "final4", "obstacle": "final4",
+               # Round 5 held-out families (heldout5.py), generated after the round-5 increments were frozen.
+               "pkfit": "final5", "logistic": "final5", "tcport": "final5", "deconv": "final5", "noisyqp": "final5",
+               "ncboxqp": "final5", "engineering3": "final5"}
 ENGINEERING = {"SPRING": "validation", "THREEBAR_TRUSS": "validation", "CANTILEVER": "validation",
                "PRESSURE_VESSEL": "final1-dev", "WELDED_BEAM": "final1-dev", "SPEED_REDUCER": "final1-dev"}
 NEW_HS = {"HS25", "HS56", "HS84"}   # added after round 1: never seen by tuning

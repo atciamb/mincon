@@ -466,7 +466,10 @@ QUADSPHERE2_300 46 360 -> **1510**, LQTRAJ_10 593 -> 158, MANY_INEQ 50 -> 40, EQ
 budget exit in every round-4 run, certified in 3009**; QUADSPHERE_1000 16 023 -> 4009 and
 LQTRAJ_200 6605 -> 3008, both above the old dense limit; NNLS_SIMPLEX_120, POLYQP_100,
 PORTFOLIO_100 unchanged (dense); COVQP_120 and HS44 still declined. Friction audit with the option:
-box_lsq 1232, every other record as `final5`.
+13/14 as before, every record `Optimal`; box_lsq 1485 -> 1232, infeasible_start_far 116 -> 71 (a
+diagonal Hessian, the simplex projection), noisy_simulator 107 -> 200 (the diagonal model fits the
+noisy line points where the dense one misfit; the SQP member certifies with it in 12 iterations at
+200 evaluations against the quasi-Newton path's 107), every other record identical.
 
 **Ablation `abl-i5-build`** (`bench/results/abl-i5-build`, one arm `mincon@quadratic_build=structured`,
 all 172 problems, scored against the recipe baseline and against the `abl-i5` arm it replaces):

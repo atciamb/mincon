@@ -55,8 +55,13 @@ diagnostics keep their diagnosis (INFEASIBLE_LIN -4, INFEASIBLE_NL -4, UNBOUNDED
 Verdict: the falsifier of the hand-off ("no loss of the I5 gains, no attainment change") holds
 with a margin: no gain is given back, OBSTACLE_500 is a new certified attainment, and the four
 jumps the owner named fall below their quasi-Newton baselines. **`quadratic_build='structured'`
-becomes the default.** Friction audit with the option (`s7-friction/mincon-fmincon-i5f.jsonl`):
-box_lsq 1232 (1485 with the dense build), every other record as in `final5`.
+becomes the default.** Friction audit with the option (`s7-friction/mincon-fmincon-i5f.jsonl`,
+`summary-i5f.md`, 13/14 as before, every record `Optimal`): box_lsq 1485 -> 1232, infeasible_start_far
+116 -> 71 (the projection onto the simplex has the identity as its Hessian, a diagonal build),
+noisy_simulator 107 -> 200 (a quadratic plus 1e-9 noise: the diagonal model fits the noisy line
+points where the dense one misfit, the SQP member runs with that constant model and still certifies
+in 12 iterations, at 200 evaluations against the quasi-Newton path's 107), every other record
+identical.
 
 Files as in `abl-i1` (`cmp-structured`, `scored-structured` and its analysis, `diff-structured.txt`
 against the recipe baseline; `cmp-vs-i5`, `scored-vs-i5` and its analysis, `diff-vs-i5.txt` against
