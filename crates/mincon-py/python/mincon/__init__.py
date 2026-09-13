@@ -274,8 +274,8 @@ def minimize(
         time until the model reproduces the probe's line points, so a
         diagonal Hessian costs 2n evaluations and a tridiagonal one 3n
         instead of n(n+3)/2; a dense one costs the same either way),
-        ``quadratic_rows`` (``False`` (default), ``'jacobian'`` or
-        ``'values'``: whether the probe also accepts quadratic constraint
+        ``quadratic_rows`` (``'values'`` (default), ``'jacobian'`` or
+        ``False``: whether the probe also accepts quadratic constraint
         rows that keep the feasible set convex, such as a variance limit,
         building their Hessians from a supplied ``nonlcon_jac`` or, with
         ``'values'``, from constraint values),
