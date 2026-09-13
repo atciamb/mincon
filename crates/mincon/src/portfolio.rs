@@ -207,15 +207,60 @@ pub fn solve<P: Nlp + Sync + ?Sized>(
     // them; run such models sequentially with early exit regardless of `threads`.
     let parallel_safe = nlp.capabilities().parallel_safe;
     let sequential = threads <= 1 || members.len() == 1 || !parallel_safe;
+    let start = std::time::Instant::now();
 
-    let outcomes: Vec<(&'static str, Result<SolveReport, String>)> = if sequential {
+    // I5 (`docs/22`): a quadratic program gets the SQP member with its exact,
+    // constant Hessian before anything else; the ordinary members follow only
+    // when that does not settle it. The probe's evaluations are charged to the
+    // quadratic member when it ran and to the winner when the probe declined.
+    let mut pre: Vec<(&'static str, Result<SolveReport, String>)> = Vec::new();
+    let mut declined_probe_evals: u64 = 0;
+    let mut settled = false;
+    if base.quadratic_probe && !(nlp.capabilities().hessian && nlp.hessian_structure().is_some()) {
+        let (q, spent) = crate::quadratic::probe_counted(nlp, base);
+        match q {
+            Some(q) => {
+                let mut opts = Options {
+                    algorithm: Algorithm::Sqp,
+                    ..base.clone()
+                };
+                if let Some(limit) = base.max_evaluations {
+                    opts.max_evaluations = Some(limit.saturating_sub(spent).max(1));
+                }
+                let r = mincon_sqp::solve(&q, &opts)
+                    .map(|mut rep| {
+                        rep.f_evals += q.f_evals;
+                        rep.c_evals += q.c_evals;
+                        rep.g_evals += q.g_evals;
+                        rep.notes.insert(0, q.note.clone());
+                        rep
+                    })
+                    .map_err(|e| e.to_string());
+                // Only a full certificate settles it: an `Acceptable` exit from
+                // Newton steps on a model that only looked quadratic (noise, a
+                // near-quadratic) falls through to the ordinary members, and the
+                // ranking keeps the better of the two.
+                settled = matches!(&r, Ok(rep) if rep.exit_flag == ExitFlag::Optimal
+                    && rep.constraint_violation <= base.tol.feasibility);
+                pre.push(("sqp-quadratic", r));
+            }
+            None => declined_probe_evals = spent,
+        }
+    }
+
+    let outcomes: Vec<(&'static str, Result<SolveReport, String>)> = if settled {
+        pre
+    } else if sequential {
         // Sequential with early exit: a problem the first member answers usably
         // costs exactly what a single solve costs. Later members only get the
         // budget the earlier ones left over, so the portfolio never exceeds the
         // caller's evaluation or time limits in total.
-        let mut out = Vec::new();
-        let mut spent_evals: u64 = 0;
-        let start = std::time::Instant::now();
+        let mut spent_evals: u64 = pre
+            .iter()
+            .filter_map(|(_, r)| r.as_ref().ok().map(|rep| rep.f_evals))
+            .sum::<u64>()
+            + declined_probe_evals;
+        let mut out = pre;
         for m in &members {
             let mut opts = m.options.clone();
             if let Some(limit) = base.max_evaluations {
@@ -259,7 +304,7 @@ pub fn solve<P: Nlp + Sync + ?Sized>(
     } else {
         // Parallel, at most `threads` members at a time so the configured limit
         // bounds actual concurrency rather than only the reported count.
-        let mut out = Vec::new();
+        let mut out = pre;
         for chunk in members.chunks(threads.max(1)) {
             let chunk_out: Vec<_> = thread::scope(|scope| {
                 let handles: Vec<_> = chunk
@@ -292,7 +337,8 @@ pub fn solve<P: Nlp + Sync + ?Sized>(
     let total_f_evals = outcomes
         .iter()
         .filter_map(|(_, r)| r.as_ref().ok().map(|rep| rep.f_evals))
-        .sum();
+        .sum::<u64>()
+        + declined_probe_evals;
 
     let mut best: Option<(&'static str, SolveReport)> = None;
     for (name, r) in &outcomes {
@@ -321,6 +367,7 @@ pub fn solve<P: Nlp + Sync + ?Sized>(
             "every portfolio member failed ({detail})"
         )));
     };
+    best.f_evals += declined_probe_evals;
 
     best.notes.push(format!(
         "Algorithm portfolio: {} member(s) run {}; '{winner}' produced the answer. \

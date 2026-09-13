@@ -47,8 +47,8 @@ const DIVERGING_GROWTH_FACTOR: f64 = 1e10;
 const STALL_ITERATIONS: usize = 8;
 
 use mincon_core::{
-    Algorithm, EvalError, ExitFlag, HessianMode, IterationRecord, Nlp, Options, ScalingMode,
-    Solution, SolveError, SolveReport, Sparsity, Timings,
+    Algorithm, EvalError, ExitFlag, HessianMode, IterationRecord, Nlp, Options, PivotSigns,
+    ScalingMode, Solution, SolveError, SolveReport, Sparsity, Timings,
 };
 use mincon_diff::Evaluator;
 use mincon_linalg::Ordering;
@@ -272,8 +272,28 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             .map_err(SolveError::Internal)?;
 
         let ordering = Ordering::default();
-        let kkt = KktSystem::new(nv, n, m, hess.pattern(), &jt_nv, &slack_of, ordering)
+        let mut kkt = KktSystem::new(nv, n, m, hess.pattern(), &jt_nv, &slack_of, ordering)
             .map_err(SolveError::Internal)?;
+        // S-E (docs/22): with an exact Hessian the primal block may be
+        // indefinite while the reduced Hessian is positive; expecting every
+        // primal pivot to be positive then perturbs a legitimate negative pivot,
+        // voids the certificate and forces delta_w at every iteration.
+        let free_signs = match opts.kkt_pivot_signs {
+            PivotSigns::Auto => matches!(hess, Hess::Exact { .. }),
+            PivotSigns::Expected => false,
+            PivotSigns::Free => true,
+        };
+        kkt.set_free_pivot_signs(free_signs);
+        if free_signs {
+            let why = if opts.kkt_pivot_signs == PivotSigns::Free {
+                "kkt_pivot_signs = free"
+            } else {
+                "exact Hessian"
+            };
+            notes.push(format!(
+                "KKT pivots keep their signs and the inertia is counted ({why})."
+            ));
+        }
 
         Ok(Self {
             n,
@@ -601,6 +621,11 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             .map_err(SolveError::InitialPoint)?;
         for g in &mut grad_f {
             *g *= self.d_f;
+        }
+        if self.eval.nlp().typical_x().is_none() {
+            if let Some(hint) = mincon_core::no_scale_hint(&v[..n], &grad_f) {
+                self.notes.push(hint);
+            }
         }
         self.refresh_jacobian(&v[..n], &point.c)
             .map_err(SolveError::InitialPoint)?;

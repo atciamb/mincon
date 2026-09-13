@@ -113,7 +113,9 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   Supplied derivatives are checked along one direction at the start with two
   evaluations: a gross disagreement stops the solve naming the component, a
   mild one is a note (zero false alarms on the 172-problem corpus with exact
-  derivatives). `hess=` is accepted but experimental (see the gaps).
+  derivatives). `hess=` (the Lagrangian Hessian) gives both members Newton
+  convergence: on HS71 the SQP member takes 7 iterations and the interior-point
+  member 10, against 5 and 10 with their quasi-Newton models.
 * **Seeing and steering a run** — `callback=` after every iteration with the
   trace row (return `True` to stop), `disp=True` streams the iteration table,
   `method=` on the `fmincon` facade, `mincon.multistart` for several starts.
@@ -170,12 +172,15 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
    `bench/results/r3-basins`); mincon reports these as local minima, never
    as failures, and has no multi-start.
 6. **AMD ordering** falls back to RCM; inertia-free acceptance is not wired.
-7. **Exact Hessians in the interior-point member** are slower than its
-   quasi-Newton default (HS71: 10 → 56 iterations): the inertia correction
-   fires at every iteration although the reduced Hessian is positive, a study
-   item (`docs/22` §7.5). The SQP member regularises an indefinite Lagrangian
-   Hessian along the constraint normals only and keeps Newton convergence
-   (HS71: 7 iterations, from 370 before that fix).
+7. **Exact Hessians** were slower than quasi-Newton in both members as first
+   exposed (HS71: SQP 370, interior point 56 iterations). Fixed: the SQP member
+   regularises an indefinite Lagrangian Hessian along the constraint normals
+   only (7 iterations), and the interior-point member counts the pivot signs of
+   the KKT factorisation instead of perturbing a legitimate negative primal
+   pivot, which had voided its inertia certificate at every iteration (10
+   iterations, `docs/22` §7.8, `bench/results/abl-se`). What remains: a
+   Hessian supplied from Python is taken dense; sparse Hessian structure is
+   only available through the Rust `Nlp` trait.
 8. **Unit mismatches between variables** (a 1e6 pressure next to a 1e-6
    area): every solver in the friction audit, fmincon included, misses the
    optimum, and every first-order certificate is fooled because the gradient

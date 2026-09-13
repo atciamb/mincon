@@ -217,11 +217,11 @@ def minimize(
         the sign convention of ``res['lambda']``. Both algorithms use it in
         place of their quasi-Newton model; the SQP member regularises an
         indefinite Lagrangian Hessian along the constraint normals only, so
-        it keeps Newton convergence (HS71: 7 iterations). The interior-point
-        member's handling is still experimental (HS71: 56 iterations against
-        10 with its quasi-Newton model), so on problems with more than 20
-        variables, where it runs first, compare before relying on ``hess``.
-        Only the symmetric part is used.
+        it keeps Newton convergence (HS71: 7 iterations); the interior-point
+        member counts the signs of its KKT pivots instead of perturbing them,
+        so an indefinite Lagrangian Hessian with a positive reduced Hessian
+        needs no inertia correction (HS71: 10 iterations, the same as its
+        quasi-Newton model). Only the symmetric part is used.
     bounds : sequence of (low, high), optional
         Use ``None`` for an infinite side. Bounds are honoured at **every**
         iterate, including finite-difference probes, so a model that is
@@ -257,6 +257,15 @@ def minimize(
         of 1e4 or more, which is the unit-mismatch case where every
         first-order test is blind; a start of zeros carries no scale, so
         pass ``True`` with a meaningful ``x0`` or scale by hand there),
+        ``kkt_pivot_signs`` (``'auto'`` (default), ``'expected'`` or
+        ``'free'``: whether the interior-point member's KKT factorisation
+        perturbs a pivot whose sign differs from its block's or keeps it and
+        counts the inertia; ``'auto'`` counts with a supplied Hessian, whose
+        primal block may legitimately be indefinite, and expects with a
+        quasi-Newton one), ``quadratic_probe`` (bool, default False: test at
+        the start whether the objective is quadratic and every constraint row
+        linear, seven evaluations along two lines, and if so build the
+        constant Hessian by differencing and run the SQP member with it),
         ``bfgs_rescale`` (float, default 0 = off: rebuild the quasi-Newton
         matrix from per-coordinate curvature quotients whenever its curvature
         along an accepted step is off by more than this factor; 10 helps
@@ -313,7 +322,7 @@ def minimize(
     display = _display_level(opts)
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
                  "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
-                 "bfgs_rescale", "scale_variables"}
+                 "bfgs_rescale", "scale_variables", "kkt_pivot_signs", "quadratic_probe"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; "

@@ -37,6 +37,7 @@
 
 pub mod builder;
 pub mod portfolio;
+pub mod quadratic;
 pub mod scaled;
 
 pub use builder::{to_fmincon_multipliers, FminconMultipliers, Problem};

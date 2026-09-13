@@ -369,6 +369,26 @@ impl KktSystem {
         }
     }
 
+    /// Choose what the factorization does with a pivot whose sign differs from
+    /// its block's. With `free`, every pivot keeps its sign and the inertia is
+    /// counted, so an indefinite primal block with a positive reduced Hessian
+    /// certifies `(nv, m)` without regularization; otherwise a primal pivot
+    /// must be positive and a dual one negative, and a pivot of the other sign
+    /// is perturbed (right for a positive-definite quasi-Newton block, where
+    /// it can only be noise). Only numerically zero pivots are perturbed with
+    /// `free`, and growth still voids the certificate.
+    pub fn set_free_pivot_signs(&mut self, free: bool) {
+        for (k, s) in self.signs.iter_mut().enumerate() {
+            *s = if free {
+                0
+            } else if k < self.nv {
+                1
+            } else {
+                -1
+            };
+        }
+    }
+
     /// Change only the regularization, reusing the rest of the assembly.
     /// Saves rebuilding the Hessian and Jacobian blocks on a retry, which is
     /// where an inertia-correction loop spends most of its time.
@@ -786,6 +806,86 @@ mod tests {
         // and A = (1, 1)^T, so lambda = -1. The opposite sign here would mean
         // every multiplier the solver reports is backwards.
         assert!((sol[2] + 1.0).abs() < 1e-10, "lambda = {}", sol[2]);
+    }
+
+    /// An indefinite primal block whose reduced Hessian is positive: `W =
+    /// diag(1, -1)`, one constraint fixing `x_2`, so the null space is `x_1`
+    /// and the KKT matrix has inertia (2, 1) without any perturbation.
+    fn indefinite_but_second_order_sufficient() -> KktSystem {
+        let hess = Sparsity::from_triplets(2, 2, &[(0, 0), (1, 1)]).unwrap();
+        let jac_t = Sparsity::from_triplets(2, 1, &[(1, 0)]).unwrap();
+        KktSystem::new(2, 2, 1, &hess, &jac_t, &[None], Ordering::Natural).unwrap()
+    }
+
+    #[test]
+    fn expected_pivot_signs_lose_the_certificate_on_an_indefinite_primal_block() {
+        // The S-E mechanism: the negative primal pivot is perturbed to the
+        // expected sign, the certificate is lost, and delta_w is applied
+        // although the true inertia is already (2, 1).
+        let mut k = indefinite_but_second_order_sufficient();
+        let outcome = k
+            .factor_with_correction(
+                &[1.0, -1.0],
+                &[1.0],
+                &[0.0, 0.0],
+                0.1,
+                RegularizationMode::Hybrid,
+                &CorrectionParams::default(),
+            )
+            .unwrap();
+        assert!(outcome.delta_w > 0.0, "delta_w = {}", outcome.delta_w);
+        assert!(outcome.attempts > 1);
+    }
+
+    #[test]
+    fn free_pivot_signs_certify_an_indefinite_primal_block_with_positive_reduced_hessian() {
+        let mut k = indefinite_but_second_order_sufficient();
+        k.set_free_pivot_signs(true);
+        let outcome = k
+            .factor_with_correction(
+                &[1.0, -1.0],
+                &[1.0],
+                &[0.0, 0.0],
+                0.1,
+                RegularizationMode::Hybrid,
+                &CorrectionParams::default(),
+            )
+            .unwrap();
+        assert!(outcome.certified);
+        assert_eq!(outcome.delta_w, 0.0, "delta_w = {}", outcome.delta_w);
+        assert_eq!(outcome.delta_c, 0.0);
+        assert!(
+            outcome.inertia.is_kkt_correct(2, 1),
+            "{:?}",
+            outcome.inertia
+        );
+        // The Newton system [[1,0,0],[0,-1,1],[0,1,0]] x = (1, 1, 2): x = (1, 2, 3).
+        let mut x = [0.0; 3];
+        k.solve(&[1.0, 1.0, 2.0], &mut x, 2).unwrap();
+        for (actual, expected) in x.iter().zip([1.0, 2.0, 3.0]) {
+            assert!((actual - expected).abs() < 1e-12, "{x:?}");
+        }
+    }
+
+    #[test]
+    fn free_pivot_signs_still_correct_a_negative_reduced_hessian() {
+        // Control: counting the pivots is a real inertia test. W = diag(-5, -5)
+        // with the same constraint has reduced Hessian -5, inertia (1, 2), and
+        // needs delta_w > 5 exactly as under the expected signs.
+        let mut k = indefinite_but_second_order_sufficient();
+        k.set_free_pivot_signs(true);
+        let outcome = k
+            .factor_with_correction(
+                &[-5.0, -5.0],
+                &[1.0],
+                &[0.0, 0.0],
+                0.1,
+                RegularizationMode::Hybrid,
+                &CorrectionParams::default(),
+            )
+            .unwrap();
+        assert!(outcome.delta_w > 5.0, "delta_w = {}", outcome.delta_w);
+        assert!(outcome.certified && outcome.inertia.is_kkt_correct(2, 1));
     }
 
     #[test]

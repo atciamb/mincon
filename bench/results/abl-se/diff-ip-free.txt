@@ -1,0 +1,8 @@
+COVQP_300              cand: status 0 evals 12644 att True wall 60.3 | base: status 0 evals 9632 att False wall 60.6
+DENSELAP_250           cand: status 0 evals 21716 att True wall 61.1 | base: status 0 evals 16110 att True wall 61.3
+HS117                  cand: status 1 evals 5898 att True wall 0.1 | base: status 1 evals 692 att True wall 0.0
+HS16                   cand: status 1 evals 124 att False wall 0.0 | base: status 1 evals 108 att False wall 0.0
+HS17                   cand: status 1 evals 234 att True wall 0.0 | base: status 1 evals 216 att True wall 0.0
+RANKLOSS_JAC           cand: status 1 evals 215 att True wall 0.0 | base: status 6 evals 213 att True wall 0.0
+UNITS                  cand: status 6 evals 264 att False wall 0.0 | base: status 1 evals 70 att False wall 0.0
+changed records: 7 of 169

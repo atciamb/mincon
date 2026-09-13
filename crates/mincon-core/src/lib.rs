@@ -45,7 +45,8 @@ mod sparsity;
 pub use error::{EvalError, SolveError};
 pub use options::{
     Algorithm, BarrierUpdate, DerivativeCheck, Display, FdType, HessianMode, IterationCallback,
-    LinearSolverKind, Options, RegularizationMode, ScalingMode, Tolerances, VariableScaling,
+    LinearSolverKind, Options, PivotSigns, RegularizationMode, ScalingMode, Tolerances,
+    VariableScaling,
 };
 pub use problem::{validate, Capabilities, EvalCounters, Nlp, NlpDims};
 pub use result::{ExitFlag, IterationRecord, Solution, SolveReport, Timings};
@@ -65,4 +66,62 @@ pub const INF_BOUND: f64 = 1.0e20;
 #[inline]
 pub fn is_free(v: f64) -> bool {
     !v.is_finite() || v.abs() >= INF_BOUND
+}
+
+/// The gradient span above which a start that carries no scale gets a hint.
+pub const NO_SCALE_HINT_GRADIENT_SPAN: f64 = 1e6;
+/// The span of the start's magnitudes from which the automatic variable
+/// scaling takes its factors, so no hint is needed.
+pub const NO_SCALE_HINT_START_SPAN: f64 = 1e4;
+
+/// A note for a start that carries no scale (round 5, `docs/22` §4 item 3):
+/// the objective gradient at `x0` spans at least
+/// [`NO_SCALE_HINT_GRADIENT_SPAN`] across the variables, the signature of
+/// mismatched units, while the start's magnitudes cannot supply the scale
+/// factors (a zero coordinate has no magnitude; nonzero magnitudes within
+/// [`NO_SCALE_HINT_START_SPAN`] are what `VariableScaling::Auto` leaves
+/// alone). A note only: it changes nothing about the solve.
+#[must_use]
+pub fn no_scale_hint(x0: &[f64], grad: &[f64]) -> Option<String> {
+    let n = x0.len();
+    if n < 2 || grad.len() != n {
+        return None;
+    }
+    let (mut gmin, mut gmax, mut imin, mut imax) = (f64::INFINITY, 0.0_f64, 0usize, 0usize);
+    for (i, g) in grad.iter().enumerate() {
+        let a = g.abs();
+        if !a.is_finite() || a == 0.0 {
+            continue;
+        }
+        if a < gmin {
+            gmin = a;
+            imin = i;
+        }
+        if a > gmax {
+            gmax = a;
+            imax = i;
+        }
+    }
+    if gmin == f64::INFINITY || gmax < NO_SCALE_HINT_GRADIENT_SPAN * gmin {
+        return None;
+    }
+    let mut zeros = 0usize;
+    let (mut xmin, mut xmax) = (f64::INFINITY, 0.0_f64);
+    for x in x0 {
+        let a = x.abs();
+        if a == 0.0 || !a.is_finite() {
+            zeros += 1;
+        } else {
+            xmin = xmin.min(a);
+            xmax = xmax.max(a);
+        }
+    }
+    if zeros == 0 && xmax >= NO_SCALE_HINT_START_SPAN * xmin {
+        return None;
+    }
+    Some(format!(
+        "The objective gradient at the start spans a factor {:.0e} across the variables (largest in x[{imax}], smallest in x[{imin}]), the signature of variables with different units, and the start carries no scale to correct it by ({zeros} of {n} coordinates are zero{}). If the units differ, start from values of typical magnitude (scale_variables = 'auto' then solves in scaled variables) or supply the typical magnitudes (typical_x, fmincon's TypicalX).",
+        gmax / gmin,
+        if zeros == n { "" } else { ", the others are within a factor 1e4 of each other" }
+    ))
 }

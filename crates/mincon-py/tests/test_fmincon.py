@@ -248,6 +248,17 @@ def test_hessian_is_used_when_supplied():
     assert abs(exact.fun - 17.0140173) < 1e-5 * 17.0
     assert any("exact Hessian" in n for n in exact.notes)
     assert exact.nit <= quasi.nit + 3
+    # S-E: the interior-point member counts the pivot signs of an exact Hessian's
+    # KKT matrix instead of perturbing them (HS71: 56 iterations -> 10, quasi-Newton 10).
+    ip_quasi = mincon.fmincon(f, [1., 5., 5., 1.], method="interior-point", **kw)
+    ip_exact = mincon.fmincon(f, [1., 5., 5., 1.], method="interior-point", hess=hess, **kw)
+    assert ip_quasi.success and ip_exact.success
+    assert abs(ip_exact.fun - 17.0140173) < 1e-5 * 17.0
+    assert ip_exact.nit <= 10 and ip_exact.nit <= ip_quasi.nit
+    assert any("inertia is counted" in n for n in ip_exact.notes)
+    old = mincon.fmincon(f, [1., 5., 5., 1.], method="interior-point", hess=hess,
+                         options={"kkt_pivot_signs": "expected"}, **kw)
+    assert old.nit > 3 * ip_exact.nit  # the mechanism, kept reproducible
 
 
 def test_facade_selects_the_method():
@@ -255,3 +266,16 @@ def test_facade_selects_the_method():
     assert r.success and r.algorithm == "Sqp"
     with pytest.raises(ValueError):
         mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], method="simplex")
+
+
+def test_a_start_without_scale_gets_a_hint():
+    # The corpus problem UNITS: x0 = 0 carries no scale, the gradient spans 1e12.
+    def f(x):
+        u, v = 1e6 * x[0], 1e-6 * x[1]
+        return (u - 1.) ** 2 + (v - 1.) ** 2
+    r = mincon.fmincon(f, [0., 0.], A=[[-1e6, -1e-6]], b=[-3.])
+    assert any("carries no scale" in n for n in r.notes), r.notes
+    # A start of typical magnitudes carries the scale: no hint, and the solve lands.
+    r2 = mincon.fmincon(f, [1e-6, 1e6], A=[[-1e6, -1e-6]], b=[-3.])
+    assert not any("carries no scale" in n for n in r2.notes), r2.notes
+    assert r2.success and abs(r2.fun - 0.5) < 1e-4

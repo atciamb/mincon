@@ -1097,6 +1097,11 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
         let mut x0 = self.eval.nlp().x0().to_vec();
         self.project(&mut x0);
         let mut p = self.point(x0).map_err(SolveError::InitialPoint)?;
+        if self.eval.nlp().typical_x().is_none() {
+            if let Some(hint) = mincon_core::no_scale_hint(&p.x, &p.g) {
+                self.notes.push(hint);
+            }
+        }
         self.compute_scaling(&p);
         if (self.d_f - 1.0).abs() > 1e-12 || self.d_c.iter().any(|d| (d - 1.0).abs() > 1e-12) {
             // re-express the initial point in scaled units

@@ -171,6 +171,29 @@ pub enum DerivativeCheck {
     Full,
 }
 
+/// What the interior-point member's `LDL^T` does with a pivot whose sign
+/// differs from the block it belongs to (see [`Options::kkt_pivot_signs`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PivotSigns {
+    /// [`PivotSigns::Free`] when the member uses the model's exact Hessian,
+    /// [`PivotSigns::Expected`] with a quasi-Newton one.
+    #[default]
+    Auto,
+    /// Every primal pivot must be positive and every dual pivot negative; a
+    /// pivot of the other sign is perturbed to the expected sign, which makes
+    /// the factorisation belong to a nearby matrix and loses the inertia
+    /// certificate. Right for a positive-definite (quasi-Newton) primal block,
+    /// where a wrong-sign pivot can only be numerical noise.
+    Expected,
+    /// Pivots keep their sign and the inertia is counted (Sylvester's law);
+    /// only pivots that are numerically zero are perturbed. An indefinite
+    /// exact Hessian whose reduced Hessian is positive then certifies the
+    /// inertia `(n, m)` without any `delta_w`, where `Expected` would perturb
+    /// its negative primal pivots and force the inertia correction at every
+    /// iteration (HS71 with the exact Hessian: 56 iterations against 10).
+    Free,
+}
+
 /// How the KKT matrix is regularized and its inertia established.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RegularizationMode {
@@ -322,6 +345,13 @@ pub struct Options {
     /// every first-order certificate is blind (`docs/22` I8). `fmincon`'s
     /// `TypicalX` is the manual version.
     pub scale_variables: VariableScaling,
+    /// Probe for a quadratic program at the start (round 5 I5): when the
+    /// objective is quadratic along two random lines and every constraint row
+    /// is linear along them, the constant Hessian is built by differencing
+    /// and the SQP member runs with it as an exact Hessian before the
+    /// ordinary portfolio. A general nonlinear problem pays three objective
+    /// evaluations for the test. Off until its whole-corpus ablation.
+    pub quadratic_probe: bool,
     /// Finite-difference flavour.
     pub fd_type: FdType,
     /// Relative finite-difference step, or `None` to use `sqrt(eps)` forward /
@@ -361,6 +391,10 @@ pub struct Options {
 
     /// KKT regularization strategy.
     pub regularization: RegularizationMode,
+    /// What the `LDL^T` does with a pivot whose sign differs from its block's.
+    /// Default [`PivotSigns::Auto`]: counted with an exact Hessian, expected
+    /// with a quasi-Newton one (round 5 S-E, `bench/results/abl-se`).
+    pub kkt_pivot_signs: PivotSigns,
     /// Linear solver backend.
     pub linear_solver: LinearSolverKind,
     /// Steps of iterative refinement on each KKT solve. One is nearly free and
@@ -406,6 +440,7 @@ impl Default for Options {
             bfgs_curvature_rescale: f64::INFINITY,
 
             scale_variables: VariableScaling::Auto,
+            quadratic_probe: false,
             fd_type: FdType::Adaptive,
             fd_step: None,
             fd_respect_bounds: true,
@@ -421,6 +456,7 @@ impl Default for Options {
             tau_min: 0.99,
 
             regularization: RegularizationMode::Hybrid,
+            kkt_pivot_signs: PivotSigns::Auto,
             linear_solver: LinearSolverKind::Auto,
             refinement_steps: 1,
 

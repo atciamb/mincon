@@ -262,3 +262,45 @@ lost. **`On` falsified, `Auto` kept and made the default** (`VariableScaling::Au
 `'auto'`); `TORTURE_UNITS` is now an `Expect::Optimum` fixture (56/56, 56/56, 55/56). A start of
 zeros carries no scale, so UNITS in the corpus stays unsolved; the message for such starts is a
 later item.
+
+### 7.8 S-E, the interior-point member's exact-Hessian path, September 12
+
+Reproduced first (`MINCON_IP_DEBUG=1` and the trace of `hess=` on HS71 under
+`method='interior-point'`): 56 iterations ending `Acceptable`, with `delta_w` between 2 and 16 at
+every iteration from the second on while `mu` already sits at its floor, so every step is a damped
+one and the convergence is linear; quasi-Newton takes 10. The mechanism is the one hypothesised
+in 7.5, confirmed by a three-by-three unit test (`kkt.rs`,
+`expected_pivot_signs_lose_the_certificate_on_an_indefinite_primal_block`): the `LDL^T` carries a
+sign expectation per row (+1 primal, -1 dual) and perturbs a pivot of the other sign to
+`+-1e-7`; with `W = diag(1, -1)` and one constraint fixing `x_2` the KKT matrix has inertia (2, 1)
+but the negative primal pivot is perturbed, the factorisation belongs to a different matrix, the
+certificate is lost, and `delta_w` is applied although nothing was wrong. With a positive-definite
+quasi-Newton block a wrong-sign pivot can only be noise, which is why that path never showed it.
+
+The fix is `Options::kkt_pivot_signs` (`PivotSigns::{Auto, Expected, Free}`, Python
+`kkt_pivot_signs`): under `Free` every pivot keeps its sign and the inertia is counted, only a
+numerically zero pivot is perturbed, and growth still voids the certificate; `Auto` (the default)
+is `Free` when the member uses the model's exact Hessian and `Expected` with a quasi-Newton one.
+No 2x2 pivoting was needed: with 1x1 pivots the count is Sylvester's law whenever the
+factorisation did not break down, and a breakdown (a tiny pivot next to a large off-diagonal)
+still ends in the `delta_w` loop exactly as before. Measured with the exact Hessian under the
+interior-point member: HS71 56 -> **10** iterations, certified (`Optimal`), `delta_w` nonzero at
+one iteration only; the one-equality problem 11 -> 9 (quasi-Newton 11); a 50-variable box-
+constrained dense QP 57 -> 12 (SQP with the same Hessian: 1). Forcing `Expected` reproduces the 56.
+Fixtures and Rust tests unchanged (184 tests, 56/56, 56/56, 55/56), Python 34. The falsifier
+"at most 10 iterations" holds; the corpus falsifier is `abl-se` below.
+
+**Ablation `abl-se`** (`bench/results/abl-se`, three arms: `mincon@kkt_pivot_signs=auto` as the
+control, and `Free` forced onto the quasi-Newton path for the portfolio and the interior-point
+member, which is the only way the option can touch a corpus record since the corpus supplies no
+Hessians): the control arm changes the three records every run of this tree changes (the two
+60 s exits and HS117 from the `scale_variables='auto'` default), 158/158 attained, cost 1.01
+[1.00, 1.02]; `Free` forced onto the portfolio's quasi-Newton path changes exactly the same three,
+so the sign expectations never decided a record; forced onto the interior-point member alone it
+changes those plus I1's three (HS16, HS17, UNITS) and one of its own, RANKLOSS_JAC, a
+step-tolerance exit that becomes `Optimal` at 215 against 213 evaluations (157/156 attained,
+COVQP_300 a 60 s exit that landed inside the target this time; cost 1.02 [1.00, 1.02]). The
+falsifier holds on both counts; `Auto` stays the default (`bench/results/abl-se/README.md`).
+
+Both members are now Newton-fast with a supplied Hessian (SQP 7, interior point 10 on HS71,
+against 5 and 10 with quasi-Newton), so `hess=` is no longer documented as experimental.
