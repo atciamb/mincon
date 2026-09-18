@@ -39,19 +39,33 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Tests
-        run: cargo test --workspace
+        shell: bash
+        run: cargo test --workspace --no-fail-fast 2>&1 | tee cargo-test.log
+
+      # Job logs need a token to read; annotations do not. Name every failing
+      # test and every compile error on the run's summary page and in the API.
+      - name: Name the failures
+        if: failure()
+        shell: bash
+        run: |
+          [ -f cargo-test.log ] || exit 0
+          grep -E "^test .* FAILED$|panicked at|^error(\[E[0-9]+\])?:" cargo-test.log | head -20 \
+            | while IFS= read -r line; do echo "::error::$line"; done || true
+          grep -A 40 "^failures:$" cargo-test.log | head -60 || true
 
       - name: Independent regression verdict tests
         run: cargo test -p mincon-ip --example run_testset
 
       # The regression table is the real gate. It fails the build on any
       # false report of success, which is the one unforgivable bug
-      # (docs/11_PITFALLS.md 1.1).
+      # (docs/11_PITFALLS.md 1.1). The example itself exits 1 on any fixture
+      # miss; the ratchet below, not that exit code, is the verdict.
       - name: Regression test set
         shell: bash
         run: |
-          out=$(cargo run --release -p mincon-ip --example run_testset)
+          out=$(cargo run --release -p mincon-ip --example run_testset || true)
           echo "$out"
+          echo "$out" | grep -E "FAIL|LIE " | while IFS= read -r line; do echo "::warning::$line"; done || true
           if echo "$out" | grep -qE "[1-9][0-9]* LIES"; then
             echo "::error::the solver reported success on a problem with no solution"
             exit 1
@@ -73,6 +87,7 @@ jobs:
         run: |
           out=$(cargo run --release -p mincon --example run_testset_portfolio -- auto || true)
           echo "$out"
+          echo "$out" | grep -E "FAIL|LIE " | while IFS= read -r line; do echo "::warning::$line"; done || true
           if echo "$out" | grep -qE "[1-9][0-9]* LIES"; then
             echo "::error::the portfolio reported success on a problem with no solution"
             exit 1
