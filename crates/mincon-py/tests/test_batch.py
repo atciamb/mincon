@@ -122,6 +122,11 @@ def test_an_exception_on_a_worker_is_one_failed_probe():
 
 
 def test_a_vectorised_model_crosses_into_python_once_per_gradient():
+    # Fifty variables, not the module's twelve: a gradient is one crossing and a line-search point
+    # is one too, so at n = 12 the ratio is between 4 and 6 and which side of the gate's 5 it falls
+    # on depends on the path (4.6 on CI's Linux runner); at n = 50 it is about 18.
+    n = 50
+    x0 = np.array([-1.2 if i % 2 == 0 else 1. for i in range(n)])
     calls = {"scalar": 0, "rows": 0, "points": 0}
 
     def counted(x):
@@ -129,16 +134,18 @@ def test_a_vectorised_model_crosses_into_python_once_per_gradient():
         return chain(x)
 
     def counted_rows(X):
-        assert X.ndim == 2 and X.shape[1] == N
+        assert X.ndim == 2 and X.shape[1] == n
         calls["rows"] += 1
         calls["points"] += X.shape[0]
         return chain_rows(X)
 
-    serial = mincon.fmincon(counted, X0, lb=-2., ub=2.)
-    fast = mincon.fmincon(counted_rows, X0, lb=-2., ub=2., vectorized=True)
+    serial = mincon.fmincon(counted, x0, lb=-2., ub=2.)
+    fast = mincon.fmincon(counted_rows, x0, lb=-2., ub=2., vectorized=True)
     assert serial.success and fast.success
     assert abs(fast.fun - serial.fun) < 1e-8 and np.allclose(fast.x, serial.x, atol=1e-5)
-    assert calls["scalar"] == serial.nfev and calls["points"] == fast.nfev
+    # the model's own counters (at this size two portfolio members run, and `nfev` is the winner's):
+    # the same evaluations either way, in far fewer calls
+    assert calls["points"] == calls["scalar"], calls
     assert 5 * calls["rows"] <= calls["scalar"], calls
     assert any("batches" in note for note in fast.notes)
 

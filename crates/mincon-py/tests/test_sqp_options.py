@@ -13,6 +13,14 @@ so the second-order probe runs and the member leaves the saddle.
 evaluations a trial, nineteen evaluations here (``'scale'``, the old behaviour). ``'linearized'``,
 the default, caps the first trial by the distance to the inactive rows along the direction, and
 the first trial is accepted.
+
+Rounding decides which of these events a given run meets: the two formulations of the objective
+below are the same function to rounding and differ on one machine, and one formulation differs
+between BLAS builds (on CI's Linux runner the old ``zero_step`` rule gets past the vertex with the
+matrix operator, where Windows and macOS stall; on CI's macOS runner the ``np.gradient`` formulation
+never makes the long backtrack). So both formulations are run, what the old rule does is observed
+rather than asserted, and the assertions are on what must follow from each outcome. What holds
+everywhere: the defaults are certified at the optimum by the SQP member alone.
 """
 import numpy as np
 import pytest
@@ -61,37 +69,45 @@ def solve(operator, **options):
     return mincon.fmincon(f, method="sqp", options=options, **kw)
 
 
+def saddle_step_taken(result):
+    """The step with which the run left the saddle point, or None if it never met one."""
+    notes = [n for n in result.notes if "left the saddle point" in n]
+    return float(notes[0].split("(step ")[1].split(")")[0]) if notes else None
+
+
 def test_zero_step_decrease_retests_with_the_qp_multipliers_at_a_degenerate_vertex():
-    stalled = solve(True, zero_step="norm")
-    assert stalled.status == mincon.ExitFlag.STEP_TOLERANCE and not stalled.success
-    assert abs(stalled.fun - VERTEX) < 1e-7 and stalled.optimality > 1.0   # the stale multipliers
-    fixed = solve(True)
-    assert fixed.success and abs(fixed.fun - OPTIMUM) < 1e-7
-    assert fixed.nfev <= stalled.nfev + 5
-    assert any("left the saddle point" in note for note in fixed.notes)
-    same = solve(True, zero_step="decrease")
-    assert np.array_equal(fixed.x, same.x) and fixed.nfev == same.nfev
-    # where the old rule already passed the test there, the two agree to the last bit
-    a, b = solve(False, zero_step="norm"), solve(False)
-    assert a.success and np.array_equal(a.x, b.x) and a.nfev == b.nfev
-    # and the whole portfolio no longer needs its second member on this problem
-    f, kw = design(True)
-    auto = mincon.fmincon(f, **kw)
-    assert auto.success and any("1 member(s) run" in note for note in auto.notes), auto.notes
+    for operator in (True, False):
+        old, new = solve(operator, zero_step="norm"), solve(operator)
+        assert new.success and abs(new.fun - OPTIMUM) < 1e-7
+        same = solve(operator, zero_step="decrease")
+        assert np.array_equal(new.x, same.x) and new.nfev == same.nfev      # it is the default
+        if old.success:
+            # rounding let the old rule pass its test at the vertex: it ends at the optimum too
+            assert abs(old.fun - OPTIMUM) < 1e-7
+        else:
+            # the stall: the step tolerance at the vertex, under the previous step's multipliers
+            assert old.status == mincon.ExitFlag.STEP_TOLERANCE
+            assert abs(old.fun - VERTEX) < 1e-7 and old.optimality > 1.0
+            assert new.nfev <= old.nfev + 5
+            assert saddle_step_taken(new) is not None
+    # and the whole portfolio does not need its second member on this problem
+    for operator in (True, False):
+        f, kw = design(operator)
+        auto = mincon.fmincon(f, **kw)
+        assert auto.success and any("1 member(s) run" in note for note in auto.notes), auto.notes
 
 
 def test_saddle_step_linearized_starts_inside_the_inactive_rows():
-    full = solve(False, saddle_step="scale")
-    capped = solve(False)
-    assert full.success and capped.success
-    assert abs(full.fun - OPTIMUM) < 1e-7 and abs(capped.fun - OPTIMUM) < 1e-7
-    assert capped.nfev <= full.nfev - 10, (capped.nfev, full.nfev)
-
-    def step(result):
-        note = [n for n in result.notes if "left the saddle point" in n][0]
-        return float(note.split("(step ")[1].split(")")[0])
-    assert step(full) < 1e-2 < 3.0          # nine halvings from max |x| = 3
-    assert 5e-3 < step(capped) < 2e-2       # the ratio test's first trial
+    for operator in (False, True):
+        full = solve(operator, saddle_step="scale")
+        capped = solve(operator)
+        assert full.success and capped.success
+        assert abs(full.fun - OPTIMUM) < 1e-7 and abs(capped.fun - OPTIMUM) < 1e-7
+        backtracked = saddle_step_taken(full)
+        if backtracked is not None and backtracked < 1e-2:
+            # nine halvings from max |x| = 3 at two evaluations each; the cap's first trial is accepted
+            assert capped.nfev <= full.nfev - 10, (operator, capped.nfev, full.nfev)
+            assert 5e-3 < saddle_step_taken(capped) < 2e-2, (operator, saddle_step_taken(capped))
 
 
 def test_the_two_options_are_checked():
