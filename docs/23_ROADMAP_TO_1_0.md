@@ -1,0 +1,161 @@
+# Roadmap to 1.0
+
+Written September 18, 2026, after five sealed held-out rounds. It replaces the
+original milestone roadmap, which was written before the corpus, the oracle
+and the sealed-round protocol existed and which the repository no longer
+carries. Order is by expected value under the project's priority: the most
+robust solver with the least friction, in Python, with `fmincon`'s "handles
+everything" feel. Evaluations and wall time are reported honestly and do not
+gate an increment. A milestone is done when its gate is measured, not when the
+code looks finished.
+
+## 1. What "complete" means
+
+The thesis of the original mission ("beats `fmincon` on plug-and-play
+robustness") cannot be proved at the sample sizes a sealed round affords: the
+paired family-bootstrap intervals on eleven to thirteen problems have touched
+zero in every round. The honest reading of five rounds is *not worse than
+`fmincon` at defaults, never lying, more expensive than SciPy SLSQP*. So 1.0
+is defined by gates that can be met and measured.
+
+| # | gate | standing (September 18, 2026) |
+|---|---|---|
+| G1 | **Reliability.** Two consecutive fresh sealed rounds of at least 20 problems in at least 10 families each; track-A attainment at least that of both `fmincon` algorithms; zero false certificates; every miss carrying a diagnosis in `notes` | rounds 3 and 5 meet the attainment half at 12-13 problems; no round has had 20 |
+| G2 | **Friction.** Every friction-audit problem attained or refused with an actionable message; the exit message names the limit that bound; every quadratic-probe decision in `notes`; no option that does not do what its name says | 13/14 (`bench/results/s7-friction`); items 20c and 20e of `docs/17` open; the exposed-unsupported options of `docs/14` to be re-audited |
+| G3 | **Instrument.** The benchmark oracle evaluates its first-order test on every record | blind on 90 % of bounds-only records (`docs/17` item 20d) |
+| G4 | **Public surface.** Packaged README accurate; the `fmincon` facade and `minimize` frozen; 0.2.0 on PyPI through `publish.yml` and a Trusted Publisher; wheels for Windows, Linux and macOS; CI green on every push | README rewritten and CI repaired September 18; no Trusted Publisher yet; `publish.yml` builds Windows and Linux only |
+| G5 | **Scope statement.** Dense coupled problems at n >= 200 either fixed by an ablated increment or documented as the known cost with numbers | documented (README, known gap 1) |
+
+Not required for 1.0 and kept as post-1.0 work: the CUTEst/S2MPJ run,
+limited-memory BFGS, AMD ordering, the batched Python evaluation protocol,
+sparse Jacobians from Python, a C ABI.
+
+## 2. The work, in order
+
+The protocol's ordering rule: a candidate is **frozen before** a held-out set
+is generated and sealed, and the set exists **before** any claim changes. So
+the increments come first, each ablated on the whole development corpus, then
+the freeze, then round 6, then the claims and the release.
+
+### Phase A: the repository honest again (done September 18)
+
+Fix the two private intra-doc links and the `map_or_identity` lint that had
+turned every CI run red since September 11 (CI's stable toolchain had moved
+ahead of the development machine's); gate the portfolio's fixtures in CI
+alongside the interior-point member's; rewrite the packaged README to what the
+wheel does; record this roadmap.
+
+### Phase B: instrument and cheap friction (one session)
+
+1. The oracle's bounds-only blind spot (G3): pass or recover bound multipliers
+   so the first-order test is always evaluated. Settle first why 149 of the
+   1520 bounds-only records already carry a finite value.
+2. The exit message names the binding limit, with a machine-readable field
+   (`limit` in `{'time', 'evaluations', 'iterations'}`), in both members.
+3. The quadratic probe's decline reason goes into the report's notes.
+4. `maxiter` is a per-member limit while `maxfev` and `maxtime` are shared
+   across the portfolio: decide the semantics, document them, and make the
+   limit exit say which member and which limit.
+5. Linear rows given to the `fmincon` facade (`A`, `b`, `Aeq`, `beq`) carry
+   their exact Jacobian instead of being finite-differenced.
+6. Scheduler accounting: a member that returned an error contributes its
+   evaluations to the shared budget; the parallel path either shares the
+   budget or says that it does not.
+7. Re-audit the exposed-unsupported options of `docs/14`; implement, remove,
+   or make each one error with a message.
+8. MATLAB option names accepted as aliases on the facade (`MaxIterations`,
+   `MaxFunctionEvaluations`, `OptimalityTolerance`, `ConstraintTolerance`,
+   `StepTolerance`, `Display`), documented as aliases.
+
+Gate: the eight development gates green, the friction audit at 13/14 with
+every record identical, the Python tests extended for each new field.
+
+### Phase C: the expensive-model path (one to two sessions)
+
+The case a working scientist brings most often is a model that costs seconds
+per call (a PDE solve, a simulation) in a few dozen design variables, where
+every iteration's finite-difference gradient is `n` serial calls. Two
+increments, each behind an option and measured:
+
+1. **Parallel finite-difference probes.** The model advertises that its calls
+   may run concurrently (`options={'workers': k}` or a process pool the
+   caller supplies); the derivative layer submits a coloring group's probes
+   at once. `fmincon`'s `UseParallel`, done for the plug-and-play path.
+   Gate: identical iterates to the serial path; wall time on a model with a
+   deliberate 0.2 s cost divided by the worker count minus overhead.
+2. **Batched evaluation.** A model that accepts a `(k, n)` array and returns
+   `k` values crosses the interpreter boundary once per coloring group
+   (`docs/07` section 3). Gate: at least five times fewer callbacks on a
+   finite-differenced NumPy model; a scalar `lambda x:` model unchanged.
+
+### Phase D: algorithmic candidates, each behind an option, ablated on all 185 problems
+
+1. The quadratic probe's band budget (`crates/mincon/src/quadratic.rs`, the
+   `2n` cap when the dense build is unaffordable; `docs/22` section 7.15).
+   Measure first at the harness's per-evaluation rate and at a slower one;
+   falsifier: any attainment loss; DECONV_60 and ELLIPSOID_500 are the records
+   to watch.
+2. The frozen barrier parameter (`docs/22` section 7.15): force a reduction
+   when the monotone schedule has left `mu` unchanged while the subproblem
+   error has plateaued above its gate, or damp the adaptive phase's
+   oscillation. Trace study on DECONV_200, HS100, HS38, HS32, HS63 first.
+3. `quadratic_rows`'s residual cost on dense-objective families, and the
+   low-rank-plus-diagonal Hessian build (`docs/22` sections 7.12-7.13).
+
+Whatever survives is the round-6 candidate. Freeze it, build the wheel, record
+its hash.
+
+### Phase E: round 6, designed to discriminate
+
+Round 5's set separated no solver on five of its seven families and its one
+discriminating family was a friction problem with the seed changed
+(`docs/17` item 21). Rules for `heldout6.py`:
+
+* at least 20 problems in at least 10 families;
+* no family a variant of a development or friction problem, the nearest
+  relative named in the docstring;
+* families where the solvers are expected to differ, with the reason written
+  down: bounds-active ill-conditioned least squares with a different
+  structure from deconv; dense coupled n = 100-300 with a nonlinear row;
+  equality-heavy with rank loss at the solution; far-infeasible starts with
+  nonlinear equalities; models undefined outside a region; a banded sparse
+  family at n = 500-1000; unit mismatch with a non-zero start; noisy
+  derivatives; a nonconvex family whose start's nearest local minimum is not
+  the global one; design problems with units and best-known values;
+* references exact or verified at stationarity 1e-10, and the stored point
+  reproducing the target to 1e-6 under the corpus model (the generation
+  assertion tightened from 5e-3); CORRUGATED_BULKHEAD's point recomputed
+  before `final5` is reused for anything;
+* protocol fairness decided before sealing (the MATLAB worker drops the
+  evaluation budget; SciPy runs uncapped) and disclosed as protocol v3 if it
+  changes.
+
+Then: MATLAB equivalence, targets v7, seal with hashes, the run on both tracks
+with all seven solvers, timing with three repeats, the adversarial pass,
+`docs/17` items, the README status block. Negative results are results.
+
+### Phase F: release 0.2.0
+
+Version 0.2.0 in the workspace (the defaults changed since 0.1.0: the
+quadratic probe and its structured build and rows, `scale_variables='auto'`,
+the KKT pivot signs, the SQP member first at n <= 20, the certificate guards,
+warm start, callback, `hess=`, `method=`); a changelog; macOS in the publish
+matrix; the Trusted Publisher; a fresh-environment install check; tag
+`v0.2.0`; 0.1.0 left un-yanked. After round 6, so the status block shipped on
+PyPI is backed by a sealed run of the tree being shipped.
+
+### Post-1.0
+
+Limited-memory BFGS in compact form (the route past n of about 1000 with
+dense models); sparse Jacobians and `jac_sparsity` from Python; AMD ordering
+(only for n > 1000); CUTEst through S2MPJ, the only external validation, when
+authorised; a C ABI.
+
+## 3. Rules that do not change
+
+Success is decided by the harness, never by the solver. The portfolio's cost is
+the cost of every member. `Acceptable` is not success. Every increment goes
+behind an option and is ablated on the whole corpus before it becomes a
+default. Claims change only from a sealed held-out round, and a set that has
+been examined cannot support a fresh claim. A number produced by the measuring
+instrument rather than the solver is not evidence about the solver.
