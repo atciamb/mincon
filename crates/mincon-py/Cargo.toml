@@ -12,6 +12,13 @@ include = ["Cargo.toml", "pyproject.toml", "README.md", "LICENSE-*", "src/**", "
 [lib]
 name = "_mincon"
 crate-type = ["cdylib", "rlib"]
+# An extension module does not link libpython (pyo3's `extension-module`
+# feature), so a test harness for this crate cannot link on macOS, where the
+# linker pulls the interpreter symbols in; on Linux and Windows the unused
+# archive members are simply dropped. The crate carries no Rust tests or
+# doctests: its tests are `tests/*.py`, run against the built wheel in CI.
+test = false
+doctest = false
 
 [dependencies]
 mincon = { path = "../mincon", version = "0.1.0" }
