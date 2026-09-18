@@ -13,20 +13,20 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.83"
 license = "MIT OR Apache-2.0"
 authors = ["mincon contributors"]
 
 [workspace.dependencies]
-mincon-core = { path = "crates/mincon-core", version = "0.1.0" }
-mincon-linalg = { path = "crates/mincon-linalg", version = "0.1.0" }
-mincon-diff = { path = "crates/mincon-diff", version = "0.1.0" }
-mincon-ip = { path = "crates/mincon-ip", version = "0.1.0" }
-mincon-sqp = { path = "crates/mincon-sqp", version = "0.1.0" }
-mincon-qp = { path = "crates/mincon-qp", version = "0.1.0" }
-mincon-testset = { path = "crates/mincon-testset", version = "0.1.0" }
+mincon-core = { path = "crates/mincon-core", version = "0.2.0" }
+mincon-linalg = { path = "crates/mincon-linalg", version = "0.2.0" }
+mincon-diff = { path = "crates/mincon-diff", version = "0.2.0" }
+mincon-ip = { path = "crates/mincon-ip", version = "0.2.0" }
+mincon-sqp = { path = "crates/mincon-sqp", version = "0.2.0" }
+mincon-qp = { path = "crates/mincon-qp", version = "0.2.0" }
+mincon-testset = { path = "crates/mincon-testset", version = "0.2.0" }
 
 thiserror = "2"
 rayon = "1.12"

@@ -14,10 +14,11 @@ development, not a completed or proven superior replacement for MATLAB's
 python -m pip install mincon
 ```
 
-Prebuilt wheels target standard CPython on Windows x86_64 and Linux x86_64.
+Prebuilt wheels target standard CPython 3.9 and newer on Windows x86_64,
+Linux x86_64 and macOS (one universal2 wheel for Apple silicon and Intel).
 NumPy is installed automatically. On platforms without a matching wheel, pip
 builds from source and requires Rust 1.83 or newer and a C/C++ toolchain.
-macOS wheels and broader runtime coverage remain release work.
+What changed since 0.1.0 is in the repository's `CHANGELOG.md`.
 
 ## Familiar fmincon inputs
 
@@ -170,7 +171,10 @@ to your objective and nonlinear constraints. Inspect `help(fmincon)` or
   probe declined, and every compromise made.
 - `limit`: at a budget exit (`status == 0`), which limit bound:
   `'iterations'`, `'evaluations'` or `'time'`; `None` otherwise.
-- `nfev`, `nit`: objective calls across the whole portfolio and iterations.
+- `nfev`, `nit`: objective calls and iterations. When several portfolio
+  members ran, `nfev` is smaller than the number of calls your model saw
+  (measured on one problem: 500 against 828); `notes` gives the total across
+  all members, and that is the number to budget with.
 - `trace`: one row per iteration (objective, violation, optimality, step,
   barrier parameter), the cheapest way to see what a solve did.
 
@@ -216,9 +220,13 @@ under finite differences) are not implemented.
 The local development gate is 56/56 fixture outcomes through the default
 portfolio (53 strict `Optimal` returns; passes also include accurate points
 with non-success statuses and expected infeasible or unbounded diagnostics),
-203 Rust tests and 53 Python tests. The measured standing against `fmincon`
+205 Rust tests and 57 Python tests. The measured standing against `fmincon`
 and SciPy on a 185-problem corpus, including where they win, is in the
-repository README and `docs/17_CLAIM_AUDIT.md`.
+repository README and `docs/17_CLAIM_AUDIT.md`. Those sealed comparisons
+(rounds 1 to 5) were run on earlier candidates: the defaults added since
+round 5 are ablated on the development corpus and not yet qualified on a
+held-out round. A sixth sealed round measures this release, and its report
+goes to the repository whatever it finds.
 
 ## License
 

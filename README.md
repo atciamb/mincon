@@ -3,8 +3,9 @@
 A nonlinear constrained optimizer in Rust, aimed at what MATLAB's `fmincon`
 does well — solving the problem a working scientist actually has, without being
 told how — with Rust computations and Python wheels built using maturin.
-Experimental version 0.1.0 is [available on PyPI](https://pypi.org/project/mincon/0.1.0/).
-Install with `pip install mincon`. Prebuilt wheels support Windows and Linux x86_64.
+Experimental releases are [on PyPI](https://pypi.org/project/mincon/): install with
+`pip install mincon`. Version 0.2.0 ([changelog](CHANGELOG.md)) adds macOS wheels to
+Windows and Linux x86_64.
 Source and contributions: [atciamb/mincon on GitHub](https://github.com/atciamb/mincon).
 
 ```
@@ -90,15 +91,37 @@ let r = minimize(&p, &Options::default())?;
 > roadmap (September 18, `docs/22` section 7.17) added parallel and batched
 > finite-difference probes behind `workers=` and `vectorized=`; without them
 > the audit's fifteen records are identical (`bench/results/s7-friction-c`).
+> **Version 0.2.0 is this tree, released before its own sealed round.** Every
+> sealed comparison above was run on an earlier candidate; the defaults added
+> since round 5 (`quadratic_bands`, `zero_step`, `saddle_step`, the budget
+> accounting) are ablated on the 185-problem development corpus and not yet
+> qualified on held-out problems. Round 6 (23 sealed problems in 11 new
+> families, protocol v3, `bench/results/s6v6-final6/SEAL.md`) measures exactly
+> this tree. Its first attempt was aborted on September 18 because the laptop
+> slept and then ran throttled on battery
+> (`bench/results/s6v6-final6-attempt1`); before the release, the 53 mincon
+> records of that attempt were scored for false certificates only, and there
+> is none: each of the 23 claims of success is feasible and either attains
+> its sealed target or is confirmed first-order KKT by the oracle (the five
+> that do not attain are the two `phasesplit` problems, where the start's own
+> local minimum is certified, as the sealed docstring said a local solver
+> would). That is a screen, not a result. The full run and its report
+> follow, and they change this block whatever they find.
 > Development
-> gate: Rust tests, 56/56 fixtures with independent checks for the portfolio
-> and each member (SQP alone: 55/56, HS13 within 4e-4), 53 Python tests.
+> gate: 205 Rust tests; fixtures with independent checks, no false report of
+> success in any table: 56/56 through the default portfolio and through its
+> interior-point member, 55/56 through its SQP member (HS13, a degenerate
+> problem, stops 1.0e-3 above the optimum at the step tolerance) and 55/56
+> for the bare interior-point crate (TORTURE_UNITS exits `Acceptable`, which
+> is not success); 57 Python tests of the package, run against the installed
+> wheel, and 10 of the benchmark oracle.
 
 `fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
 uses SciPy's `ineq >= 0` convention. Both have automatic defaults and return
 an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
-[release procedure](docs/13_RELEASE.md). A fresh PyPI installation passes all 18 Python tests.
+[release procedure](docs/13_RELEASE.md). A fresh PyPI installation of 0.1.0 passed all 18
+Python tests of that version.
 
 ---
 

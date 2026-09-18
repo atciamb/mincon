@@ -21,7 +21,7 @@ test = false
 doctest = false
 
 [dependencies]
-mincon = { path = "../mincon", version = "0.1.0" }
+mincon = { path = "../mincon", version = "0.2.0" }
 mincon-core.workspace = true
 pyo3 = { version = "0.29", features = ["extension-module", "abi3-py39"] }
 numpy = "0.29"

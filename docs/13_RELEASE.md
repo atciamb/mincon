@@ -41,12 +41,39 @@ The initial upload lacked credentials. Publication subsequently succeeded
 using the owner's external token configuration; no credentials are in the repository.
 
 Alternatively, `.github/workflows/publish.yml` builds, installs and tests
-Windows/Linux wheels and rebuilds/tests an sdist. It publishes only on a manual
-dispatch with `publish=true`, after configuring a PyPI Trusted Publisher for
-the real repository, workflow filename `publish.yml`, and environment `pypi`.
+Windows, Linux and macOS (universal2) wheels and rebuilds/tests an sdist. It
+publishes only on a manual dispatch with `publish=true`, after configuring a
+PyPI Trusted Publisher for the real repository, workflow filename
+`publish.yml`, and environment `pypi`. A push to `master` that changes the
+workflow file rehearses every build and test leg with the publish job skipped
+(`inputs.publish` is empty on a push), so the workflow is never first run on
+the day it has to upload.
 The public repository is https://github.com/atciamb/mincon, configured as `origin`.
-The publication workflow has not run on GitHub; Trusted Publisher setup remains outstanding.
-Do not claim workflow success from local validation alone.
+Do not claim workflow success from local validation alone: read the run from
+the GitHub API.
+
+## 0.2.0 (September 18, 2026)
+
+The route is the workflow, not a local upload: three platforms cannot be built
+on one laptop. In order: the version in `Cargo.toml` (workspace, the seven
+internal pins, the pin in `crates/mincon-py/Cargo.toml`) and `cargo update
+--workspace` for the lock file; `CHANGELOG.md`; both READMEs; the local gates;
+the wheel of record built **after** the documents, because the packaged README
+is inside its METADATA; an installation of that wheel into a fresh virtual
+environment with the documented example and the Python tests run against it;
+commit, push, CI and the rehearsal read from the API; the owner's dispatch with
+`publish=true`; then the tag `v0.2.0` on the released commit, an installation
+from PyPI in a fresh environment, and only then a line here saying it is
+public.
+
+Found while preparing it, and fixed before the first run: the workflow's
+`validate` job ran the interior-point fixture example bare, and that example
+exits 1 on any fixture miss while the member alone stands at 55/56, so the
+job would have failed before a wheel was built. It now applies the verdict
+`ci.yml` applies: no false report of success, and the ratchet.
+
+0.2.0 ships before its sealed round is scored; `docs/23`, Phase F, says why and
+what the packaged README therefore does not claim.
 
 Sources: [maturin distribution guide](https://www.maturin.rs/distribution.html),
 [PyPA publishing guide](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/),
@@ -59,7 +86,9 @@ PyO3/NumPy's requirement. `cargo +1.83.0 check --workspace --locked` was verifie
 on Windows. Native kernels and packaging are tested locally on Windows x86_64
 and Ubuntu under WSL x86_64, standard CPython 3.12. The Linux build uses zig and
 maturin's manylinux2014 audit. The abi3 tag permits CPython 3.9+; tests on every
-minor version, macOS wheels and ARM wheels remain outstanding.
+minor version and Linux ARM wheels remain outstanding. Since 0.2.0 the macOS
+wheel is built and tested on GitHub's Apple-silicon runner; its x86_64 half is
+built there and not executed.
 
 Broader solver qualification, hard per-callback budgets, SQP, sparse Python
 Jacobians and a failed/empty derivative-check audit remain roadmap work. Publish

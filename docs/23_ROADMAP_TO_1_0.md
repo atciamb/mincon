@@ -236,6 +236,24 @@ matrix; the Trusted Publisher; a fresh-environment install check; tag
 `v0.2.0`; 0.1.0 left un-yanked. After round 6, so the status block shipped on
 PyPI is backed by a sealed run of the tree being shipped.
 
+**Order changed on September 18, by the owner's decision: 0.2.0 ships before
+round 6 is scored.** The reason for the order above is what the status block
+claims, not what the code does, so the rule is kept another way: the packaged
+README and the changelog say that the sealed comparisons were run on earlier
+candidates and that the defaults added since round 5 are ablated on the
+development corpus only, and the tree stays frozen, so round 6 still measures
+what shipped. What forced the question: the first attempt at the sealed run
+was launched on a laptop whose lid was closed and whose charger was pulled
+seven minutes later. Modern Standby froze the workers for 88 minutes, the
+supervisor killed the problem in flight on wake (WINKLER_SOFT_250, recorded as
+a timeout after 1298 s against a 210 s limit: a clock jump between two polls,
+not the solver), and on battery the cost of one model call moved by up to
+3.4x between arms, which decides the clock-bound problems. That attempt is
+kept unchanged in `bench/results/s6v6-final6-attempt1` and is not the round.
+Before the release its mincon records were scored once, for false
+certificates only. The accepted risk: a false certificate found by round 6
+goes out as 0.2.1, and 0.2.0 may be yanked.
+
 ### Post-1.0
 
 A low-rank-plus-diagonal Hessian build for the quadratic probe (covariance

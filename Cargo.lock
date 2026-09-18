@@ -63,7 +63,7 @@ dependencies = [
 
 [[package]]
 name = "mincon"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mincon-core",
  "mincon-diff",
@@ -75,14 +75,14 @@ dependencies = [
 
 [[package]]
 name = "mincon-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "mincon-diff"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mincon-core",
  "rayon",
@@ -90,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "mincon-ip"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mincon-core",
  "mincon-diff",
@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "mincon-linalg"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mincon-core",
  "thiserror",
@@ -108,7 +108,7 @@ dependencies = [
 
 [[package]]
 name = "mincon-py"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mincon",
  "mincon-core",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "mincon-qp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mincon-core",
  "mincon-linalg",
@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "mincon-sqp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mincon-core",
  "mincon-diff",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "mincon-testset"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mincon-core",
 ]
