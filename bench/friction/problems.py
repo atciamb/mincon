@@ -137,9 +137,16 @@ def _simplex_projection(c):
 
 
 def _kkt_verified_convex_reference(p: Problem, x_start, label):
-    """Reference for a convex problem by an independent method (SciPy trust-constr with exact
-    derivatives, tight tolerances) verified by the oracle's recovered-multiplier stationarity.
-    Convexity makes the verified KKT point the global optimum."""
+    """Reference for a convex problem: see :func:`_kkt_verified_reference`; convexity makes the
+    verified KKT point the global optimum."""
+    return _kkt_verified_reference(p, x_start, label, convex=True)
+
+
+def _kkt_verified_reference(p: Problem, x_start, label, convex):
+    """Reference by an independent method (SciPy trust-constr with exact derivatives, tight
+    tolerances, then Newton on the KKT system of the active set) verified by the oracle's
+    recovered-multiplier stationarity. For a convex problem that is the global optimum; otherwise
+    it is the local optimum reached from ``x_start`` and is labelled as such."""
     import os
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness"))
@@ -167,13 +174,43 @@ def _kkt_verified_convex_reference(p: Problem, x_start, label):
                                         np.zeros(can.nc + can.nceq), jac=cj))
     r = minimize(p.fun, x_start, jac=p.grad, bounds=Bounds(can.xl, can.xu), constraints=cons, method="trust-constr",
                  options={"gtol": 1e-12, "xtol": 1e-14, "maxiter": 5000})
+    # Identify the active set at 1e-4 first (every convex reference was built that way); when the
+    # polished point is not feasible to 1e-9, the loose identification took in a row that is only
+    # nearly active (a vertex with more candidate rows than variables), so identify more tightly.
     x = _active_set_newton_polish(can, np.asarray(r.x, float), tol=1e-4)
     v = oracle.assess(can, x, feas_tol=1e-9, stat_tol=1e-8)
     if not (v.feasible and v.kkt_first_order_recovered):
+        # A degenerate vertex (more rows active than variables, consistent by symmetry) has no
+        # square KKT system to polish. Correct the trust-constr point onto its active rows by the
+        # minimum-norm step instead (a feasibility correction of the order of its violation) and
+        # let the oracle judge the result; the objective moves by a relative 1e-8 or so.
+        x, v = _active_rows_projection(can, np.asarray(r.x, float), tol=1e-6)
+    if not (v.feasible and v.kkt_first_order_recovered):
         raise RuntimeError(f"{p.name}: reference solve not KKT-verified: {v.as_dict()}")
+    kind = "convex, so global" if convex else "not convex, so the local optimum from this start, not proved global"
     return can.f(x), x, (f"{label} (trust-constr for the active set at 1e-4, then Newton on the KKT system of that "
                          f"active set); KKT verified independently (stationarity {v.recovered_stationarity:.1e}); "
-                         f"convex, so global")
+                         f"{kind}")
+
+
+def _active_rows_projection(can, x, tol=1e-6):
+    """Minimum-norm correction of x onto the rows active at x (within tol relative), bounds clipped,
+    followed by the oracle's verdict."""
+    import os
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness"))
+    import oracle  # noqa: E402
+    c = can.cons(x)
+    up = np.isfinite(can.cu) & (can.cu - c <= tol * np.maximum(1.0, np.abs(can.cu)))
+    lo = np.isfinite(can.cl) & (c - can.cl <= tol * np.maximum(1.0, np.abs(can.cl)))
+    act = np.flatnonzero(up | lo)
+    if act.size:
+        J = can.jac(x)[act]
+        target = np.where(up[act], can.cu[act], can.cl[act])
+        resid = c[act] - target
+        x = x - J.T @ np.linalg.lstsq(J @ J.T, resid, rcond=None)[0]
+    x = np.clip(x, can.xl, can.xu)
+    return x, oracle.assess(can, x, feas_tol=1e-9, stat_tol=1e-8)
 
 
 def _active_set_newton_polish(can, x, tol=1e-6):
@@ -615,9 +652,81 @@ def equality_circle() -> Problem:
                    tags=("nonlinear-eq",))
 
 
+def heatflux_design() -> Problem:
+    """A heat-flux surface design in surrogate form (the owner's problem, September 2026): 19 Fourier
+    coefficients in cm (an offset and nine cosine/sine pairs) describe the top surface h(x) of a
+    conducting plate of length L = 5 cm; the objective is minus a smooth stand-in for the heat flux of
+    the 2-D conduction solve (thinner is better through 1/h, slope adds surface, curvature is
+    penalised), scaled by 7000; 1384 linear rows keep h within [1 cm, 5 cm] at 692 sample points and
+    every coefficient is bounded. What matters for the audit is the shape: a few dozen variables, a
+    thousand cheap linear rows, and an objective that stands for an expensive model, so evaluation
+    counts are the whole story. Reference: trust-constr with exact derivatives from the same start,
+    polished on its active set and KKT-verified; the problem is not convex, so this is the local
+    optimum from this start and is tagged as such."""
+    modes, L, k, t_top, t_bot = 9, 0.05, 20.0, 20.0, 90.0
+    hmin, hmax, nx = 0.01, 0.05, 345
+    a_slope, b_curv = 0.02, 2.0e-9
+    k_dt = k * (t_bot - t_top)
+
+    def fourier(x):
+        cols = [np.ones(x.size)]
+        for i in range(1, modes + 1):
+            cols.append(np.cos(2 * np.pi * i * x / L))
+            cols.append(np.sin(2 * np.pi * i * x / L))
+        return np.column_stack(cols)
+
+    xs = np.linspace(0.0, L, nx + 1)
+    mesh = fourier(xs)
+    dx = xs[1] - xs[0]
+    # numpy's gradient (central inside, one-sided at the ends) as a matrix, so the exact gradient
+    # below and the MATLAB twin apply the identical operator.
+    D = np.gradient(np.eye(nx + 1), dx, axis=0)
+    npts = nx + 1
+
+    def f(c):
+        h = mesh @ (0.01 * c)
+        if np.any(h <= 0):
+            return float("nan")          # a folded surface: the real solver would fail here too
+        hp = D @ h
+        hpp = D @ hp
+        q = np.mean((1.0 + a_slope * hp ** 2) / h) - b_curv * np.mean(hpp ** 2)
+        return float(-k_dt * q / 7000.0)
+
+    def g(c):
+        h = mesh @ (0.01 * c)
+        hp = D @ h
+        hpp = D @ hp
+        du_dh = -(1.0 + a_slope * hp ** 2) / h ** 2 / npts
+        du_dhp = (2.0 * a_slope * hp / h) / npts
+        grad_h = du_dh + D.T @ du_dhp - b_curv * (2.0 / npts) * (D.T @ (D.T @ hpp))
+        return -k_dt / 7000.0 * 0.01 * (mesh.T @ grad_h)
+
+    split = 2 * (nx + 1)
+    C = fourier(np.linspace(0.0, L, split, endpoint=False))
+    A = np.vstack([C, -C])
+    b = np.concatenate([np.full(split, hmax), np.full(split, -hmin)]) / 0.01
+    x0 = np.zeros(2 * modes + 1)
+    x0[0] = (hmin + (hmax - hmin) / 2) / 0.01
+    x0[-2] = (hmin + (hmax - hmin) / 6) / 0.01
+    lb = np.full(x0.size, -4.0)
+    lb[0] = hmin / 0.01
+    ub = np.full(x0.size, 4.0)
+    ub[0] = hmax / 0.01
+    p = Problem("heatflux_design", f, x0, g, A=A, b=b, lb=lb, ub=ub,
+                # scalars only: the MATLAB twin rebuilds the Fourier columns, the band rows and the
+                # gradient operator from them (they are formula, not data)
+                data=dict(L=L, modes=modes, nx=nx, hmin=hmin, hmax=hmax, a_slope=a_slope, b_curv=b_curv, k_dt=k_dt),
+                minimum_inputs="fun, x0, A, b, lb, ub",
+                story="a heat-flux surface design: 19 Fourier coefficients, 1384 linear rows keeping the surface "
+                      "in a band, a smooth PDE-like objective standing for an expensive model",
+                tags=("linear", "many-rows", "expensive-model-shape", "nonconvex", "local-reference"))
+    p.target, p.x_ref, p.target_source = _kkt_verified_reference(p, p.x0, "independent local solve", convex=False)
+    return p
+
+
 REGISTRY = {p.__name__: p for p in [chainrosen20, odefit, portfolio_risk, pressure_vessel, nan_region, hs71, linear_only,
                                       with_args, wrong_gradient, infeasible_start_far, bad_scaling, noisy_simulator,
-                                      box_lsq, equality_circle]}
+                                      box_lsq, equality_circle, heatflux_design]}
 
 
 def get(name: str) -> Problem:

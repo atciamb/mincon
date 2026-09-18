@@ -655,3 +655,95 @@ the time budget. **Nothing is changed here either**: the in-loop wall guard
 about 31 %, so a raised band budget would spend up to the whole build deadline and then decline on
 a slower model; and the effect on the rest of the corpus is untested. It is recorded as the
 measured reason the probe declines, and as the most promising of the three threads.
+
+
+### 7.16 Phase B of the roadmap to 1.0: the instrument, the report, the options, September 18
+
+`docs/23` Phase B, run as one session at the tree after the CI repair. Every item is a measurement
+or a defect fix; no algorithm changed. Gate: the eight development gates and the friction audit
+re-run at the new wheel (`bench/results/s7-friction-b`), with a whole-corpus track-A run for the
+one budget-accounting correction that could touch a clock-bound record (`bench/results/abl-b1`).
+
+**The oracle's bounds-only blind spot is closed, and the 149 exceptions are explained.** Every
+bounds-only record that carried a finite stationarity was an `fmincon` record: the MATLAB worker
+always passes `lambda.lower` and `lambda.upper`, so on those records `lam` was an empty array and
+the oracle ran its test, while `worker_python.py` set `lam_canon = None` whenever `m = 0` and the
+oracle then skipped the test for every Python solver (227 of 1895 bounds-only records across all
+scored files were finite, all of them `fmincon`'s). The worker now passes an empty `lam` with the
+bound multipliers on bounds-only problems. Checked on three corpus problems with the new wheel:
+HS1 stationarity 6.68e-6 (the oracle's absolute 1e-6 test fails where the solver's scaled test
+passed, which is the instrument finally saying something), HS3 5.2e-12, DECONV_60 1.03e-7, all
+with `multipliers_supplied = true`. Old scored files do not change: the records store the `None`.
+
+**The report names the limit that bound.** `SolveReport::limit` (`Limit::{Iterations,
+Evaluations, Time}`, Python `res.limit` as `'iterations' | 'evaluations' | 'time' | None`) is set
+by both members at a budget exit, the evaluation budget first when several fire, and
+`SolveReport::message()` says "Iteration limit reached (70 iterations)", "Evaluation limit reached
+(12 objective evaluations)" or "Time limit reached (60.0 s, 78 iterations, 16885 objective
+evaluations)" instead of the one message all three shared (`docs/17` item 20c).
+
+**A caller's iteration cap is a limit on the solve.** `max_iterations` is now `Option<usize>`
+(`None` = the `400 + 10 n` default). A cap the caller sets is shared across the portfolio's
+members like `max_evaluations` and `max_seconds`; the default stays a per-member safety net, so
+no harness record is affected (the harness never sets it). Before, `maxiter = 70` on a problem no
+member finishes in 70 iterations ran four members for 280 (the owner's heat-flux script). A member
+skipped for it says "skipped: iteration budget exhausted by earlier members".
+
+**The portfolio counts at the model boundary.** The driver wraps the problem in a counting `Nlp`
+so a member that returns an error still charges the shared budget for what it spent, and the
+notes' "Total objective evaluations across all members" is what the model saw (`ROUND5E` 3.5,
+first defect). The parallel path now shares the remaining budgets across chunks (second defect;
+within a chunk the members still run concurrently with the same remainder, which is the price of
+concurrency and is bounded by `threads`). One correction that can change a record: the quadratic
+member used to run with the caller's full clock and no iteration cap, and now gets what is left
+after the probe, like every other member. Only a record that stops on the clock inside the
+quadratic member can move; `abl-b1` measures it (below).
+
+**The probe says why it declined.** `probe_counted` returns the decline reason and the winner's
+notes carry "Quadratic-program probe declined after 804 objective evaluations: no diagonal or
+banded Hessian within 2 off-diagonal bands, and the dense build is outside the size or budget
+limits" (`docs/17` item 20e; the reason used to reach only `MINCON_QP_DEBUG=1` stderr).
+
+**Options that did not do what their name said are gone** (`docs/14`, re-audit section):
+`Algorithm::Slqp` (ran SQP), `ScalingMode::{Equilibration, User}` (ran gradient scaling; the
+Python `'equilibration'` value now errors), `HessianMode::{LimitedMemoryBfgs, FiniteDifference}`
+and `lbfgs_history` (ran dense BFGS with a note), `LinearSolverKind` and `linear_solver` (never
+read), `Ordering::Amd` (ran RCM), `watchdog`, `restoration` and `display` (never read).
+`RegularizationMode::{InertiaFree, Hybrid}` stay: they do differ in `kkt.rs` (a singularity check,
+dual regularisation) and their docs say every mode still requires certified inertia.
+
+**The facade.** Linear rows (`A`, `b`, `Aeq`, `beq`) carry their exact Jacobian, so they are no
+longer finite-differenced and the sparsity probe is skipped (the heat-flux surrogate: 124 -> 104
+evaluations); the engine still uses analytic Jacobians only when every block has one, so a
+`nonlcon` without `nonlcon_jac` keeps every row on probes. MATLAB option names are accepted as
+aliases (`MaxIterations`, `MaxFunctionEvaluations`, `OptimalityTolerance`, `ConstraintTolerance`,
+`StepTolerance`, `FiniteDifferenceType`, `Display`, `Algorithm`, `SpecifyObjectiveGradient`,
+`SpecifyConstraintGradient`; `UseParallel=True` and any other MATLAB name raise rather than being
+ignored); `xtol` maps to the step tolerance. Not done: `record_trace` from Python.
+
+**The friction audit at the new wheel, with a fifteenth problem.** `heatflux_design` is the
+owner's design problem in surrogate form (19 Fourier coefficients, 1384 linear rows keeping the
+surface in a band, a smooth stand-in for a PDE objective; reference by trust-constr with exact
+derivatives, projected onto the 20 rows active at the optimum, KKT-verified: the optimum is a
+degenerate vertex, 20 active rows for 19 variables, consistent by the problem's symmetry). MATLAB
+and Python definitions agree at x0 to 3.6e-11 over 30 records.
+
+| solver | attained | evaluations on heat-flux | note |
+|---|---|---:|---|
+| mincon (`fmincon` facade, defaults) | 14/15 | 477 | the SQP member stopped at `StepTolerance`, f = -47.45625 (gap 2.1e-5, inside the audit's 1e-4 bar but not "usable" for the portfolio), and `ip-default` finished it in 16 iterations and 5.9 s (0.37 s an iteration on 1384 dense rows); the returned point is the reference to 5e-8 |
+| fmincon-sqp | 12/15 | 120 | a different vertex of the same objective (gap 0, x_err 0.018) |
+| fmincon-interior-point | 12/15 | 382 | as above (gap 1.7e-7) |
+| SciPy SLSQP | 11/15 | 40 | gap 2.1e-5 |
+| SciPy trust-constr | 12/15 | 620 | gap 2.3e-6 |
+
+The fourteen earlier records are identical to the evaluation for thirteen problems; `noisy_simulator`
+went from 200 to 202 evaluations and 12 to 13 iterations (the exact row Jacobian changes the last
+digits of the path), still `Optimal` and attained; `wrong_gradient` is still the refusal with the
+component named. The heat-flux row is a **cost finding, not a robustness one**: every solver
+attains, mincon's answer is the most accurate by three orders, and it paid 4x fmincon-sqp and 12x
+SLSQP because its SQP member does not finish a degenerate vertex. That goes to Phase D as a fourth
+candidate (the SQP member's active-set QP on many rows, and whether a `StepTolerance` point this
+close should count as usable).
+
+**Corpus check (`abl-b1`, track A, the mincon arm at the new wheel against
+`abl-i5-rows/mincon_quadratic_rows-values`):** 173 / 172 attained of 185, +0.6 pp [+0.0, +3.4], cost 1.00 [1.00, 1.01] on 172 common. Three records changed and they are the three clock-bound problems (COVQP_300, DECONV_200, DENSELAP_250): all stopped on the 60 s clock in both arms, and the candidate got 31-33 % more evaluations out of the same clock on each, so the machine was faster on the day, not the solver; COVQP_300's new attainment is that and is not claimed. None of the three is a quadratic-member record (the probe declines all three), so the accounting correction acted on no record in the corpus, and the 182 others are identical to the evaluation. **No change, as designed** (`bench/results/abl-b1/README.md`).

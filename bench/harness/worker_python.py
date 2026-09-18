@@ -94,7 +94,12 @@ def solve_mincon(model, track, budget, threads, variant, overrides=None):
     # mincon returns multipliers in constraint-block order: eq block, lo block, hi block (each canonical sign already:
     # 'ineq' fun >= 0 is a lower side -> negative multipliers; we map back to canonical row order and canonical sign).
     lam_canon = None
-    if lam is not None and p.m and variant != "mincon-fmincon":
+    if lam is not None and p.m == 0:
+        # Bounds-only: the bound multipliers z_l, z_u are the whole dual, and the oracle evaluates
+        # its first-order test only when multipliers are supplied. Leaving this None was why 90 %
+        # of bounds-only records carried NaN stationarity (docs/17 item 20d, September 2026).
+        lam_canon = np.zeros(0)
+    elif lam is not None and p.m and variant != "mincon-fmincon":
         lam_canon = np.zeros(p.m)
         off = 0
         for key, sign in (("eq", 1.0), ("lo", 1.0), ("hi", -1.0)):

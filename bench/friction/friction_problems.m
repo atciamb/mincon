@@ -53,6 +53,11 @@ switch name
     case 'box_lsq'
         K = d.K; y = d.y(:);
         P.fun = @(x) 0.5 * sum((K * x - y).^2);
+    case 'heatflux_design'
+        [mesh, A, b, D] = heatflux_pieces(d);
+        P.A = A; P.b = b(:);
+        a = d.a_slope; bc = d.b_curv; kdt = d.k_dt;
+        P.fun = @(x) heatflux_obj(x, mesh, D, a, bc, kdt);
     case 'equality_circle'
         P.fun = @(x) -x(3) + 0.1 * (x(1)^2 + x(2)^2);
         P.nonlcon = @(x) deal(x(1) - 0.3, [x(1)^2 + x(2)^2 + x(3)^2 - 1; x(1) + x(2) - 0.5]);
@@ -94,6 +99,43 @@ if r2 < 0
 else
     f = (x(1) - 0.9)^2 + (x(2) - 0.9)^2 + 0.1 * sqrt(r2);
 end
+end
+
+function [mesh, A, b, D] = heatflux_pieces(d)
+% the same construction as problems.py: Fourier columns [1, cos, sin, ...] over the length, the
+% band rows at 2 (nx + 1) sample points, and numpy's gradient (central inside, one-sided at the
+% ends) as a matrix. Formula, not data, so it is rebuilt here rather than exported.
+L = d.L; modes = d.modes; nx = d.nx;
+x = linspace(0, L, nx + 1)';
+mesh = fourier_matrix(x, modes, L);
+split = 2 * (nx + 1);
+xc = (0:split-1)' * (L / split);
+C = fourier_matrix(xc, modes, L);
+A = [C; -C];
+b = [repmat(d.hmax, split, 1); repmat(-d.hmin, split, 1)] / 0.01;
+N = nx + 1; dx = x(2) - x(1);
+D = zeros(N);
+D(1, 1:2) = [-1 1] / dx;
+for i = 2:N-1
+    D(i, i-1) = -1 / (2 * dx); D(i, i+1) = 1 / (2 * dx);
+end
+D(N, N-1:N) = [-1 1] / dx;
+end
+
+function M = fourier_matrix(x, modes, L)
+M = ones(numel(x), 1);
+for i = 1:modes
+    M = [M, cos(2*pi*i*x/L), sin(2*pi*i*x/L)]; %#ok<AGROW>
+end
+end
+
+function f = heatflux_obj(c, mesh, D, a, bc, kdt)
+% the same operator as problems.py: mesh maps cm coefficients to heights in m.
+h = mesh * (0.01 * c(:));
+if any(h <= 0), f = NaN; return; end
+hp = D * h; hpp = D * hp;
+q = mean((1 + a * hp.^2) ./ h) - bc * mean(hpp.^2);
+f = -kdt * q / 7000;
 end
 
 function [f, g] = wrong_gradient_obj(x, tgt)

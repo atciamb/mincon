@@ -117,3 +117,27 @@ lies on the bound `x₁ = 2`, and the restoration's stationarity test does not
 account for it. Fixed in I0: projected-gradient stationarity test in
 `robust_restoration`; `LocallyInfeasible` after 6 iterations (105 evaluations
 across the three portfolio members); regression test in `mincon-ip`.
+
+
+## Re-audit of the exposed-unsupported rows, September 18, 2026
+
+Phase B of `docs/23`. Each row of the matrix above that promised something the code did not do
+was either implemented since, removed, or left with its documentation saying exactly what it
+does; nothing silently falls back any more.
+
+| row | disposition |
+|---|---|
+| `BarrierUpdate::Adaptive` / `AdaptiveThenMonotone` | implemented (round 2); `AdaptiveThenMonotone` is the measured default |
+| `Options::watchdog` | removed (never read) |
+| `RegularizationMode::InertiaFree` / `Hybrid` | kept: the modes differ in `kkt.rs` (a singularity check, dual regularisation on retry) and every mode requires certified inertia, which their docs and the interior-point module docs now say |
+| `HessianMode::LimitedMemoryBfgs`, `FiniteDifference`, `lbfgs_history` | removed (both ran dense BFGS with a note); `Auto` documented as exact-if-supplied else dense BFGS |
+| `Ordering::Amd` | removed (ran RCM); the module docs keep the AMD plan for a new variant |
+| `LinearSolverKind`, `Options::linear_solver` | removed (never read) |
+| `Algorithm::Slqp` | removed (ran SQP) |
+| `ScalingMode::Equilibration`, `User` | removed (ran gradient scaling); the Python `'equilibration'` value is an error |
+| `Options::display`, `Display` | removed (never read; Python streams through the callback) |
+| `Options::restoration` | removed (never read; restoration always runs) |
+| SQP, QP subsolver | implemented (rounds 3-5) |
+| Sparse Jacobian / `jac_sparsity` from Python | still absent, and still says so (`docs/23` post-1.0) |
+| Derivative checker (D1) | fixed (C1) |
+| Portfolio resource accounting (D5) | closed here: a counting wrapper charges every member, including one that errors, and the parallel path shares budgets across chunks |
