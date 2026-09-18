@@ -45,7 +45,14 @@ ahead of the development machine's); gate the portfolio's fixtures in CI
 alongside the interior-point member's; rewrite the packaged README to what the
 wheel does; record this roadmap.
 
-### Phase B: instrument and cheap friction (one session)
+### Phase B: instrument and cheap friction (done September 18; `docs/22` section 7.16)
+
+Items 1-8 below are done except `record_trace` from Python (optional, not done) and the
+mixed exact/finite-difference Jacobian (a linear row's exact Jacobian is used only when every
+block supplies one). The friction audit gained `heatflux_design` and stands at 14/15; the
+corpus check `bench/results/abl-b1` changed nothing. One finding goes to Phase D as a fourth
+candidate: the SQP member stops at a step-tolerance point next to a degenerate vertex with
+many active rows and the interior-point member finishes at 4x fmincon-sqp's cost.
 
 1. The oracle's bounds-only blind spot (G3): pass or recover bound multipliers
    so the first-order test is always evaluated. Settle first why 149 of the
