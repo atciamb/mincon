@@ -188,6 +188,146 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
         Ok((f, c))
     }
 
+    /// [`Self::values`] at several points through the model's batch calls: the
+    /// constraints only where the objective could be evaluated, as `values`
+    /// does. `None` where either failed.
+    fn values_batch(&self, points: &[Vec<f64>]) -> Vec<Option<(f64, Vec<f64>)>> {
+        let m = self.m;
+        let fs = self.eval.f_batch(&points.concat());
+        let ok: Vec<usize> = (0..points.len())
+            .filter(|&i| fs.get(i).is_some_and(Result::is_ok))
+            .collect();
+        let xs: Vec<f64> = ok.iter().flat_map(|&i| points[i].iter().copied()).collect();
+        let mut cs = vec![0.0; ok.len() * m];
+        let status = self.eval.c_batch(&xs, &mut cs);
+        let mut out: Vec<Option<(f64, Vec<f64>)>> = vec![None; points.len()];
+        for (slot, &i) in ok.iter().enumerate() {
+            if let (Some(Ok(f)), Some(Ok(()))) = (fs.get(i), status.get(slot)) {
+                let c = (0..m).map(|r| cs[slot * m + r] * self.d_c[r]).collect();
+                out[i] = Some((f * self.d_f, c));
+            }
+        }
+        out
+    }
+
+    /// The second differences of [`Self::saddle_probe`] with their points
+    /// submitted as batches: every `+-h` point inside the box in one wave, then
+    /// the `+-2h` points of the one-sided directions. The points, their order of
+    /// use and the arithmetic are the serial probe's; when no evaluation fails
+    /// the evaluations are exactly the serial ones. `None` where the serial
+    /// probe gives up ("probe left the box or the model failed").
+    fn saddle_curvatures_batched(
+        &self,
+        p: &Point,
+        lambda: &[f64],
+        z_basis: &[Vec<f64>],
+        h: f64,
+    ) -> Option<Vec<f64>> {
+        let n = self.n;
+        let k = z_basis.len();
+        let mut dirs: Vec<Vec<f64>> = z_basis.to_vec();
+        for a in 0..k {
+            for b in a + 1..k {
+                dirs.push((0..n).map(|j| z_basis[a][j] + z_basis[b][j]).collect());
+            }
+        }
+        let at = |v: &[f64], t: f64| -> Vec<f64> { (0..n).map(|j| p.x[j] + t * v[j]).collect() };
+        let inside = |xt: &[f64]| (0..n).all(|j| xt[j] >= self.xl[j] && xt[j] <= self.xu[j]);
+        let lagrangian = |values: Vec<Option<(f64, Vec<f64>)>>| -> Vec<Option<f64>> {
+            values
+                .into_iter()
+                .map(|v| v.map(|(f, c)| f + dot(lambda, &c)))
+                .collect()
+        };
+
+        // Wave 1. The serial probe stops at the first direction the box alone
+        // defeats, having evaluated that direction's one inside point if it has
+        // one; nothing after it is evaluated here either.
+        let mut points: Vec<Vec<f64>> = Vec::new();
+        let mut slots: Vec<(Option<usize>, Option<usize>)> = Vec::new();
+        for v in &dirs {
+            let (xp, xm) = (at(v, h), at(v, -h));
+            let (p_in, m_in) = (inside(&xp), inside(&xm));
+            let blocked = match (p_in, m_in) {
+                (true, true) => false,
+                (true, false) => !inside(&at(v, 2.0 * h)),
+                (false, true) => !inside(&at(v, -2.0 * h)),
+                (false, false) => true,
+            };
+            let mut slot = (None, None);
+            if p_in {
+                slot.0 = Some(points.len());
+                points.push(xp);
+            }
+            if m_in {
+                slot.1 = Some(points.len());
+                points.push(xm);
+            }
+            slots.push(slot);
+            if blocked {
+                break;
+            }
+        }
+        let first = lagrangian(self.values_batch(&points));
+
+        // Wave 2: the far point of every direction with exactly one side.
+        let mut far_points: Vec<Vec<f64>> = Vec::new();
+        let mut far_slot: Vec<Option<usize>> = vec![None; slots.len()];
+        for (i, slot) in slots.iter().enumerate() {
+            let lp = slot.0.and_then(|s| first[s]);
+            let lm = slot.1.and_then(|s| first[s]);
+            let t = match (lp, lm) {
+                (Some(_), None) => 2.0 * h,
+                (None, Some(_)) => -2.0 * h,
+                _ => continue,
+            };
+            let x2 = at(&dirs[i], t);
+            if inside(&x2) {
+                far_slot[i] = Some(far_points.len());
+                far_points.push(x2);
+            }
+        }
+        let far = if far_points.is_empty() {
+            Vec::new()
+        } else {
+            lagrangian(self.values_batch(&far_points))
+        };
+
+        let l0 = p.f + dot(lambda, &p.c);
+        let second = |i: usize| -> Option<f64> {
+            let slot = slots.get(i)?;
+            let lp = slot.0.and_then(|s| first[s]);
+            let lm = slot.1.and_then(|s| first[s]);
+            match (lp, lm) {
+                (Some(lp), Some(lm)) => Some((lp - 2.0 * l0 + lm) / (h * h)),
+                (Some(lp), None) => {
+                    let l2 = far_slot[i].and_then(|s| far[s])?;
+                    Some((l2 - 2.0 * lp + l0) / (h * h))
+                }
+                (None, Some(lm)) => {
+                    let l2 = far_slot[i].and_then(|s| far[s])?;
+                    Some((l2 - 2.0 * lm + l0) / (h * h))
+                }
+                (None, None) => None,
+            }
+        };
+        let mut mat = vec![0.0; k * k];
+        for a in 0..k {
+            mat[a * k + a] = second(a)?;
+        }
+        let mut i = k;
+        for a in 0..k {
+            for b in a + 1..k {
+                let dab = second(i)?;
+                i += 1;
+                let off = 0.5 * (dab - mat[a * k + a] - mat[b * k + b]);
+                mat[a * k + b] = off;
+                mat[b * k + a] = off;
+            }
+        }
+        Some(mat)
+    }
+
     /// Gradient and dense scaled Jacobian at `x` (given unscaled-consistent
     /// `f`, `c` in scaled units for the finite differences' base values).
     fn derivatives(
@@ -786,6 +926,13 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
         }
         let x_scale = p.x.iter().fold(0.0_f64, |a, v| a.max(v.abs())).max(1.0);
         let h = mincon_core::EPS.powf(0.25) * x_scale;
+        if self.eval.batches() {
+            // The same second differences, their points evaluated together.
+            let Some(mat) = self.saddle_curvatures_batched(p, lambda, &z_basis, h) else {
+                return (None, "probe left the box or the model failed");
+            };
+            return self.saddle_direction(&mat, &z_basis, &weak, g_scale, x_scale);
+        }
         let lag = |this: &Self, xt: &[f64]| -> Option<f64> {
             for j in 0..n {
                 if xt[j] < this.xl[j] || xt[j] > this.xu[j] {
@@ -834,7 +981,22 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                 mat[b * k + a] = off;
             }
         }
-        let (eig, vecs) = jacobi_eigen(&mat, k);
+        self.saddle_direction(&mat, &z_basis, &weak, g_scale, x_scale)
+    }
+
+    /// The verdict of [`Self::saddle_probe`] from the reduced Hessian `mat` of
+    /// the Lagrangian on the null-space basis `z_basis`.
+    fn saddle_direction(
+        &self,
+        mat: &[f64],
+        z_basis: &[Vec<f64>],
+        weak: &[(Vec<f64>, f64)],
+        g_scale: f64,
+        x_scale: f64,
+    ) -> (Option<Vec<f64>>, &'static str) {
+        let n = self.n;
+        let k = z_basis.len();
+        let (eig, vecs) = jacobi_eigen(mat, k);
         let mscale = mat
             .iter()
             .fold(0.0_f64, |a, v| a.max(v.abs()))

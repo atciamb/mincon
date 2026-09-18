@@ -13,14 +13,15 @@
 //!
 //! # The GIL is the performance story
 //!
-//! Every objective evaluation crosses into Python and needs the GIL, so
-//! finite differences cannot be parallelized for a Python callback and
-//! `parallel_safe` is `false`. This is why a model expressed in NumPy still
-//! spends most of its time in Python, and why the Rust core being fast is only
-//! half the win. The other half — batched evaluation, so `n` finite-difference
-//! probes cross the boundary once instead of `n` times — is specified in
-//! `docs/07_API_DESIGN.md` and is the single biggest speedup available on the
-//! Python side.
+//! Every objective evaluation crosses into Python and needs the GIL, so the
+//! engine's thread pool cannot run a Python callback concurrently and
+//! `parallel_safe` is `false`. What it can do is hand Python a whole gradient's
+//! finite-difference probes at once ([`Nlp::objective_batch`]): the Python
+//! layer builds a batch callable when the caller asks for one, from a
+//! vectorised model (`vectorized=True`: one call on a `(k, n)` array) or from a
+//! pool of worker processes (`workers=k`), and the probes cross the boundary
+//! once per gradient instead of `n` times. The points are those of the serial
+//! path; without either option no batch callable exists and nothing changes.
 
 use std::sync::{Arc, Mutex};
 
@@ -29,7 +30,7 @@ use mincon_core::{
     IterationCallback, IterationRecord, Nlp, NlpDims, Options, PivotSigns, QuadraticBuild,
     QuadraticRows, ScalingMode, Sparsity, Tolerances, VariableScaling, INF_BOUND,
 };
-use numpy::{PyArray1, PyReadonlyArray1, ToPyArray};
+use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1, PyReadonlyArrayDyn, ToPyArray};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
@@ -51,6 +52,12 @@ struct PyNlp {
     blocks: Vec<Block>,
     /// Dense `m x n` structure, present only when every block supplied a Jacobian.
     jac_structure: Option<Sparsity>,
+    /// `fun_batch(X) -> (values, errors)` for a `(k, n)` array of points: `k`
+    /// floats, and `None` or a list of `k` entries, each `None` or the message
+    /// of the exception the model raised at that point.
+    fun_batch: Option<Py<PyAny>>,
+    /// `cons_batch(X) -> (values, errors)` with a `(k, m)` array of values.
+    cons_batch: Option<Py<PyAny>>,
     lb: Vec<f64>,
     ub: Vec<f64>,
     cl: Vec<f64>,
@@ -63,11 +70,85 @@ struct PyNlp {
 
 impl PyNlp {
     fn record(&self, e: &PyErr) {
+        self.record_message(&e.to_string());
+    }
+
+    fn record_message(&self, message: &str) {
         if let Ok(mut slot) = self.error.lock() {
             if slot.is_none() {
-                *slot = Some(e.to_string());
+                *slot = Some(message.to_string());
             }
         }
+    }
+
+    /// Call a batch callable on the `k` points of `xs` and hand `write` the
+    /// flat values; the result is one status per point. A failure of the call
+    /// as a whole fails every point, so the derivative layer retreats or gives
+    /// up exactly as it does when a scalar callback raises.
+    fn call_batch(
+        &self,
+        batch: &Py<PyAny>,
+        xs: &[f64],
+        width: usize,
+        mut write: impl FnMut(&[f64]),
+    ) -> Vec<Result<(), EvalError>> {
+        let k = xs.len() / self.n;
+        let all = |e: EvalError| -> Vec<Result<(), EvalError>> { vec![Err(e); k] };
+        Python::attach(|py| {
+            let points = match xs.to_pyarray(py).reshape([k, self.n]) {
+                Ok(a) => a,
+                Err(e) => return all(EvalError::Failed(e.to_string())),
+            };
+            let answer = match batch.call1(py, (points,)) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.record(&e);
+                    return all(EvalError::Failed(e.to_string()));
+                }
+            };
+            let parsed = answer
+                .extract::<(Bound<'_, PyAny>, Option<Vec<Option<String>>>)>(py)
+                .and_then(|(values, errors)| {
+                    // a C-contiguous float64 array: (k,) for the objective, (k, m) for rows
+                    let flat: Vec<f64> = values
+                        .extract::<PyReadonlyArrayDyn<'_, f64>>()?
+                        .as_slice()?
+                        .to_vec();
+                    Ok((flat, errors))
+                });
+            let (flat, errors) = match parsed {
+                Ok(v) => v,
+                Err(e) => {
+                    self.record(&e);
+                    return all(EvalError::Failed(format!(
+                        "the batch evaluator returned something unexpected: {e}"
+                    )));
+                }
+            };
+            if flat.len() != k * width || errors.as_ref().is_some_and(|e| e.len() != k) {
+                return all(EvalError::Failed(format!(
+                    "the batch evaluator returned {} values for {k} points of {width}",
+                    flat.len()
+                )));
+            }
+            write(&flat);
+            (0..k)
+                .map(|i| {
+                    if let Some(message) = errors.as_ref().and_then(|e| e[i].as_ref()) {
+                        self.record_message(message);
+                        return Err(EvalError::Failed(message.clone()));
+                    }
+                    if flat[i * width..(i + 1) * width]
+                        .iter()
+                        .all(|v| v.is_finite())
+                    {
+                        Ok(())
+                    } else {
+                        Err(EvalError::NonFinite(None))
+                    }
+                })
+                .collect()
+        })
     }
 }
 
@@ -94,8 +175,39 @@ impl Nlp for PyNlp {
             hessian: self.hess.is_some(),
             // Every call needs the GIL, so concurrent evaluation buys nothing.
             parallel_safe: false,
+            // The Python layer built a batch callable (a vectorised model or a
+            // pool of workers): a gradient's probes cross the boundary at once.
+            batch: self.fun_batch.is_some() || self.cons_batch.is_some(),
             ..Capabilities::none()
         }
+    }
+
+    fn objective_batch(&self, xs: &[f64]) -> Vec<Result<f64, EvalError>> {
+        let Some(batch) = &self.fun_batch else {
+            return xs.chunks_exact(self.n).map(|x| self.objective(x)).collect();
+        };
+        let mut values = Vec::new();
+        let status = self.call_batch(batch, xs, 1, |flat| values = flat.to_vec());
+        status
+            .into_iter()
+            .enumerate()
+            .map(|(i, s)| s.map(|()| values[i]))
+            .collect()
+    }
+
+    fn constraints_batch(&self, xs: &[f64], out: &mut [f64]) -> Vec<Result<(), EvalError>> {
+        let m = self.m;
+        let Some(batch) = &self.cons_batch else {
+            if m == 0 {
+                return xs.chunks_exact(self.n).map(|_| Ok(())).collect();
+            }
+            return xs
+                .chunks_exact(self.n)
+                .zip(out.chunks_exact_mut(m))
+                .map(|(x, o)| self.constraints(x, o))
+                .collect();
+        };
+        self.call_batch(batch, xs, m, |flat| out.copy_from_slice(flat))
     }
 
     fn jacobian_structure(&self) -> Option<&Sparsity> {
@@ -579,7 +691,7 @@ fn parse_algorithm(method: Option<&str>) -> PyResult<Algorithm> {
 /// Deliberately shaped like `scipy.optimize.minimize`, so an existing script
 /// needs only a changed import.
 #[pyfunction]
-#[pyo3(signature = (fun, x0, jac=None, bounds=None, constraints=None, method=None, options=None, hess=None, callback=None, warm_start=None))]
+#[pyo3(signature = (fun, x0, jac=None, bounds=None, constraints=None, method=None, options=None, hess=None, callback=None, warm_start=None, fun_batch=None, cons_batch=None))]
 #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
 fn minimize(
     py: Python<'_>,
@@ -593,7 +705,14 @@ fn minimize(
     hess: Option<Py<PyAny>>,
     callback: Option<Py<PyAny>>,
     warm_start: Option<Bound<'_, PyDict>>,
+    fun_batch: Option<Py<PyAny>>,
+    cons_batch: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyAny>> {
+    for (name, f) in [("fun_batch", &fun_batch), ("cons_batch", &cons_batch)] {
+        if f.as_ref().is_some_and(|f| !f.bind(py).is_callable()) {
+            return Err(PyValueError::new_err(format!("{name} must be callable")));
+        }
+    }
     let x0v: Vec<f64> = x0.as_slice()?.to_vec();
     let n = x0v.len();
     if n == 0 {
@@ -809,6 +928,9 @@ fn minimize(
         hess_structure,
         blocks,
         jac_structure,
+        fun_batch,
+        // Without constraint rows there is nothing to batch.
+        cons_batch: cons_batch.filter(|_| m > 0),
         lb,
         ub,
         cl,
@@ -903,6 +1025,8 @@ fn check_gradients(
         hess_structure: None,
         blocks: Vec::new(),
         jac_structure: None,
+        fun_batch: None,
+        cons_batch: None,
         lb: vec![-INF_BOUND; n],
         ub: vec![INF_BOUND; n],
         cl: Vec::new(),

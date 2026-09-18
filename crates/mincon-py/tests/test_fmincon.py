@@ -309,7 +309,8 @@ def test_matlab_option_names_are_accepted_on_the_facade():
     np.testing.assert_allclose(r.x, [0.5, 0.5], atol=1e-6)
     with pytest.raises(ValueError, match="TolX"):
         mincon.fmincon(f, [0., 0.], options={"TolX": 1e-6})
-    with pytest.raises(ValueError, match="UseParallel"):
+    # UseParallel=True is workers=-1 (test_batch.py); a lambda cannot be sent to a worker process
+    with pytest.raises(ValueError, match="picklable"):
         mincon.fmincon(f, [0., 0.], options={"UseParallel": True})
     with pytest.raises(ValueError, match="not both"):
         mincon.fmincon(f, [0., 0.], options={"MaxIterations": 5, "maxiter": 5})

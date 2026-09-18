@@ -25,6 +25,19 @@
 //!   digits precisely where `x_i` is large.
 //! * A variable pinned by `lb == ub` gets a zero step and a zero derivative
 //!   rather than a division by zero.
+//!
+//! # Batched probes
+//!
+//! A gradient's probes are independent of each other. When the model says it
+//! can evaluate several points at once ([`Capabilities::batch`]: a vectorised
+//! function, a pool of worker processes), the engine submits them through
+//! [`Nlp::objective_batch`] and [`Nlp::constraints_batch`] in rounds: every
+//! first attempt in one call, and the probes the model refused again in the
+//! next call with half their step, which is the serial path's retreat. The
+//! points evaluated and the arithmetic on their values are those of the serial
+//! path, so the derivatives are identical to the last bit; only the scheduling
+//! changes. A model that does not advertise the capability never sees the
+//! batched path.
 
 use mincon_core::{Capabilities, EvalError, FdType, Nlp, Sparsity};
 use rayon::prelude::*;
@@ -352,6 +365,9 @@ impl FiniteDifferences {
         let central = self.use_central();
         let rel = self.config.relative_step(central) * step_factor;
         let respect = self.config.respect_bounds;
+        if nlp.capabilities().batch {
+            return self.gradient_batched(nlp, x, f0, out, rel, central);
+        }
         let parallel = self.config.parallel && nlp.capabilities().parallel_safe;
 
         let one = |j: usize| -> Result<(f64, u64), EvalError> {
@@ -418,6 +434,95 @@ impl FiniteDifferences {
         }
     }
 
+    /// The gradient through [`Nlp::objective_batch`]: the probes of the serial
+    /// path, submitted together. Two waves at most when nothing fails: every
+    /// first probe, then the inward second probes whose position depends on the
+    /// step their first probe realized.
+    fn gradient_batched<P: Nlp + ?Sized>(
+        &self,
+        nlp: &P,
+        x: &[f64],
+        f0: f64,
+        out: &mut [f64],
+        rel: f64,
+        central: bool,
+    ) -> Result<u64, EvalError> {
+        /// How one variable is differenced, decided before any evaluation.
+        #[derive(Clone, Copy)]
+        enum Column {
+            /// `lb == ub`: a zero derivative and no probe.
+            Pinned,
+            /// A central pair: probes `first` and `first + 1`.
+            Central { first: usize },
+            /// One forward probe.
+            Forward { first: usize },
+            /// Central differences were asked for and the box has no room for
+            /// the pair: a forward probe, then one halfway toward the base.
+            Inward { first: usize },
+        }
+
+        let (lb, ub) = nlp.x_bounds();
+        let respect = self.config.respect_bounds;
+        let mut probes: Vec<Probe> = Vec::with_capacity(if central { 2 * self.n } else { self.n });
+        let columns: Vec<Column> = (0..self.n)
+            .map(|j| {
+                if respect && lb[j] == ub[j] {
+                    return Column::Pinned;
+                }
+                let first = probes.len();
+                if let Some(h) = central
+                    .then(|| central_step(x[j], self.typical[j], rel, lb[j], ub[j], respect))
+                    .flatten()
+                {
+                    probes.push(Probe::new(j, h));
+                    probes.push(Probe::new(j, -h));
+                    return Column::Central { first };
+                }
+                let step = forward_step(x[j], self.typical[j], rel, lb[j], ub[j], respect);
+                probes.push(Probe::new(j, step.h));
+                if central {
+                    Column::Inward { first }
+                } else {
+                    Column::Forward { first }
+                }
+            })
+            .collect();
+
+        let mut evals = run_probes(nlp, x, &mut probes)?;
+
+        // The inward second probes, placed from the step the first one realized.
+        let mut second: Vec<Probe> = Vec::new();
+        let mut second_of: Vec<Option<usize>> = vec![None; self.n];
+        for (j, column) in columns.iter().enumerate() {
+            if let Column::Inward { first } = column {
+                if let Some((_, realized)) = probes[*first].done() {
+                    second_of[j] = Some(second.len());
+                    second.push(Probe::new(j, realized * 0.5));
+                }
+            }
+        }
+        evals += run_probes(nlp, x, &mut second)?;
+
+        for (j, column) in columns.iter().enumerate() {
+            out[j] = match *column {
+                Column::Pinned => 0.0,
+                Column::Central { first } => {
+                    difference(f0, probes[first].done(), probes[first + 1].done(), j)?
+                }
+                Column::Forward { first } => {
+                    let fp = probes[first].done().ok_or(EvalError::NonFinite(Some(j)))?;
+                    difference(f0, Some(fp), None, j)?
+                }
+                Column::Inward { first } => {
+                    let fp = probes[first].done().ok_or(EvalError::NonFinite(Some(j)))?;
+                    let other = second_of[j].and_then(|k| second[k].done());
+                    difference(f0, Some(fp), other, j)?
+                }
+            };
+        }
+        Ok(evals)
+    }
+
     /// Approximate the constraint Jacobian at `x`, given `c0 = c(x)`.
     ///
     /// Writes values in the order of the pattern given at construction, or in
@@ -462,8 +567,9 @@ impl FiniteDifferences {
             None => (0..self.n).map(|j| vec![j]).collect(),
         };
 
-        let eval_group = |group: &[usize]| -> Result<GroupDerivative, EvalError> {
-            let mut xp = x.to_vec();
+        // The steps of one group: nominal first steps, second steps, and which
+        // columns take their second probe inward.
+        let steps_of = |group: &[usize]| -> Result<GroupSteps, EvalError> {
             let mut h = Vec::with_capacity(group.len());
             let mut hneg = Vec::with_capacity(group.len());
             let mut inward = Vec::with_capacity(group.len());
@@ -489,31 +595,19 @@ impl FiniteDifferences {
                     inward.push(central);
                 }
             }
-            let mut evals = 0u64;
-            let mut cp = vec![0.0; self.m];
-            let mut cm = vec![0.0; self.m];
-            let plus =
-                eval_constraints_with_retreat(nlp, &mut xp, x, &mut h, group, &mut cp, &mut evals);
-            if matches!(plus, Err(EvalError::UserAbort)) {
-                return Err(EvalError::UserAbort);
-            }
-            // After a successful retreat, place inward probes halfway toward
-            // the base so the two samples remain distinct. Opposite-sided
-            // columns retain their independent nominal steps.
-            if plus.is_ok() {
-                for k in 0..group.len() {
-                    if inward[k] {
-                        hneg[k] = h[k] * 0.5;
-                    }
-                }
-            }
-            xp.copy_from_slice(x);
-            let minus = eval_constraints_with_retreat(
-                nlp, &mut xp, x, &mut hneg, group, &mut cm, &mut evals,
-            );
-            if matches!(minus, Err(EvalError::UserAbort)) {
-                return Err(EvalError::UserAbort);
-            }
+            Ok(GroupSteps { h, hneg, inward })
+        };
+
+        // The Jacobian entries of one group from its two samples (`cp` at the
+        // realized steps `h`, `cm` at `hneg`; a side that failed is absent).
+        let entries_of = |group: &[usize],
+                          steps: &GroupSteps,
+                          plus_ok: bool,
+                          minus_ok: bool,
+                          cp: &[f64],
+                          cm: &[f64]|
+         -> Result<Vec<(usize, f64)>, EvalError> {
+            let (h, hneg) = (&steps.h, &steps.hneg);
             let mut entries = Vec::new();
             for (k, &j) in group.iter().enumerate() {
                 let write = |i: usize| -> Result<f64, EvalError> {
@@ -522,8 +616,8 @@ impl FiniteDifferences {
                     }
                     difference(
                         c0[i],
-                        (plus.is_ok() && h[k] != 0.0).then_some((cp[i], h[k])),
-                        (minus.is_ok() && hneg[k] != 0.0).then_some((cm[i], hneg[k])),
+                        (plus_ok && h[k] != 0.0).then_some((cp[i], h[k])),
+                        (minus_ok && hneg[k] != 0.0).then_some((cm[i], hneg[k])),
                         j,
                     )
                 };
@@ -540,6 +634,97 @@ impl FiniteDifferences {
                     }
                 }
             }
+            Ok(entries)
+        };
+
+        if nlp.capabilities().batch {
+            // Every group's first sample in one wave of rounds, then every
+            // second sample: the serial path's points, submitted together.
+            let mut steps: Vec<GroupSteps> = groups
+                .iter()
+                .map(|g| steps_of(g))
+                .collect::<Result<_, _>>()?;
+            let mut cp = vec![0.0; groups.len() * self.m];
+            let mut cm = vec![0.0; groups.len() * self.m];
+            let mut total = 0u64;
+            let plus_ok = {
+                let mut hs: Vec<&mut Vec<f64>> = steps.iter_mut().map(|s| &mut s.h).collect();
+                run_group_probes(nlp, x, &groups, &mut hs, &mut cp, &mut total)?
+            };
+            // After a successful retreat, place inward probes halfway toward
+            // the base, as the serial path does.
+            for (s, ok) in steps.iter_mut().zip(&plus_ok) {
+                if *ok {
+                    for k in 0..s.h.len() {
+                        if s.inward[k] {
+                            s.hneg[k] = s.h[k] * 0.5;
+                        }
+                    }
+                }
+            }
+            let minus_ok = {
+                let mut hs: Vec<&mut Vec<f64>> = steps.iter_mut().map(|s| &mut s.hneg).collect();
+                run_group_probes(nlp, x, &groups, &mut hs, &mut cm, &mut total)?
+            };
+            for (g, group) in groups.iter().enumerate() {
+                let block = g * self.m..(g + 1) * self.m;
+                let entries = entries_of(
+                    group,
+                    &steps[g],
+                    plus_ok[g],
+                    minus_ok[g],
+                    &cp[block.clone()],
+                    &cm[block],
+                )?;
+                for (pos, value) in entries {
+                    out[pos] = value;
+                }
+            }
+            return Ok(total);
+        }
+
+        let eval_group = |group: &[usize]| -> Result<GroupDerivative, EvalError> {
+            let mut xp = x.to_vec();
+            let mut steps = steps_of(group)?;
+            let mut evals = 0u64;
+            let mut cp = vec![0.0; self.m];
+            let mut cm = vec![0.0; self.m];
+            let plus = eval_constraints_with_retreat(
+                nlp,
+                &mut xp,
+                x,
+                &mut steps.h,
+                group,
+                &mut cp,
+                &mut evals,
+            );
+            if matches!(plus, Err(EvalError::UserAbort)) {
+                return Err(EvalError::UserAbort);
+            }
+            // After a successful retreat, place inward probes halfway toward
+            // the base so the two samples remain distinct. Opposite-sided
+            // columns retain their independent nominal steps.
+            if plus.is_ok() {
+                for k in 0..group.len() {
+                    if steps.inward[k] {
+                        steps.hneg[k] = steps.h[k] * 0.5;
+                    }
+                }
+            }
+            xp.copy_from_slice(x);
+            let minus = eval_constraints_with_retreat(
+                nlp,
+                &mut xp,
+                x,
+                &mut steps.hneg,
+                group,
+                &mut cm,
+                &mut evals,
+            );
+            if matches!(minus, Err(EvalError::UserAbort)) {
+                return Err(EvalError::UserAbort);
+            }
+            let entries = entries_of(group, &steps, plus.is_ok(), minus.is_ok(), &cp, &cm)?;
             Ok(GroupDerivative { entries, evals })
         };
 
@@ -570,6 +755,169 @@ impl FiniteDifferences {
 struct GroupDerivative {
     entries: Vec<(usize, f64)>,
     evals: u64,
+}
+
+/// The steps of one coloring group: first steps (realized ones after the first
+/// sample), second steps, and which columns take their second probe inward.
+struct GroupSteps {
+    h: Vec<f64>,
+    hneg: Vec<f64>,
+    inward: Vec<bool>,
+}
+
+/// The most times a refused probe is retried with half its step, on both paths.
+const MAX_RETREAT: usize = 8;
+
+/// One objective probe on the batched path: variable `j` moved by `h`.
+struct Probe {
+    j: usize,
+    h: f64,
+    failures: usize,
+    /// `None` while pending; then the value and the realized step, or `Err(())`
+    /// when the retreat ran out.
+    outcome: Option<Result<(f64, f64), ()>>,
+}
+
+impl Probe {
+    fn new(j: usize, h: f64) -> Self {
+        Self {
+            j,
+            h,
+            failures: 0,
+            outcome: None,
+        }
+    }
+    /// The value and realized step of a probe that succeeded.
+    fn done(&self) -> Option<(f64, f64)> {
+        self.outcome.and_then(Result::ok)
+    }
+}
+
+/// [`eval_with_retreat`] for many probes at once: each round submits every
+/// pending probe in one [`Nlp::objective_batch`] call, and a probe the model
+/// refused is pending again with half its step. Per probe, the points tried are
+/// exactly those of the serial retreat. Returns the number of evaluations.
+fn run_probes<P: Nlp + ?Sized>(nlp: &P, x: &[f64], probes: &mut [Probe]) -> Result<u64, EvalError> {
+    let n = x.len();
+    let mut evals = 0u64;
+    loop {
+        let mut xs: Vec<f64> = Vec::new();
+        let mut live: Vec<(usize, f64)> = Vec::new();
+        for (idx, p) in probes.iter_mut().enumerate() {
+            if p.outcome.is_some() {
+                continue;
+            }
+            let xj = x[p.j] + p.h;
+            let actual = xj - x[p.j];
+            if actual == 0.0 || !actual.is_finite() || !xj.is_finite() {
+                p.outcome = Some(Err(()));
+                continue;
+            }
+            let start = xs.len();
+            xs.extend_from_slice(x);
+            xs[start + p.j] = xj;
+            live.push((idx, actual));
+        }
+        if live.is_empty() {
+            return Ok(evals);
+        }
+        evals += live.len() as u64;
+        let mut values = nlp.objective_batch(&xs).into_iter();
+        debug_assert_eq!(xs.len(), live.len() * n);
+        for (idx, actual) in live {
+            let p = &mut probes[idx];
+            match values.next() {
+                Some(Ok(v)) if v.is_finite() => p.outcome = Some(Ok((v, actual))),
+                Some(Err(EvalError::UserAbort)) => return Err(EvalError::UserAbort),
+                // A refused point, or a batch that came back short.
+                _ => {
+                    p.h *= 0.5;
+                    p.failures += 1;
+                    if p.failures > MAX_RETREAT {
+                        p.outcome = Some(Err(()));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// [`eval_constraints_with_retreat`] for many groups at once: `hs[g]` holds
+/// group `g`'s steps and receives the realized ones, block `g` of `out` its
+/// constraint values. Returns which groups produced a sample.
+fn run_group_probes<P: Nlp + ?Sized>(
+    nlp: &P,
+    x: &[f64],
+    groups: &[Vec<usize>],
+    hs: &mut [&mut Vec<f64>],
+    out: &mut [f64],
+    evals: &mut u64,
+) -> Result<Vec<bool>, EvalError> {
+    let n = x.len();
+    let m = if groups.is_empty() {
+        0
+    } else {
+        out.len() / groups.len()
+    };
+    // `None` while pending.
+    let mut ok: Vec<Option<bool>> = hs
+        .iter()
+        .map(|h| h.iter().all(|&hj| hj == 0.0).then_some(true))
+        .collect();
+    let mut failures = vec![0usize; groups.len()];
+    loop {
+        let mut xs: Vec<f64> = Vec::new();
+        let mut live: Vec<usize> = Vec::new();
+        'groups: for (g, group) in groups.iter().enumerate() {
+            if ok[g].is_some() {
+                continue;
+            }
+            let start = xs.len();
+            xs.extend_from_slice(x);
+            for (k, &j) in group.iter().enumerate() {
+                let xj = x[j] + hs[g][k];
+                let actual = xj - x[j];
+                if hs[g][k] != 0.0 && (actual == 0.0 || !actual.is_finite() || !xj.is_finite()) {
+                    xs.truncate(start);
+                    ok[g] = Some(false);
+                    continue 'groups;
+                }
+                xs[start + j] = xj;
+            }
+            live.push(g);
+        }
+        if live.is_empty() {
+            return Ok(ok.into_iter().map(|v| v == Some(true)).collect());
+        }
+        *evals += live.len() as u64;
+        let mut values = vec![0.0; live.len() * m];
+        let mut status = nlp.constraints_batch(&xs, &mut values).into_iter();
+        for (slot, &g) in live.iter().enumerate() {
+            let block = &values[slot * m..(slot + 1) * m];
+            match status.next() {
+                Some(Ok(())) if block.iter().all(|v| v.is_finite()) => {
+                    for (k, &j) in groups[g].iter().enumerate() {
+                        hs[g][k] = xs[slot * n + j] - x[j];
+                    }
+                    out[g * m..(g + 1) * m].copy_from_slice(block);
+                    ok[g] = Some(true);
+                }
+                Some(Err(EvalError::UserAbort)) => return Err(EvalError::UserAbort),
+                _ => {
+                    failures[g] += 1;
+                    let mut underflow = false;
+                    for hj in hs[g].iter_mut() {
+                        let was_active = *hj != 0.0;
+                        *hj *= 0.5;
+                        underflow |= was_active && *hj == 0.0;
+                    }
+                    if underflow || failures[g] > MAX_RETREAT {
+                        ok[g] = Some(false);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Derivative of the interpolating quadratic at zero for arbitrary distinct
@@ -613,7 +961,6 @@ fn eval_with_retreat<F>(
 where
     F: Fn(&[f64]) -> Result<f64, EvalError>,
 {
-    const MAX_RETREAT: usize = 8;
     for _ in 0..=MAX_RETREAT {
         xp[j] = x_base + h;
         let actual = xp[j] - x_base;
@@ -650,7 +997,6 @@ fn eval_constraints_with_retreat<P: Nlp + ?Sized>(
     out: &mut [f64],
     evals: &mut u64,
 ) -> Result<(), EvalError> {
-    const MAX_RETREAT: usize = 8;
     if h.iter().all(|&hj| hj == 0.0) {
         return Ok(());
     }

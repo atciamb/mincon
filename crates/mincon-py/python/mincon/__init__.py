@@ -32,6 +32,9 @@ Conventions, spelled out because this is where silent errors live:
 
 from __future__ import annotations
 
+import os
+import pickle
+import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -172,6 +175,295 @@ def _print_report(result: "OptimizeResult", level: str) -> None:
               f"{result['nit']} iterations, {result['nfev']} objective evaluations")
 
 
+class _WithArgs:
+    """``f(x, *args)`` as a callable of ``x`` that can be sent to a worker process (a lambda
+    closing over ``args`` could not)."""
+
+    def __init__(self, f, args):
+        self.f, self.args = f, tuple(args)
+
+    def __call__(self, *leading):
+        return self.f(*leading, *self.args)
+
+
+class _Guarded:
+    """``fun(x) -> (value, None)``, or ``(nan, 'Type: message')`` when it raised: on a worker an
+    exception is one failed probe the engine retreats from, as it is in a serial solve, and it
+    must not take the rest of the batch with it."""
+
+    def __init__(self, fun):
+        self.fun = fun
+
+    def __call__(self, x):
+        try:
+            return float(self.fun(x)), None
+        except Exception as e:  # noqa: BLE001 - reported to the engine, which retreats
+            return float("nan"), f"{type(e).__name__}: {e}"
+
+
+class _GuardedBlocks:
+    """Every scalar constraint block at one point, concatenated, with the same guard."""
+
+    def __init__(self, funs):
+        self.funs = list(funs)
+
+    def __call__(self, x):
+        try:
+            return [np.atleast_1d(np.asarray(f(x), dtype=float)).ravel() for f in self.funs], None
+        except Exception as e:  # noqa: BLE001
+            return None, f"{type(e).__name__}: {e}"
+
+
+_INSTALLED = {}
+
+
+def _install(fun, blocks):
+    """Worker initializer: the model is sent to each worker once, not with every probe."""
+    _INSTALLED["fun"], _INSTALLED["blocks"] = fun, blocks
+
+
+def _installed_fun(x):
+    return _INSTALLED["fun"](x)
+
+
+def _installed_blocks(x):
+    return _INSTALLED["blocks"](x)
+
+
+def _ready(_):
+    return os.getpid()
+
+
+def _not_picklable(obj):
+    """``None`` when ``obj`` can be sent to a worker process, else why not."""
+    try:
+        pickle.dumps(obj)
+        return None
+    except Exception as e:  # noqa: BLE001 - pickle raises several types
+        return f"{type(e).__name__}: {e}"
+
+
+_MAIN_GUARD = ("the worker processes could not start or died. On Windows and macOS a script that uses "
+               "workers=k must create its processes under `if __name__ == '__main__':`, and the model must be "
+               "defined in an importable module or at the top level of the script (not in an interactive "
+               "session or a notebook cell)")
+
+
+class _Batching:
+    """Builds what the engine needs to evaluate a gradient's finite-difference probes together:
+    ``fun_batch`` / ``cons_batch`` callables over a ``(k, n)`` array of points, from a vectorised
+    model (``vectorized``) or from a pool of workers (``workers``). With neither, every attribute
+    is the caller's own callable or ``None`` and the solve is exactly the serial one."""
+
+    def __init__(self, fun, cons, workers, vectorized):
+        self.fun = fun                   # the scalar objective handed to the engine
+        self.cons = cons                 # the constraint dicts handed to the engine
+        self.fun_batch = None
+        self.cons_batch = None
+        self.fatal = None                # a programming error to raise once the engine returns
+        self.notes = []
+        self._pool = None
+        self._map_fun = self._map_blocks = None
+        self._stats = {"batches": 0, "points": 0}
+        blocks = list(cons or [])
+        any_vector_block = any(c.get("vectorized") for c in blocks)
+        if workers is not None and (vectorized or any_vector_block):
+            raise ValueError("give either workers or vectorized, not both: a vectorised model already evaluates "
+                             "a whole batch in one call")
+        if isinstance(workers, bool) or (workers is not None and not callable(workers)
+                                         and not isinstance(workers, (int, np.integer))):
+            raise TypeError("workers must be an int (-1 for every core) or a map-like callable such as "
+                            "concurrent.futures.ThreadPoolExecutor(8).map")
+        if workers is not None and not callable(workers):
+            workers = int(workers)
+            if workers == -1:
+                workers = os.cpu_count() or 1
+            if workers < 1:
+                raise ValueError("workers must be a positive int, -1 for every core, or a map-like callable")
+            if workers == 1:
+                workers = None           # one worker is the serial solve
+        self.workers = workers
+
+        if vectorized:
+            self._vectorize_objective(fun)
+        if any_vector_block:
+            self.cons = [self._scalar_view(c) if c.get("vectorized") else c for c in blocks]
+        if workers is not None:
+            self._plan_workers(fun, blocks)
+        elif any_vector_block:
+            self.cons_batch = self._make_cons_batch(blocks, None)
+        # the engine's constraint parser takes 'type', 'fun' and 'jac' only
+        if self.cons is not None:
+            self.cons = [{k: v for k, v in c.items() if k != "vectorized"} for c in self.cons]
+
+    # ---- a vectorised model: fun(X) for a (k, n) array returns k values -------------------------
+    def _shape_error(self, what, got, want):
+        self.fatal = ValueError(f"vectorized: {what} returned an array of shape {got} for {want[0]} point(s); "
+                                f"it must return shape {want[1]}, one row per point (it is always called "
+                                "with a two-dimensional (k, n) array, k = 1 for a single point)")
+        return self.fatal
+
+    def _vectorize_objective(self, fun):
+        def values(X):
+            v = np.asarray(fun(X), dtype=float)
+            if v.size != X.shape[0] or v.ndim > 2:
+                raise self._shape_error("fun", v.shape, (X.shape[0], f"({X.shape[0]},)"))
+            return np.ascontiguousarray(v.reshape(-1))
+
+        def fun_batch(X):
+            self._count(X)
+            return values(X), None
+
+        self.fun = lambda x: float(values(np.asarray(x, dtype=float)[None, :])[0])
+        self.fun_batch = fun_batch
+
+    def _block_values(self, c, X):
+        v = np.asarray(c["fun"](X), dtype=float)
+        k = X.shape[0]
+        if v.ndim == 0 or v.shape[0] != k or v.ndim > 2:
+            raise self._shape_error("a vectorized constraint", v.shape, (k, f"({k}, len)"))
+        return v.reshape(k, -1)
+
+    def _scalar_view(self, c):
+        d = dict(c)
+        d["fun"] = lambda x, c=c: self._block_values(c, np.asarray(x, dtype=float)[None, :])[0]
+        return d
+
+    # ---- a pool of workers ------------------------------------------------------------------------
+    def _plan_workers(self, fun, blocks):
+        scalar_funs = [c["fun"] for c in blocks]
+        if callable(self.workers):
+            mapper = self.workers
+            guarded, guarded_blocks = _Guarded(fun), _GuardedBlocks(scalar_funs)
+            self._map_fun = lambda rows: mapper(guarded, rows)
+            self._map_blocks = lambda rows: mapper(guarded_blocks, rows)
+            self.fun_batch = self._make_fun_batch()
+            self.fun = self._fail_fast(fun)
+            if blocks:
+                self.cons_batch = self._make_cons_batch(blocks, self._map_blocks)
+            return
+        why = _not_picklable(fun)
+        if why is not None:
+            raise ValueError(
+                f"workers={self.workers} evaluates the model in worker processes, so the objective must be "
+                f"picklable, and this one is not ({why}). Define it with `def` at the top level of a module or "
+                "script (a lambda, a nested function or a bound method of an unpicklable object cannot be sent to "
+                "another process), pass extra data through args=, or pass workers=<a map-like callable> such as "
+                "concurrent.futures.ThreadPoolExecutor(8).map when the model releases the GIL while it works.")
+        send_blocks = bool(blocks)
+        if send_blocks:
+            why = _not_picklable(scalar_funs)
+            if why is not None:
+                send_blocks = False
+                self.notes.append(
+                    f"workers={self.workers}: the constraint functions cannot be sent to a worker process ({why}), "
+                    "so their finite-difference probes run one at a time in this process; the objective's run on "
+                    "the workers. Define the constraints with `def` at module level to run them there too.")
+        from concurrent.futures import ProcessPoolExecutor
+        from concurrent.futures.process import BrokenProcessPool
+        self._broken = BrokenProcessPool
+        self._pool = ProcessPoolExecutor(
+            max_workers=self.workers, initializer=_install,
+            initargs=(_Guarded(fun), _GuardedBlocks(scalar_funs) if send_blocks else None))
+        started = time.perf_counter()
+        try:
+            # start the workers now: a pool that cannot start should say so before the solve does
+            pids = set(self._pool.map(_ready, range(4 * self.workers)))
+        except BrokenProcessPool as e:
+            self._pool.shutdown(wait=False, cancel_futures=True)
+            raise RuntimeError(f"workers={self.workers}: {_MAIN_GUARD}.") from e
+        self.notes.append(f"workers={self.workers}: {len(pids)} worker process(es) started in "
+                          f"{time.perf_counter() - started:.1f} s.")
+        self._map_fun = lambda rows: self._pool.map(_installed_fun, rows)
+        self.fun_batch = self._make_fun_batch()
+        self.fun = self._fail_fast(fun)
+        if send_blocks:
+            self._map_blocks = lambda rows: self._pool.map(_installed_blocks, rows)
+            self.cons_batch = self._make_cons_batch(blocks, self._map_blocks)
+
+    def _fail_fast(self, fun):
+        def guarded(x):
+            if self.fatal is not None:   # the workers are gone: stop paying for model calls
+                raise self.fatal
+            return fun(x)
+        return guarded
+
+    def _count(self, X):
+        self._stats["batches"] += 1
+        self._stats["points"] += X.shape[0]
+
+    def _mapped(self, mapper, X):
+        """The results of one batch on the workers, in order; a pool that died is a programming
+        error to report, not a failed probe to retreat from."""
+        try:
+            return list(mapper([np.array(row) for row in X]))
+        except Exception as e:  # noqa: BLE001
+            if self._pool is not None and isinstance(e, self._broken):
+                self.fatal = RuntimeError(f"workers={self.workers}: {_MAIN_GUARD}.")
+            elif self.fatal is None:
+                self.fatal = RuntimeError(f"workers: evaluating a batch of points failed ({type(e).__name__}: {e})")
+            raise self.fatal from e
+
+    def _make_fun_batch(self):
+        def fun_batch(X):
+            self._count(X)
+            results = self._mapped(self._map_fun, X)
+            errors = [r[1] for r in results]
+            values = np.array([r[0] for r in results], dtype=float)
+            return values, (errors if any(e is not None for e in errors) else None)
+        return fun_batch
+
+    def _make_cons_batch(self, blocks, map_blocks):
+        """Constraint values for a batch: vectorised blocks in one call each, the scalar ones
+        point by point (on the workers when there are any, else here)."""
+        scalar = [i for i, c in enumerate(blocks) if not c.get("vectorized")]
+        local = _GuardedBlocks([blocks[i]["fun"] for i in scalar])
+
+        def cons_batch(X):
+            k = X.shape[0]
+            errors = [None] * k
+            parts = [None] * len(blocks)
+            for i, c in enumerate(blocks):
+                if c.get("vectorized"):
+                    parts[i] = self._block_values(c, X)
+            if scalar:
+                results = (self._mapped(map_blocks, X) if map_blocks is not None
+                           else [local(np.array(row)) for row in X])
+                for j, (vals, err) in enumerate(results):
+                    if err is not None:
+                        errors[j] = err
+                for slot, i in enumerate(scalar):
+                    width = next((len(r[0][slot]) for r in results if r[0] is not None), 0)
+                    block = np.full((k, width), np.nan)
+                    for j, (vals, err) in enumerate(results):
+                        if vals is not None and len(vals[slot]) == width:
+                            block[j] = vals[slot]
+                        elif vals is not None:
+                            errors[j] = "a constraint changed its number of values between calls"
+                    parts[i] = block
+            values = np.ascontiguousarray(np.hstack(parts), dtype=float)
+            return values, (errors if any(e is not None for e in errors) else None)
+        return cons_batch
+
+    # ---- life cycle -----------------------------------------------------------------------------------
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        if self._pool is not None:
+            self._pool.shutdown(wait=True, cancel_futures=True)
+        return False
+
+    def finish(self, result):
+        """Add what happened to the result's notes."""
+        if self.fun_batch is not None or self.cons_batch is not None:
+            how = "one vectorised call each" if self.workers is None else (
+                "a caller-supplied map" if callable(self.workers) else f"{self.workers} worker processes")
+            self.notes.append(f"Finite-difference probes were evaluated in batches ({how}): "
+                              f"{self._stats['batches']} batches carried {self._stats['points']} model evaluations.")
+        result["notes"] = list(result.get("notes", [])) + self.notes
+
+
 def minimize(
     fun: Callable[[np.ndarray], float],
     x0: Sequence[float],
@@ -185,6 +477,8 @@ def minimize(
     options: Mapping[str, Any] | None = None,
     callback: Callable[[Mapping[str, Any]], Any] | None = None,
     warm_start: Mapping[str, Any] | None = None,
+    workers: int | Callable | None = None,
+    vectorized: bool = False,
 ) -> OptimizeResult:
     """Minimize a scalar function subject to bounds and constraints.
 
@@ -304,6 +598,32 @@ def minimize(
         ``True`` to stop the solve (``res.status == -1``, the current iterate
         is returned), like ``fmincon``'s ``OutputFcn`` and SciPy's callback.
         An exception raised inside it stops the solve and is re-raised.
+    workers : int or map-like callable, optional
+        For a model that is expensive to evaluate and has no ``jac``: the
+        ``n`` finite-difference probes of every gradient are independent, and
+        with ``workers=k`` they are evaluated on ``k`` worker processes at once
+        (``-1``: one per core), ``fmincon``'s ``UseParallel``. The probes are
+        the same points as in a serial solve, so the iterates and the answer
+        are identical; only the wall time changes, towards ``1/k`` of the
+        gradient's share. The model must be picklable: define ``fun`` with
+        ``def`` at the top level of a module or script (a ``lambda`` raises
+        ``ValueError``), and on Windows and macOS call ``minimize`` under
+        ``if __name__ == '__main__':``. Constraint functions are sent to the
+        workers too when they can be, and evaluated in this process with a
+        note otherwise. A map-like callable ``workers(f, points)`` is used as
+        given, as in SciPy: ``ThreadPoolExecutor(8).map`` suits a model that
+        releases the GIL (a subprocess, a compiled solver), and then a
+        ``lambda`` is fine. Also accepted as ``options={'workers': k}``.
+        Line-search points are evaluated in this process one at a time.
+    vectorized : bool, optional
+        ``fun`` accepts a ``(k, n)`` array of ``k`` points and returns ``k``
+        values, so a gradient's probes cross into Python once instead of ``n``
+        times: for a cheap NumPy model the interpreter overhead was most of
+        the solve. ``fun`` is then **always** called with a two-dimensional
+        array (``k = 1`` for a single point), and a return of the wrong shape
+        raises. A constraint block opts in with ``'vectorized': True`` in its
+        dict (its ``fun`` returns ``(k, len)``); derivative callables are
+        never vectorised. Not to be combined with ``workers``.
 
     Returns
     -------
@@ -334,19 +654,24 @@ def minimize(
         raise TypeError("callback must be callable")
 
     if args:
-        _f = fun
-        fun = lambda x: _f(x, *args)  # noqa: E731
+        fun = _WithArgs(fun, args)
         if jac is not None:
-            _j = jac
-            jac = lambda x: _j(x, *args)  # noqa: E731
+            jac = _WithArgs(jac, args)
         if hess is not None:
-            _h = hess
-            hess = lambda x, lam: _h(x, lam, *args)  # noqa: E731
+            hess = _WithArgs(hess, args)
 
     cons = _normalize_constraints(constraints, args)
 
     opts = dict(options or {})
     display = _display_level(opts)
+    for name, given in (("workers", workers is not None), ("vectorized", bool(vectorized))):
+        if name in opts:
+            if given:
+                raise ValueError(f"give {name} either as an argument or in options, not both")
+            if name == "workers":
+                workers = opts.pop(name)
+            else:
+                vectorized = bool(opts.pop(name))
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "xtol", "threads",
                  "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
                  "bfgs_rescale", "scale_variables", "kkt_pivot_signs", "quadratic_probe", "quadratic_build",
@@ -364,19 +689,30 @@ def minimize(
     if tol is not None:
         opts.setdefault("tol", tol)
 
-    raw = _mincon.minimize(
-        fun,
-        x0,
-        jac=jac,
-        bounds=_normalize_bounds(bounds, x0.size),
-        constraints=cons,
-        method=method,
-        options=opts,
-        hess=hess,
-        callback=_streaming_callback(display, callback),
-        warm_start=_warm_start_dict(warm_start),
-    )
+    with _Batching(fun, cons, workers, vectorized) as batching:
+        try:
+            raw = _mincon.minimize(
+                batching.fun,
+                x0,
+                jac=jac,
+                bounds=_normalize_bounds(bounds, x0.size),
+                constraints=batching.cons,
+                method=method,
+                options=opts,
+                hess=hess,
+                callback=_streaming_callback(display, callback),
+                warm_start=_warm_start_dict(warm_start),
+                fun_batch=batching.fun_batch,
+                cons_batch=batching.cons_batch,
+            )
+        except Exception:
+            if batching.fatal is not None:
+                raise batching.fatal from None
+            raise
+        if batching.fatal is not None:
+            raise batching.fatal
     result = OptimizeResult(raw)
+    batching.finish(result)
     if display != "none":
         _print_report(result, display)
     return result
@@ -417,7 +753,7 @@ _MATLAB_DISPLAY = {"off": "none", "none": "none", "final": "final", "final-detai
 def _matlab_options(options, method, jac, nonlcon_jac):
     """Accept MATLAB's option names on the ``fmincon`` facade, mapped onto the Python names
     :func:`minimize` documents. A MATLAB option with no equivalent raises: silently ignoring
-    ``TolX`` or ``UseParallel`` would be worse than refusing it."""
+    ``TolX`` would be worse than refusing it. ``UseParallel=True`` becomes ``workers=-1``."""
     if not options:
         return options, method, jac, nonlcon_jac
     # A MATLAB name set to None means "the default", as [] does in optimoptions.
@@ -454,20 +790,141 @@ def _matlab_options(options, method, jac, nonlcon_jac):
                 else:
                     nonlcon_jac = None
     if "UseParallel" in opts:
-        if bool(opts.pop("UseParallel")):
-            raise ValueError("UseParallel is not available yet: model evaluations run one at a time "
-                             "(parallel finite-difference probes are planned)")
+        # MATLAB's default pool is one worker per core; so is workers=-1.
+        if bool(opts.pop("UseParallel")) and "workers" not in opts:
+            opts["workers"] = -1
     unknown = sorted(k for k in opts if isinstance(k, str) and k[:1].isupper())
     if unknown:
         raise ValueError(f"unsupported MATLAB option(s) {unknown}; the aliases are {sorted(_MATLAB_OPTIONS)} plus "
                          "Display, Algorithm, SpecifyObjectiveGradient, SpecifyConstraintGradient and "
-                         "UseParallel=False; everything else uses the Python names in help(minimize)")
+                         "UseParallel; everything else uses the Python names in help(minimize)")
     return opts, method, jac, nonlcon_jac
+
+
+class _LinearRows:
+    """``sign * (mat @ x - vec)`` and its Jacobian ``sign * mat``: the facade's linear blocks."""
+
+    def __init__(self, mat, vec, sign):
+        self.mat, self.vec, self.sign = mat, vec, sign
+
+    def __call__(self, x):
+        return self.sign*(self.mat @ x-self.vec)
+
+    def jac(self, x):
+        return self.sign*self.mat
+
+
+class _Nonlcon:
+    """The facade's view of ``nonlcon``. Both components come from one call per point (a
+    single-entry cache keyed on the point), and ``nonlcon`` may return ``(c, ceq)`` or
+    ``(c, ceq, Jc, Jceq)``; the arity is fixed by the first call so a model cannot silently
+    change its contract. A vectorised ``nonlcon`` takes a ``(k, n)`` array and returns
+    ``(C, Ceq)`` with one row per point."""
+
+    def __init__(self, nonlcon, nonlcon_jac, args, n, vectorized):
+        self.nonlcon, self.nonlcon_jac, self.args, self.n = nonlcon, nonlcon_jac, tuple(args), n
+        self.vectorized = vectorized
+        self.cache_x = self.cache_pair = None
+        self.arity = None
+        self.returns_jacobians = False
+        self.sizes = [0, 0]
+        self.seen = [False, False]
+
+    def pair_at(self, x):
+        xa = np.asarray(x, dtype=float)
+        if self.cache_x is not None and np.array_equal(xa, self.cache_x):
+            return self.cache_pair
+        pair = self.nonlcon(xa, *self.args)
+        if not isinstance(pair, (tuple, list)) or len(pair) not in (2, 4):
+            raise ValueError("nonlcon must return (c, ceq) or (c, ceq, Jc, Jceq), with c <= 0 and ceq == 0")
+        if self.arity is None:
+            self.arity = len(pair)
+        elif len(pair) != self.arity:
+            raise ValueError(f"nonlcon returned {len(pair)} values after returning {self.arity} on its first call")
+        self.cache_x, self.cache_pair = xa.copy(), pair
+        return pair
+
+    def value(self, index, x):
+        if self.vectorized:
+            return self.values(index, np.asarray(x, dtype=float)[None, :])[0]
+        value = self.pair_at(x)[index]
+        a = np.asarray([] if value is None else value, dtype=float)
+        if a.ndim > 1:
+            raise ValueError("nonlcon components must be scalars or one-dimensional arrays")
+        a = a.reshape(-1)
+        self._fix_size(index, a.size)
+        return -a if index == 0 else a
+
+    def values(self, index, X):
+        """Component ``index`` of a vectorised ``nonlcon`` at the rows of ``X``: ``(k, len)``."""
+        value = self.pair_at(X)[index]
+        k = X.shape[0]
+        a = np.asarray([] if value is None else value, dtype=float)
+        if a.size == 0:
+            a = np.zeros((k, 0))
+        if a.ndim == 0 or a.ndim > 2 or a.shape[0] != k:
+            raise ValueError(f"vectorized: nonlcon returned a component of shape {a.shape} for {k} point(s); each "
+                             f"of (C, Ceq) must have one row per point, shape ({k}, len) (nonlcon is always "
+                             "called with a two-dimensional (k, n) array, k = 1 for a single point)")
+        a = a.reshape(k, -1)
+        self._fix_size(index, a.shape[1])
+        return -a if index == 0 else a
+
+    def _fix_size(self, index, size):
+        if self.seen[index] and self.sizes[index] != size:
+            raise ValueError("nonlcon component lengths must remain constant")
+        self.sizes[index] = size
+        self.seen[index] = True
+
+    def jacobian(self, index, x):
+        if self.returns_jacobians:
+            value = self.pair_at(x)[2 + index]
+        else:
+            pair = self.nonlcon_jac(x, *self.args)
+            if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+                raise ValueError("nonlcon_jac must return (Jc, Jceq)")
+            value = pair[index]
+        a = np.asarray([] if value is None else value, dtype=float)
+        a = a.reshape(-1, self.n) if a.size else np.zeros((0, self.n))
+        return -a if index == 0 else a
+
+
+class _NonlconPart:
+    """One component of :class:`_Nonlcon` as a constraint block's ``fun`` (or ``jac``)."""
+
+    def __init__(self, parent, index, what):
+        self.parent, self.index, self.what = parent, index, what
+
+    def __call__(self, x):
+        if self.what == "jac":
+            return self.parent.jacobian(self.index, x)
+        if self.what == "batch":
+            return self.parent.values(self.index, x)
+        return self.parent.value(self.index, x)
+
+
+class _FacadeHessian:
+    """MATLAB's ``HessianFcn`` convention on top of the engine's. The engine's Lagrangian is
+    ``f + sum(lam_engine * c_engine)`` over the blocks [A rows, Aeq rows, c, ceq]; ``c_engine = -c``
+    for the inequality blocks and the MATLAB-sign multipliers are ``-lam_engine`` there, so MATLAB's
+    formula with these groups is exactly the engine's Lagrangian Hessian."""
+
+    def __init__(self, hess, args, linear_sizes, nonlcon):
+        self.hess, self.args, self.linear_sizes, self.nonlcon = hess, tuple(args), linear_sizes, nonlcon
+
+    def __call__(self, x, lam):
+        groups = Multipliers()
+        start = 0
+        sizes = self.linear_sizes + (self.nonlcon.sizes if self.nonlcon is not None else [0, 0])
+        for name, size, sign in zip(["ineqlin", "eqlin", "ineqnonlin", "eqnonlin"], sizes, [-1., 1., -1., 1.]):
+            groups[name] = sign * np.asarray(lam, float)[start:start + size]
+            start += size
+        return self.hess(x, groups, *self.args)
 
 
 def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
             nonlcon=None, options=None, *, jac=None, nonlcon_jac=None, hess=None, args=(), tol=None,
-            method=None, callback=None, warm_start=None):
+            method=None, callback=None, warm_start=None, workers=None, vectorized=False):
     """Minimize with MATLAB-style constraint inputs and automatic defaults.
 
     ``A @ x <= b``, ``Aeq @ x == beq``, ``lb <= x <= ub`` and
@@ -496,6 +953,17 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     selects ``'auto'`` (default), ``'interior-point'`` or ``'sqp'``;
     ``callback(row)`` is called after every iteration and stops the solve
     when it returns ``True``.
+
+    ``workers=k`` evaluates every gradient's finite-difference probes on ``k``
+    worker processes at once (``-1``: one per core; ``UseParallel=True`` in
+    ``options`` means the same): identical iterates, less waiting, for a model
+    that costs seconds per call. ``fun`` (and ``nonlcon``, to run there too)
+    must then be defined with ``def`` at module level, and on Windows and
+    macOS the call must sit under ``if __name__ == '__main__':``; see
+    :func:`minimize`. ``vectorized=True`` says that ``fun`` and ``nonlcon``
+    accept a ``(k, n)`` array of points and return one row per point
+    (``(k,)`` values; ``(C, Ceq)`` with ``k`` rows each); ``'fun'`` or
+    ``'nonlcon'`` vectorises one of the two.
 
     Returns an :class:`OptimizeResult`: use ``r.x``, ``r.fun``, ``r.success``
     and ``r.maxcv``. ``r.multipliers`` groups the MATLAB-sign multipliers as
@@ -531,8 +999,8 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
         # A linear row's Jacobian is the row: pass it, so these rows are never
         # finite-differenced (the engine uses analytic Jacobians when every
         # block has one, so nonlcon without nonlcon_jac still costs probes).
-        cons.append({"type": kind, "fun": lambda x, mat=mat, vec=vec, sign=sign: sign*(mat @ x-vec),
-                     "jac": lambda x, mat=mat, sign=sign: sign*mat})
+        rows = _LinearRows(mat, vec, sign)
+        cons.append({"type": kind, "fun": rows, "jac": rows.jac})
         sizes.append(vec.size)
 
     def bound(value, default, name):
@@ -548,96 +1016,47 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
         return a
 
     bounds = list(zip(bound(lb, -np.inf, "lb"), bound(ub, np.inf, "ub")))
-    nonlinear_sizes = [0, 0]
-    nonlinear_seen = [False, False]
+    if vectorized not in (False, True, "fun", "nonlcon"):
+        raise ValueError("vectorized must be True, False, 'fun' or 'nonlcon'")
+    vector_fun = vectorized in (True, "fun")
+    vector_nonlcon = vectorized in (True, "nonlcon") and nonlcon is not None
+    model = None
     if nonlcon is not None:
         if not callable(nonlcon):
             raise TypeError("nonlcon must be callable and return (c, ceq)")
         if nonlcon_jac is not None and not callable(nonlcon_jac):
             raise TypeError("nonlcon_jac must be callable and return (Jc, Jceq)")
 
-        # Both components are evaluated from one nonlcon call per point: a
-        # single-entry cache keyed on the point avoids calling the model twice.
-        # nonlcon may return (c, ceq) or (c, ceq, Jc, Jceq); the arity is fixed
-        # by the first call so a model cannot silently change its contract.
-        cache = {"x": None, "pair": None}
-        arity = [None]
-
-        def pair_at(x):
-            xa = np.asarray(x, dtype=float)
-            if cache["x"] is not None and np.array_equal(xa, cache["x"]):
-                return cache["pair"]
-            pair = nonlcon(xa, *args)
-            if not isinstance(pair, (tuple, list)) or len(pair) not in (2, 4):
-                raise ValueError("nonlcon must return (c, ceq) or (c, ceq, Jc, Jceq), with c <= 0 and ceq == 0")
-            if arity[0] is None:
-                arity[0] = len(pair)
-            elif len(pair) != arity[0]:
-                raise ValueError(f"nonlcon returned {len(pair)} values after returning {arity[0]} on its first call")
-            cache["x"], cache["pair"] = xa.copy(), pair
-            return pair
-
-        returns_jacobians = len(pair_at(x0)) == 4
-        if returns_jacobians and nonlcon_jac is not None:
+        model = _Nonlcon(nonlcon, nonlcon_jac, args, n, vector_nonlcon)
+        first = model.pair_at(x0[None, :] if vector_nonlcon else x0)
+        model.returns_jacobians = len(first) == 4
+        if model.returns_jacobians and nonlcon_jac is not None:
             raise ValueError("nonlcon returns its Jacobians; do not also pass nonlcon_jac")
+        if model.returns_jacobians and vector_nonlcon:
+            raise ValueError("a vectorized nonlcon returns (C, Ceq); pass its Jacobians as nonlcon_jac")
 
-        def component(index):
-            def evaluate(x):
-                pair = pair_at(x)
-                value = pair[index]
-                a = np.asarray([] if value is None else value, dtype=float)
-                if a.ndim > 1:
-                    raise ValueError("nonlcon components must be scalars or one-dimensional arrays")
-                a = a.reshape(-1)
-                if nonlinear_seen[index] and nonlinear_sizes[index] != a.size:
-                    raise ValueError("nonlcon component lengths must remain constant")
-                nonlinear_sizes[index] = a.size
-                nonlinear_seen[index] = True
-                return -a if index == 0 else a
-            return evaluate
-
-        blocks = [{"type": "ineq", "fun": component(0)}, {"type": "eq", "fun": component(1)}]
-        if nonlcon_jac is not None or returns_jacobians:
-            def jac_component(index):
-                def evaluate(x):
-                    if returns_jacobians:
-                        value = pair_at(x)[2 + index]
-                    else:
-                        pair = nonlcon_jac(x, *args)
-                        if not isinstance(pair, (tuple, list)) or len(pair) != 2:
-                            raise ValueError("nonlcon_jac must return (Jc, Jceq)")
-                        value = pair[index]
-                    a = np.asarray([] if value is None else value, dtype=float)
-                    a = a.reshape(-1, n) if a.size else np.zeros((0, n))
-                    return -a if index == 0 else a
-                return evaluate
-            blocks[0]["jac"] = jac_component(0)
-            blocks[1]["jac"] = jac_component(1)
+        what = "batch" if vector_nonlcon else "value"
+        blocks = [{"type": "ineq", "fun": _NonlconPart(model, 0, what)},
+                  {"type": "eq", "fun": _NonlconPart(model, 1, what)}]
+        if vector_nonlcon:
+            blocks[0]["vectorized"] = blocks[1]["vectorized"] = True
+        if nonlcon_jac is not None or model.returns_jacobians:
+            blocks[0]["jac"] = _NonlconPart(model, 0, "jac")
+            blocks[1]["jac"] = _NonlconPart(model, 1, "jac")
         cons.extend(blocks)
 
     # Bind user arguments here so linear constraints do not receive them.
-    objective = (lambda x: fun(x, *args)) if args else fun
-    gradient = (lambda x: jac(x, *args)) if args and jac is not None else jac
+    objective = _WithArgs(fun, args) if args else fun
+    gradient = _WithArgs(jac, args) if args and jac is not None else jac
     hessian = None
     if hess is not None:
         if not callable(hess):
             raise TypeError("hess must be callable: hess(x, lam) -> (n, n)")
-
-        def hessian(x, lam):
-            # The engine's Lagrangian is f + sum(lam_engine * c_engine) over the blocks
-            # [A rows, Aeq rows, c, ceq]; c_engine = -c for the inequality blocks and the
-            # MATLAB-sign multipliers are -lam_engine there, so MATLAB's HessianFcn formula
-            # with these groups is exactly the engine's Lagrangian Hessian.
-            groups = Multipliers()
-            start = 0
-            for name, size, sign in zip(["ineqlin", "eqlin", "ineqnonlin", "eqnonlin"],
-                                        sizes + nonlinear_sizes, [-1., 1., -1., 1.]):
-                groups[name] = sign * np.asarray(lam, float)[start:start + size]
-                start += size
-            return hess(x, groups, *args)
+        hessian = _FacadeHessian(hess, args, sizes, model)
     result = minimize(objective, x0, jac=gradient, hess=hessian, bounds=bounds,
                       constraints=cons, tol=tol, options=options, method=method, callback=callback,
-                      warm_start=warm_start)
+                      warm_start=warm_start, workers=workers, vectorized=vector_fun)
+    nonlinear_sizes = model.sizes if model is not None else [0, 0]
     multipliers = Multipliers()
     start = 0
     for name, size, sign in zip(
@@ -705,11 +1124,12 @@ def _normalize_constraints(constraints, args):
             raise TypeError("a constraint's 'jac' must be callable (a string estimator is not supported)")
         if jac is not None:
             d["jac"] = jac
+        if c.get("vectorized"):
+            d["vectorized"] = True
         if args:
-            _c = c["fun"]
-            d["fun"] = lambda x, _c=_c: _c(x, *args)
+            d["fun"] = _WithArgs(c["fun"], args)
             if jac is not None:
-                d["jac"] = lambda x, _j=jac: _j(x, *args)
+                d["jac"] = _WithArgs(jac, args)
         out.append(d)
     return out
 

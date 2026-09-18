@@ -104,6 +104,13 @@ impl<'a, P: Nlp + ?Sized> ScaledNlp<'a, P> {
         xt.iter().zip(&self.d).map(|(v, dj)| v * dj).collect()
     }
 
+    /// [`ScaledNlp::unscale_x`] for several points stored one after another.
+    fn unscale_points(&self, xs: &[f64]) -> Vec<f64> {
+        xs.chunks_exact(self.d.len())
+            .flat_map(|xt| xt.iter().zip(&self.d).map(|(v, dj)| v * dj))
+            .collect()
+    }
+
     /// Bound multipliers in the model's units: the bound `x~ >= lb / d` carries
     /// `z~ (x~ - lb / d) = (z~ / d) (x - lb)`.
     #[must_use]
@@ -165,6 +172,12 @@ impl<P: Nlp + ?Sized> Nlp for ScaledNlp<'_, P> {
     }
     fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
         self.inner.constraints(&self.unscale_x(x), out)
+    }
+    fn objective_batch(&self, xs: &[f64]) -> Vec<Result<f64, EvalError>> {
+        self.inner.objective_batch(&self.unscale_points(xs))
+    }
+    fn constraints_batch(&self, xs: &[f64], out: &mut [f64]) -> Vec<Result<(), EvalError>> {
+        self.inner.constraints_batch(&self.unscale_points(xs), out)
     }
     fn gradient(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
         self.inner.gradient(&self.unscale_x(x), out)?;

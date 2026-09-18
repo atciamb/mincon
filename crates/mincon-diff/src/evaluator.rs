@@ -11,6 +11,7 @@
 //! The evaluator also owns the counters, so evaluation accounting is correct by
 //! construction rather than by every call site remembering to increment.
 
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use mincon_core::{EvalCounters, EvalError, Nlp, Options, Sparsity};
@@ -91,6 +92,44 @@ impl<P: Nlp + ?Sized> Nlp for CountedModel<'_, P> {
             }
         });
         self.checked(result)
+    }
+    fn objective_batch(&self, xs: &[f64]) -> Vec<Result<f64, EvalError>> {
+        let k = xs.len() / self.nlp.dims().n.max(1);
+        self.counters.f.fetch_add(k as u64, Ordering::Relaxed);
+        self.timed(|| self.nlp.objective_batch(xs))
+            .into_iter()
+            .map(|r| {
+                self.checked(r.and_then(|v| {
+                    if v.is_finite() {
+                        Ok(v)
+                    } else {
+                        Err(EvalError::NonFinite(None))
+                    }
+                }))
+            })
+            .collect()
+    }
+    fn constraints_batch(&self, xs: &[f64], out: &mut [f64]) -> Vec<Result<(), EvalError>> {
+        let dims = self.nlp.dims();
+        let k = xs.len() / dims.n.max(1);
+        self.counters.c.fetch_add(k as u64, Ordering::Relaxed);
+        let status = self.timed(|| self.nlp.constraints_batch(xs, out));
+        status
+            .into_iter()
+            .enumerate()
+            .map(|(i, r)| {
+                self.checked(r.and_then(|()| {
+                    if out[i * dims.m..(i + 1) * dims.m]
+                        .iter()
+                        .all(|v| v.is_finite())
+                    {
+                        Ok(())
+                    } else {
+                        Err(EvalError::NonFinite(None))
+                    }
+                }))
+            })
+            .collect()
     }
 }
 
@@ -280,6 +319,33 @@ impl<'a, P: Nlp + ?Sized> Evaluator<'a, P> {
                 Err(e)
             }
         }
+    }
+
+    /// Whether the model evaluates several points at once itself
+    /// ([`mincon_core::Capabilities::batch`]). A caller with independent points
+    /// to evaluate then submits them through [`Evaluator::f_batch`] and
+    /// [`Evaluator::c_batch`] instead of one call after another.
+    #[must_use]
+    pub fn batches(&self) -> bool {
+        self.nlp.capabilities().batch
+    }
+
+    /// Objective values at the points stored one after another in `xs`, counted
+    /// and checked as [`Evaluator::f`] does for each.
+    #[must_use]
+    pub fn f_batch(&self, xs: &[f64]) -> Vec<Result<f64, EvalError>> {
+        self.counted().objective_batch(xs)
+    }
+
+    /// Constraint values at the points of `xs`, `m` per point into `out`,
+    /// counted and checked as [`Evaluator::c`] does for each.
+    #[must_use]
+    pub fn c_batch(&self, xs: &[f64], out: &mut [f64]) -> Vec<Result<(), EvalError>> {
+        let dims = self.nlp.dims();
+        if dims.m == 0 {
+            return xs.chunks_exact(dims.n.max(1)).map(|_| Ok(())).collect();
+        }
+        self.counted().constraints_batch(xs, out)
     }
 
     /// Objective gradient, analytic or by finite differences.

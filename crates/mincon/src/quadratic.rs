@@ -1083,6 +1083,12 @@ impl<P: Nlp + ?Sized> Nlp for QuadraticModel<'_, P> {
     fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
         self.inner.constraints(x, out)
     }
+    fn objective_batch(&self, xs: &[f64]) -> Vec<Result<f64, EvalError>> {
+        self.inner.objective_batch(xs)
+    }
+    fn constraints_batch(&self, xs: &[f64], out: &mut [f64]) -> Vec<Result<(), EvalError>> {
+        self.inner.constraints_batch(xs, out)
+    }
     fn gradient(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
         self.inner.gradient(x, out)
     }

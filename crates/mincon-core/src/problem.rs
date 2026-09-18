@@ -33,6 +33,13 @@ pub struct Capabilities {
     /// a `rayon` pool. Models wrapping a Python callback must set this to
     /// `false` unless they release the GIL.
     pub parallel_safe: bool,
+    /// [`Nlp::objective_batch`] and [`Nlp::constraints_batch`] do better than
+    /// one call after another: the model evaluates several points at once (a
+    /// vectorised function, a pool of worker processes, a cluster queue). The
+    /// derivative layer then submits a whole gradient's finite-difference
+    /// probes in one call. The probes are the same points as on the serial
+    /// path; only their scheduling changes.
+    pub batch: bool,
 }
 
 impl Capabilities {
@@ -60,6 +67,7 @@ impl Capabilities {
             hessian: true,
             hessian_vector: true,
             parallel_safe: false,
+            batch: false,
         }
     }
 }
@@ -139,6 +147,34 @@ pub trait Nlp: Sync {
     /// # Errors
     /// [`EvalError`] if the model cannot be evaluated here.
     fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError>;
+
+    /// Objective values at several points at once. `xs` holds `k` points of
+    /// length `n` one after another; entry `i` of the result is the value, or
+    /// the failure, at point `i`. A failure at one point must not fail the
+    /// others: the derivative layer retreats on the failed probes alone.
+    ///
+    /// The default evaluates the points one after another. A model that can do
+    /// better (see [`Capabilities::batch`]) overrides it; a wrapper around a
+    /// model forwards it, or the inner model's batching is lost.
+    fn objective_batch(&self, xs: &[f64]) -> Vec<Result<f64, EvalError>> {
+        let n = self.dims().n;
+        xs.chunks_exact(n).map(|x| self.objective(x)).collect()
+    }
+
+    /// Constraint values at several points at once: `xs` as in
+    /// [`Nlp::objective_batch`], `out` holds `k` blocks of `m` values, point
+    /// after point, and entry `i` of the result says whether block `i` was
+    /// written.
+    fn constraints_batch(&self, xs: &[f64], out: &mut [f64]) -> Vec<Result<(), EvalError>> {
+        let NlpDims { n, m } = self.dims();
+        if m == 0 {
+            return xs.chunks_exact(n).map(|_| Ok(())).collect();
+        }
+        xs.chunks_exact(n)
+            .zip(out.chunks_exact_mut(m))
+            .map(|(x, o)| self.constraints(x, o))
+            .collect()
+    }
 
     /// Objective gradient. Only called when [`Capabilities::gradient`].
     ///

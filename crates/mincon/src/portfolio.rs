@@ -230,6 +230,14 @@ impl<P: Nlp + ?Sized> Nlp for Counted<'_, P> {
     fn constraints(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
         self.inner.constraints(x, out)
     }
+    fn objective_batch(&self, xs: &[f64]) -> Vec<Result<f64, EvalError>> {
+        let k = xs.len() / self.inner.dims().n.max(1);
+        self.f_evals.fetch_add(k as u64, AtomicOrdering::Relaxed);
+        self.inner.objective_batch(xs)
+    }
+    fn constraints_batch(&self, xs: &[f64], out: &mut [f64]) -> Vec<Result<(), EvalError>> {
+        self.inner.constraints_batch(xs, out)
+    }
     fn gradient(&self, x: &[f64], out: &mut [f64]) -> Result<(), EvalError> {
         self.inner.gradient(x, out)
     }
