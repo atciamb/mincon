@@ -21,7 +21,7 @@ is defined by gates that can be met and measured.
 | # | gate | standing (September 18, 2026, after Phases A to C) |
 |---|---|---|
 | G1 | **Reliability.** Two consecutive fresh sealed rounds of at least 20 problems in at least 10 families each; track-A attainment at least that of both `fmincon` algorithms; zero false certificates; every miss carrying a diagnosis in `notes` | rounds 3 and 5 meet the attainment half at 12-13 problems; no round has had 20 |
-| G2 | **Friction.** Every friction-audit problem attained or refused with an actionable message; the exit message names the limit that bound; every quadratic-probe decision in `notes`; no option that does not do what its name says | 14/15 (`bench/results/s7-friction-c`; the one non-attainment is `wrong_gradient`, which mincon refuses with the offending component named, the outcome this gate asks for); items 20c and 20e of `docs/17` closed and the options of `docs/14` re-audited in Phase B; `UseParallel` does what its name says since Phase C |
+| G2 | **Friction.** Every friction-audit problem attained or refused with an actionable message; the exit message names the limit that bound; every quadratic-probe decision in `notes`; no option that does not do what its name says | 14/15 (`bench/results/s7-friction-d`; the one non-attainment is `wrong_gradient`, which mincon refuses with the offending component named, the outcome this gate asks for); items 20c and 20e of `docs/17` closed and the options of `docs/14` re-audited in Phase B; `UseParallel` does what its name says since Phase C |
 | G3 | **Instrument.** The benchmark oracle evaluates its first-order test on every record | met since Phase B: the worker passes bound multipliers on bounds-only problems (`docs/22` section 7.16); records scored before that keep their NaN |
 | G4 | **Public surface.** Packaged README accurate; the `fmincon` facade and `minimize` frozen; 0.2.0 on PyPI through `publish.yml` and a Trusted Publisher; wheels for Windows, Linux and macOS; CI green on every push | README rewritten and CI repaired September 18; no Trusted Publisher yet; `publish.yml` builds Windows and Linux only |
 | G5 | **Scope statement.** Dense coupled problems at n >= 200 either fixed by an ablated increment or documented as the known cost with numbers | documented (README, known gap 1) |
@@ -114,6 +114,19 @@ increments, each behind an option and measured:
    finite-differenced NumPy model; a scalar `lambda x:` model unchanged.
 
 ### Phase D: algorithmic candidates, each behind an option, ablated on all 185 problems
+
+Standing (September 18): candidates 4 and 5 are done and are defaults (`docs/22` section 7.18);
+candidates 1 to 3 are open. Candidate 4 turned out not to be the QP: at the degenerate vertex the
+QP's step has a predicted decrease below the rounding noise of the merit function, no line search
+can verify it, and the termination test was looking at the previous step's multipliers (KKT error
+13.2). `zero_step='decrease'` adopts the QP's multipliers there and re-tests once. Its first form
+also stopped there and cost six corpus problems their certificate (`bench/results/abl-phased45`);
+the form that survived changes sixteen corpus records, none in status or attainment, fifteen for
+fewer evaluations (`abl-phased45b`). Candidate 5, `saddle_step='linearized'`, caps the first trial
+step off a saddle by the distance to the inactive rows; it changes no corpus record
+(`abl-phased45c`) and takes the heat-flux design from 104 evaluations to 87. Together:
+`heatflux_design` 477 to 87 (`fmincon-sqp` 120), `noisy_simulator` 202 to 89, friction audit 14/15
+with every other record identical (`bench/results/s7-friction-d`).
 
 1. The quadratic probe's band budget (`crates/mincon/src/quadratic.rs`, the
    `2n` cap when the dense build is unaffordable; `docs/22` section 7.15).

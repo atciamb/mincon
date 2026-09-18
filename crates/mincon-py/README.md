@@ -85,10 +85,10 @@ if __name__ == "__main__":        # required on Windows and macOS
 
 The probes are the same points as in a serial solve, so the iterates and the
 answer are identical to the last bit; only the waiting changes. Measured on a
-19-variable design problem with a 0.2 s model: 20.9 s serial, 9.1 s on 8
+19-variable design problem with a 0.2 s model: 17.5 s serial, 5.7 s on 8
 workers. The four gradients took a sixth of their serial time; what remains
-is the calls a solver must make one after another (line searches, and on that
-problem a 19-call backtracking step), plus about a second to start the
+is the nine calls a solver must make one after another (the start, the
+quadratic probe, line searches), plus about a second to start the
 processes. Rules: `fun` must be defined with `def` at the top level of a
 module or script, because it is sent to other processes (a `lambda` raises
 with this advice; pass data through `args=`); constraint functions are sent
@@ -213,7 +213,7 @@ under finite differences) are not implemented.
 The local development gate is 56/56 fixture outcomes through the default
 portfolio (53 strict `Optimal` returns; passes also include accurate points
 with non-success statuses and expected infeasible or unbounded diagnostics),
-203 Rust tests and 50 Python tests. The measured standing against `fmincon`
+203 Rust tests and 53 Python tests. The measured standing against `fmincon`
 and SciPy on a 185-problem corpus, including where they win, is in the
 repository README and `docs/17_CLAIM_AUDIT.md`.
 

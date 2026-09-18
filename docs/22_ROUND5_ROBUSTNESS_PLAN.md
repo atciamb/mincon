@@ -890,9 +890,133 @@ iterations, evaluations, optimality, status and objective of all 56 problems. Th
 profiles, fmt, `cargo doc -D warnings`, doctests, 55/56 and 56/56 / 56/56 / 55/56 with no lie, the
 1.83 check, and 60 Python tests (41 + 9 in `test_batch.py`, and the oracle's 10).
 
+The whole corpus, track A, at the same wheel (`bench/results/abl-phasec`, against
+`abl-i5-rows/mincon_quadratic_rows-values`): 172 / 172 attained of 185, +0.0 pp [+0.0, +0.0], cost
+1.00 [0.99, 1.00] on 172 common. Three records changed and they are the three clock-bound problems
+(COVQP_300, DECONV_200, DENSELAP_250), all stopped on the 60 s clock in both arms with a different
+number of evaluations bought; COVQP_300, which `abl-b1` attained on a faster clock, is back to not
+attained, the same clock luck read the other way. The 182 others are identical to the evaluation.
+
 **Not done.** The quadratic probe's Hessian build (`n (n + 3) / 2` independent evaluations when
 it fires) still makes its calls one at a time: its budget and wall guards sit between
 evaluations and need their own design. The finite-difference error estimate (up to eight
 evaluations, every ten iterations near convergence) and the sparsity probe are serial. Line-search
 points are inherently sequential. A Rust `Problem` built from closures does not expose a batch
 closure; a Rust model implements the two trait methods.
+
+
+### 7.18 Phase D, candidates 4 and 5: the SQP member at a degenerate vertex, and its step off a saddle, September 18
+
+`docs/23` Phase D lists five candidates. These two were taken first because Phase C's measurements
+had already located them and both act on the owner's problem; candidates 1 to 3 (the probe's band
+budget, the frozen barrier parameter, `quadratic_rows` on dense objectives) are untouched. Each is
+behind an option, each was ablated on all 185 problems, track A, against a default arm of the same
+run and wheel, and one rule was written, measured, falsified and replaced on the way.
+
+**Candidate 4 diagnosed: not the QP, the multipliers the test sees.** Section 7.16 recorded that on
+`heatflux_design` the SQP member stops at `StepTolerance` 2.1e-5 above the optimum and the
+interior-point member finishes at 4x `fmincon-sqp`'s cost, and guessed at the active-set QP. The
+trace says otherwise. The first SQP step lands on the degenerate vertex (20 active rows, 19
+variables, f = -47.45625), which is a saddle point of the Lagrangian. There the QP returns a step
+with a predicted merit decrease of 1e-13 on a merit of 47 (`MINCON_SQP_DEBUG=1`: `delta_m =
+-1.05e-13`, `model_obj = 2.0e-13`): the QP is saying "stay", which means *its* multipliers satisfy
+stationarity. But the step's norm is above the step tolerance, so the existing branch for a
+vanished step ("the QP says stay: adopt its multipliers and re-run the test") does not fire; the
+step goes to a line search that cannot verify a decrease below the rounding noise of the merit
+function; it fails, the member switches to central differences, resets the quasi-Newton matrix
+twice, fails each time, and exits with the multipliers of the last *accepted* step, under which the
+scaled KKT error is **13.2**. The surrogate script of `HEATFLUX_ANALYSIS.md` is the same function
+with `np.gradient` in place of the matrix operator, reaches a point 1.6e-6 away, happens to pass
+the KKT test there, runs the second-order probe, leaves the saddle and is `Optimal` in 104
+evaluations. Rounding decided between 104 and 477.
+
+**The first rule written was falsified by the corpus, as the protocol intends.** `zero_step =
+'decrease'` as first built treated a feasible, non-elastic step whose predicted decrease is at most
+`100 eps max(1, |merit|)` exactly like a vanished step: adopt the QP's multipliers, re-test, and if
+the test still fails classify the exit. It fixed `heatflux_design` (484 evaluations to 104). On the
+corpus (`bench/results/abl-phased45`, stopped at 148 of 185 records of that arm) **six problems
+lost their certificate**: HS100, HS110, HS25, LOGISTIC_NOISY2, PKFIT_NOISY2 and THREEBAR_TRUSS went
+from `Optimal` to `Acceptable` ("The QP step vanished at a feasible point (scaled KKT error
+9.73e-6)"), stopping a few iterations before the old path's certified exit, at KKT errors of 1e-6
+to 1e-5. Attainment would not have shown it; `success` would have, and success means certified. The
+risk had been written down before the numbers came in (a badly scaled quasi-Newton matrix also
+makes a predicted decrease tiny far from a solution), and the partial arm was enough to stop the
+run.
+
+**The rule that survived** uses the condition for the one thing the diagnosis supports: once per
+point, adopt the QP's multipliers and re-run the termination test. It is never a reason to stop;
+when the test still fails the step goes to the line search as before.
+`bench/results/abl-phased45b` (wheel `cedb828390625616`, default arm in the same run):
+
+| arm | attained | paired difference | cost ratio (common) | records changed |
+|---|---|---|---|---|
+| `zero_step=decrease` | 172 / 172 of 185 | +0.0 pp [+0.0, +0.0] | 0.99 [0.99, 1.00] on 172 | 16, and two clock-bound |
+
+All sixteen are attained in both arms with the same exit status; fifteen save evaluations
+(ELLIPSOID2_20 3976 to 3318, ELLIPSOID_50 16 736 to 16 054, HS93 504 to 448, HS95 and HS96 92 to
+64, HS62 154 to 134, HS53 86 to 72, HS52 82 to 72, HS113 262 to 246, HS64 342 to 326, HS112 789 to
+777, FIXEDVARS 60 to 52, HS17 132 to 126, HS63 92 to 90, THREEBAR_TRUSS 90 to 88) and ELLIPSOID_500
+spends 6 more of 202 186. The six problems the first rule harmed are `Optimal` again: five with their
+old counts (HS100 542, HS110 145, HS25 190, LOGISTIC_NOISY2 169, PKFIT_NOISY2 334) and
+THREEBAR_TRUSS with two evaluations fewer.
+
+**Candidate 5: the first trial step off a saddle.** When the second-order probe finds negative
+curvature the member backtracks along it from `t = max |x|`, two evaluations a trial (the point,
+and the point after a Newton step onto the strongly active rows). On the corpus that event occurs
+on two records, HS25 and HS33, and both accept the first trial, so the corpus can falsify a change
+here and cannot show its benefit. The heat-flux design can: its first nine trials are far outside
+1384 rows and cost 19 evaluations for an accepted step of 5.9e-3 (section 7.17).
+`saddle_step = 'linearized'` caps the first trial at 0.99 of the ratio test's reach along the
+direction. As first built the ratio test included the variable bounds, and the corpus answered
+(`abl-phased45b`): one record changed, HS25, bounds only, **19 evaluations more** (190 to 209),
+because a trial point is projected onto the bounds anyway and the cap only shortened a good step.
+The rule now tests the inactive constraint rows alone, which is what projection cannot handle.
+`bench/results/abl-phased45c` (wheel `5608cd02d4819f9b`, default arm in the same run):
+
+| arm | attained | paired difference | cost ratio (common) | records changed |
+|---|---|---|---|---|
+| `saddle_step=linearized` | 172 / 172 of 185 | +0.0 pp [+0.0, +0.0] | 1.00 [1.00, 1.01] on 172 | none but the clock-bound ones |
+| both options | 172 / 172 of 185 | +0.0 pp [+0.0, +0.0] | 0.99 [0.99, 1.00] on 172 | the sixteen of `zero_step`, same counts |
+
+HS25 and HS33 are untouched. One disclosed accident in that run: the default arm's COVQP_300
+(clock-bound, not attained in any arm) was solved while the previous ablation was being scored, got
+4 816 evaluations out of its 60 s instead of about 12 000, and the supervisor's hard limit added a
+`timeout` record next to the worker's; scoring is too heavy to overlap a run, and no conclusion
+rests on that record.
+
+**The owner's problem, both formulations, model evaluations of the whole portfolio:**
+
+| options | `heatflux_design` (matrix operator) | surrogate script (`np.gradient`) |
+|---|---:|---:|
+| before | 484, the interior-point member finishes, gap 2.0e-6 | 104, gap 3e-13 |
+| `zero_step=decrease` | 104, the SQP member alone, gap 1e-13 | 104 |
+| `saddle_step=linearized` | 484 | 87 |
+| both | **87**, gap 9e-14 | **87** |
+
+`fmincon-sqp` needs 120 on this problem and SciPy SLSQP 40 (to a gap of 2.1e-5).
+
+**Both became defaults** (`zero_step='decrease'`, `saddle_step='linearized'`; `'norm'` and
+`'scale'` restore the behaviour before): neither falsifier fired, the first saves evaluations on
+sixteen corpus problems and costs six on one, and the second changes nothing on the corpus and is
+what the problem that motivated this phase needs. The evidence base of the second is stated as
+what it is: one problem family for the benefit, 185 problems for the absence of harm. At the new
+defaults: 203 Rust tests, clippy under both profiles, fmt, rustdoc, doctests and the 1.83 check
+clean; the fixture tables 55/56 and 56/56 / 56/56 / 55/56 with no lie, every verdict unchanged
+(HS63 goes from 87 evaluations to 38; HS38, HS43, HS100, HS110, HS13 and two torture rows show one or two
+more iterations at the same evaluation count, because the re-test takes an iteration number and no
+work; the interior-point tables are identical); 63 Python tests (three new, in
+`test_sqp_options.py`, on the full-size design with the old behaviour reproduced through the
+options). The friction audit (`bench/results/s7-friction-d`): mincon 14/15, the other four solvers'
+records identical, thirteen of mincon's identical, and two better: `heatflux_design` 477
+evaluations to **87** (the SQP member alone, 5.9 s to 0.05 s, 5e-8 to 2e-13 from the reference
+point; `fmincon-sqp` 120), and `noisy_simulator` 202 to **89**, where the quadratic member used to
+end `Acceptable` and hand over to a second member and is now certified at the accuracy of its
+finite differences. With Phase C's workers and a 0.2 s model the surrogate now takes 17.5 s serial
+and 10.5 / 6.8 / 5.7 s on 2 / 4 / 8 workers, the iterates identical; 9 of its 87 calls are made one
+at a time, against 26 of 104 in section 7.17.
+
+**What this does not settle.** Rounding still decides some things at that vertex (the two
+formulations now agree, at 87, but the vertex is still reached before the optimum). Whether a
+`StepTolerance` exit that close to a certified point should be usable to the portfolio was the
+other half of candidate 4 and is now moot for this problem and open in general. Candidates 1 to 3
+are untouched.

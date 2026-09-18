@@ -83,14 +83,16 @@ let r = minimize(&p, &Options::default())?;
 > fixed (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`); a fifteenth problem, a
 > heat-flux surface design with 1384 linear rows, was added on September 18
 > (`bench/results/s7-friction-b`: 14/15, every solver attains it, mincon at
-> 4× fmincon-sqp's evaluations because its SQP member stops short of a
-> degenerate vertex and the interior-point member finishes). Phase C of the
+> 4× fmincon-sqp's evaluations because its SQP member stopped short of a
+> degenerate vertex and the interior-point member finished; since the two
+> Phase D defaults of `docs/22` section 7.18 it takes 87 evaluations against
+> fmincon-sqp's 120, `bench/results/s7-friction-d`). Phase C of the
 > roadmap (September 18, `docs/22` section 7.17) added parallel and batched
 > finite-difference probes behind `workers=` and `vectorized=`; without them
 > the audit's fifteen records are identical (`bench/results/s7-friction-c`).
 > Development
 > gate: Rust tests, 56/56 fixtures with independent checks for the portfolio
-> and each member (SQP alone: 55/56, HS13 within 4e-4), 50 Python tests.
+> and each member (SQP alone: 55/56, HS13 within 4e-4), 53 Python tests.
 
 `fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
@@ -144,7 +146,7 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   probes on `k` worker processes, or through a map-like callable, and takes
   the serial solve's iterates to the last bit (verified on the 56 fixtures
   under each algorithm and through a real process pool); with a 0.2 s model a
-  19-variable design solve goes from 20.9 s to 9.1 s on 8 workers, the
+  19-variable design solve goes from 17.5 s to 5.7 s on 8 workers, the
   gradients at a sixth of their serial time and the rest bounded by the calls
   a solver makes one after another. `vectorized=True` hands a NumPy model a
   `(k, n)` array once per gradient: 7x to 82x fewer crossings into Python,

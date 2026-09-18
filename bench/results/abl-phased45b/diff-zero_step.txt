@@ -1,0 +1,19 @@
+DECONV_200             cand: status 0 evals 14272 att False wall 60.2 | base: status 0 evals 15277 att False wall 60.3
+DENSELAP_250           cand: status 0 evals 17628 att True wall 60.7 | base: status 0 evals 18636 att True wall 61.2
+ELLIPSOID2_20          cand: status 6 evals 3318 att True wall 0.0 | base: status 6 evals 3976 att True wall 0.0
+ELLIPSOID_50           cand: status 6 evals 16054 att True wall 0.3 | base: status 6 evals 16736 att True wall 0.3
+ELLIPSOID_500          cand: status 6 evals 202192 att True wall 30.2 | base: status 6 evals 202186 att True wall 30.0
+FIXEDVARS              cand: status 1 evals 52 att True wall 0.0 | base: status 1 evals 60 att True wall 0.0
+HS112                  cand: status 6 evals 777 att True wall 0.0 | base: status 6 evals 789 att True wall 0.0
+HS113                  cand: status 1 evals 246 att True wall 0.0 | base: status 1 evals 262 att True wall 0.0
+HS17                   cand: status 1 evals 126 att True wall 0.0 | base: status 1 evals 132 att True wall 0.0
+HS52                   cand: status 1 evals 72 att True wall 0.0 | base: status 1 evals 82 att True wall 0.0
+HS53                   cand: status 1 evals 72 att True wall 0.0 | base: status 1 evals 86 att True wall 0.0
+HS62                   cand: status 1 evals 134 att True wall 0.0 | base: status 1 evals 154 att True wall 0.0
+HS63                   cand: status 1 evals 90 att True wall 0.0 | base: status 1 evals 92 att True wall 0.0
+HS64                   cand: status 1 evals 326 att True wall 0.0 | base: status 1 evals 342 att True wall 0.0
+HS93                   cand: status 1 evals 448 att True wall 0.0 | base: status 1 evals 504 att True wall 0.0
+HS95                   cand: status 1 evals 64 att True wall 0.0 | base: status 1 evals 92 att True wall 0.0
+HS96                   cand: status 1 evals 64 att True wall 0.0 | base: status 1 evals 92 att True wall 0.0
+THREEBAR_TRUSS         cand: status 1 evals 88 att True wall 0.0 | base: status 1 evals 90 att True wall 0.0
+changed records: 18 of 185
