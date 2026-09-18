@@ -40,18 +40,23 @@ jobs:
 
       - name: Tests
         shell: bash
+        env:
+          CARGO_TERM_COLOR: never
         run: cargo test --workspace --no-fail-fast 2>&1 | tee cargo-test.log
 
       # Job logs need a token to read; annotations do not. Name every failing
-      # test and every compile error on the run's summary page and in the API.
+      # test, panic, signal and compile error on the run's summary page and in
+      # the API, with escape codes stripped in case anything still colours.
       - name: Name the failures
         if: failure()
         shell: bash
         run: |
           [ -f cargo-test.log ] || exit 0
-          grep -E "^test .* FAILED$|panicked at|^error(\[E[0-9]+\])?:" cargo-test.log | head -20 \
-            | while IFS= read -r line; do echo "::error::$line"; done || true
-          grep -A 40 "^failures:$" cargo-test.log | head -60 || true
+          sed 's/\x1b\[[0-9;]*[A-Za-z]//g' cargo-test.log > plain.log
+          grep -nE "FAILED|panicked|overflowed|signal:|SIGABRT|SIGKILL|SIGSEGV|out of memory|error(\[E[0-9]+\])?:|target failed|test result: FAILED" plain.log \
+            | head -30 | while IFS= read -r line; do echo "::error::$line"; done || true
+          grep -A 30 "^failures:$" plain.log | head -80 | while IFS= read -r line; do echo "::error::[failures] $line"; done || true
+          tail -25 plain.log | while IFS= read -r line; do echo "::error::[tail] $line"; done || true
 
       - name: Independent regression verdict tests
         run: cargo test -p mincon-ip --example run_testset
