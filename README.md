@@ -161,8 +161,10 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   ranking, sequential early exit for models that cannot evaluate concurrently
   (every Python model) and shared member budgets.
 * **Python bindings** — `abi3` wheel, SciPy-compatible `minimize`.
-* **Test set** — 44 Hock–Schittkowski problems plus 10 torture problems with
-  independent feasibility/reference-value checks and explicit failure fixtures.
+* **Test set** — 56 fixtures, 45 Hock–Schittkowski problems plus 11 torture
+  problems, with independent feasibility/reference-value checks and explicit
+  failure fixtures; run through the interior-point member alone (the CI gate)
+  and through the default portfolio and the SQP member.
 * **Benchmark corpus and harness** — 133 problems defined once in SymPy
   (89 Hock–Schittkowski, adversarial closed-form cases, scalable structured
   families, engineering designs), generated NumPy and MATLAB models that agree
@@ -245,9 +247,10 @@ bench/                   CUTEst harness, performance profiles, fmincon baseline
 ## Building
 
 ```bash
-cargo test --workspace                                   # 122 tests
-cargo run --release -p mincon-ip --example run_testset    # the regression table
-cargo run --release -p mincon-ip --example diagnose HS71  # one problem, in detail
+cargo test --workspace                                                # 195 tests
+cargo run --release -p mincon-ip --example run_testset                 # the interior-point regression table (the CI gate)
+cargo run --release -p mincon --example run_testset_portfolio -- auto  # the same fixtures through the default portfolio (auto|ip|sqp)
+cargo run --release -p mincon-ip --example diagnose HS71               # one problem, in detail
 
 pip install maturin
 cd crates/mincon-py && maturin develop --release

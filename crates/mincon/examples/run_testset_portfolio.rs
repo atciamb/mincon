@@ -1,6 +1,6 @@
 //! Run the whole test set through one algorithm and print a table.
 //!
-//! `cargo run --release -p mincon --example run_testset -- [ip|sqp|auto] [name-filter]`
+//! `cargo run --release -p mincon --example run_testset_portfolio -- [ip|sqp|auto] [name-filter]`
 //!
 //! Same verdict rules as `mincon-ip`'s `run_testset` (which stays the CI gate
 //! for the interior-point member); this one exists so the SQP member and the

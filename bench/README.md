@@ -4,7 +4,7 @@ Three tiers, each answering a different question.
 
 | Tier | What it is | Runs | Answers |
 |---|---|---|---|
-| **1. Unit + testset** | `cargo test`, `cargo run -p mincon-ip --example run_testset` | every commit, seconds | Is the algorithm still correct? Did it start lying? |
+| **1. Unit + testset** | `cargo test`, `cargo run -p mincon-ip --example run_testset`, `cargo run -p mincon --example run_testset_portfolio -- auto` | every commit, seconds | Is the algorithm still correct? Did it start lying? |
 | **2. Benchmark** | `runner.py --set constrained-small` | every PR, minutes | Did robustness or cost regress? |
 | **3. Full CUTEst** | `runner.py --set all --solvers all` | nightly, hours | Are we beating `fmincon` yet? |
 

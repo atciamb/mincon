@@ -160,7 +160,7 @@ impl DenseBfgs {
     /// the model's own diagonal explains the pair at least twice as well as
     /// the full matrix (its off-diagonal part is wrong), the matrix is
     /// replaced by a diagonal built from those quotients before the ordinary
-    /// update (see [`DenseBfgs::rebuild_diagonal`]). A rank-two
+    /// update (see the private `rebuild_diagonal`). A rank-two
     /// update can repair one direction per iteration; on problems whose
     /// curvature grows by two orders of magnitude along the path (entropy
     /// terms `x log x`, a constraint multiplier climbing from 0 to 100) both
@@ -195,8 +195,8 @@ impl DenseBfgs {
     }
 
     /// Where the rebuilds happened: `(accepted updates before it, tau =
-    /// s^T y / s^T B s at that pair, via the scale route)`, first
-    /// [`REBUILD_LOG_CAP`] only.
+    /// s^T y / s^T B s at that pair, via the scale route)`, the first
+    /// `REBUILD_LOG_CAP` (a private constant) only.
     #[must_use]
     pub fn rebuild_log(&self) -> &[(usize, f64, bool)] {
         &self.rebuild_log

@@ -309,7 +309,7 @@ pub fn solve_dense(
     let hint_rank = |k: usize| -> usize {
         hint.iter()
             .position(|h| *h == cons[k])
-            .map_or(usize::MAX, |pos| pos)
+            .unwrap_or(usize::MAX)
     };
 
     // ---- main loop ----------------------------------------------------------

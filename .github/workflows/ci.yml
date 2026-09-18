@@ -66,6 +66,26 @@ jobs:
             exit 1
           fi
 
+      # The same fixtures through the default portfolio, which is what
+      # `pip install mincon` actually runs. Same verdict rules, same ratchet.
+      - name: Regression test set, portfolio
+        shell: bash
+        run: |
+          out=$(cargo run --release -p mincon --example run_testset_portfolio -- auto || true)
+          echo "$out"
+          if echo "$out" | grep -qE "[1-9][0-9]* LIES"; then
+            echo "::error::the portfolio reported success on a problem with no solution"
+            exit 1
+          fi
+          rate=$(echo "$out" | tail -1 | sed -E 's#^([0-9]+)/([0-9]+).*#\1 \2#')
+          pass=$(echo "$rate" | cut -d' ' -f1)
+          total=$(echo "$rate" | cut -d' ' -f2)
+          echo "portfolio pass rate: $pass/$total"
+          if [ "$pass" -lt 54 ]; then
+            echo "::error::portfolio regression: $pass/$total, expected at least 54"
+            exit 1
+          fi
+
   msrv:
     name: minimum supported Rust version
     runs-on: ubuntu-latest
