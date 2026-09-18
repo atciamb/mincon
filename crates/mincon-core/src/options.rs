@@ -206,6 +206,45 @@ pub enum QuadraticRows {
     Values,
 }
 
+/// When the SQP member adopts its QP's multipliers and re-runs the termination
+/// test before trying the step (see [`Options::zero_step`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ZeroStep {
+    /// When the step's norm is within the step tolerance (and the step is then
+    /// the end of the solve either way). The behaviour before Phase D.
+    Norm,
+    /// As [`Self::Norm`], and once at a feasible point when the step's
+    /// predicted decrease of the merit function is below the rounding noise of
+    /// the merit function, `100 eps max(1, |merit|)`. No line search can verify
+    /// such a step, and multipliers are otherwise updated only by an accepted
+    /// step, so at a degenerate vertex the termination test can be looking at
+    /// the previous step's multipliers, far from the QP's. If the test still
+    /// fails with the QP's multipliers the step goes to the line search as
+    /// under [`Self::Norm`]: the condition is never a reason to stop. The
+    /// default since Phase D (`docs/22` section 7.18: no corpus record loses
+    /// attainment or its certificate, sixteen save evaluations).
+    #[default]
+    Decrease,
+}
+
+/// The SQP member's first trial step when its second-order probe has found a
+/// direction of negative curvature (see [`Options::saddle_step`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SaddleStep {
+    /// `t = max |x|` (at least 1), halved until the merit function decreases.
+    /// The behaviour before Phase D.
+    Scale,
+    /// As [`Self::Scale`], capped by a ratio test: 0.99 of the largest step
+    /// that stays inside the linearization of every inactive constraint row
+    /// (not the bounds: trial points are projected onto those). With many
+    /// rows the uncapped first trials are
+    /// all infeasible and each costs two model evaluations (`docs/22` section
+    /// 7.17: 19 of the 104 evaluations of a 19-variable design with 1384 rows).
+    /// The default since Phase D (`docs/22` section 7.18).
+    #[default]
+    Linearized,
+}
+
 /// A warm start (round 5 I6): the multipliers of a previous solve of the same
 /// problem, in the user's units and the report's sign convention (`Solution`),
 /// optionally with the barrier parameter the previous solve reached. Both
@@ -401,6 +440,12 @@ pub struct Options {
     /// 0.99 [0.92, 1.01] with finite differences and 0.98 [0.85, 1.06] with
     /// exact derivatives counted in full.
     pub quadratic_rows: QuadraticRows,
+    /// The first trial step off a saddle point found by the SQP member's
+    /// second-order probe. Default [`SaddleStep::Linearized`].
+    pub saddle_step: SaddleStep,
+    /// When the SQP member adopts its QP's multipliers and re-tests before
+    /// trying the step. Default [`ZeroStep::Decrease`].
+    pub zero_step: ZeroStep,
     /// Finite-difference flavour.
     pub fd_type: FdType,
     /// Relative finite-difference step, or `None` to use `sqrt(eps)` forward /
@@ -486,6 +531,8 @@ impl Default for Options {
             quadratic_probe: true,
             quadratic_build: QuadraticBuild::Structured,
             quadratic_rows: QuadraticRows::Values,
+            saddle_step: SaddleStep::Linearized,
+            zero_step: ZeroStep::Decrease,
             fd_type: FdType::Adaptive,
             fd_step: None,
             fd_respect_bounds: true,

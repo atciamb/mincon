@@ -578,6 +578,21 @@ def minimize(
         rows that keep the feasible set convex, such as a variance limit,
         building their Hessians from a supplied ``nonlcon_jac`` or, with
         ``'values'``, from constraint values),
+        ``zero_step`` (``'decrease'`` (default) or ``'norm'``: when the SQP
+        member re-tests optimality with its QP's multipliers before trying
+        the step; ``'norm'`` only when the step is within the step tolerance,
+        ``'decrease'`` also, once, at a feasible point where the step's
+        predicted decrease is below the rounding noise of the merit function,
+        which no line search can verify; it is never a reason to stop, and
+        without it a degenerate vertex can end the member at the step
+        tolerance with the previous step's multipliers),
+        ``saddle_step`` (``'linearized'`` (default) or ``'scale'``: the SQP
+        member's first trial step when its second-order probe has found
+        negative curvature at a first-order point; ``'scale'`` starts at
+        ``max |x|``, ``'linearized'`` caps that by the distance to the
+        inactive constraint rows along the direction, so with many rows the
+        trials do not start far outside the feasible set at two evaluations
+        each),
         ``bfgs_rescale`` (float, default 0 = off: rebuild the quasi-Newton
         matrix from per-coordinate curvature quotients whenever its curvature
         along an accepted step is off by more than this factor; 10 helps
@@ -675,7 +690,7 @@ def minimize(
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "xtol", "threads",
                  "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
                  "bfgs_rescale", "scale_variables", "kkt_pivot_signs", "quadratic_probe", "quadratic_build",
-                 "quadratic_rows"}
+                 "quadratic_rows", "saddle_step", "zero_step"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; "

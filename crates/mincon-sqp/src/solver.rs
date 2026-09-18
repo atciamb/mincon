@@ -1035,6 +1035,31 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
         }
     }
 
+    /// The largest `t` for which `x + t d` stays inside the linearization of
+    /// every constraint row that is inactive at `p` (the active rows are the
+    /// probe's business: `d` lies in the null space of the strongly active ones
+    /// and points into the weakly active ones). The variable bounds are left
+    /// out on purpose: a trial point is projected onto them, so a step past a
+    /// bound is harmless, and capping it there only shortened a good step
+    /// (HS25, bounds only: 19 evaluations more with the bounds in the test).
+    /// Infinite when no row limits the step.
+    fn linearized_reach(&self, p: &Point, d: &[f64]) -> f64 {
+        let (n, m) = (self.n, self.m);
+        let act_tol = 1e-6;
+        let mut reach = f64::INFINITY;
+        let mut limit = |slack: f64, rate: f64, bound: f64| {
+            if rate > 0.0 && bound.is_finite() && slack > act_tol * (1.0 + bound.abs()) {
+                reach = reach.min(slack / rate);
+            }
+        };
+        for i in 0..m {
+            let rate = dot(&p.j[i * n..(i + 1) * n], d);
+            limit(self.cu[i] - p.c[i], rate, self.cu[i]);
+            limit(p.c[i] - self.cl[i], -rate, self.cl[i]);
+        }
+        reach
+    }
+
     /// One Newton step onto the strongly active rows from `xt` (values `ct`),
     /// using the Jacobian at the base point `p`: `w = -J_a^T (J_a J_a^T)^{-1} r`.
     fn restore_active(
@@ -1500,6 +1525,12 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                         // Newton restoration step onto the strongly active constraints.
                         let phi0 = self.merit(p.f, &p.c, rho);
                         let mut t = x_scale_of(&p.x);
+                        if self.opts.saddle_step == mincon_core::SaddleStep::Linearized {
+                            let reach = self.linearized_reach(&p, &dir);
+                            if reach.is_finite() && reach >= 1e-6 * t {
+                                t = t.min(0.99 * reach);
+                            }
+                        }
                         let mut moved: Option<(Vec<f64>, f64, Vec<f64>)> = None;
                         for _ in 0..20 {
                             let mut xt: Vec<f64> = (0..n).map(|j| p.x[j] + t * dir[j]).collect();
@@ -1665,7 +1696,19 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
             let d_norm = dir.d.iter().fold(0.0_f64, |a, v| a.max(v.abs()));
             let x_scale = p.x.iter().fold(0.0_f64, |a, v| a.max(v.abs())).max(1.0);
 
-            if d_norm <= tol.step * x_scale {
+            // A step whose predicted decrease is below the rounding noise of the merit
+            // function cannot be verified by any line search. At a feasible point it
+            // carries the zero step's message about the multipliers, so they are
+            // adopted and the test re-run once; it is not a reason to stop, and when
+            // the test still fails the step goes to the line search as before
+            // (stopping there was measured: six corpus problems lost their
+            // certificate to an `Acceptable` exit a few iterations early).
+            let unverifiable = self.opts.zero_step == mincon_core::ZeroStep::Decrease
+                && !zero_step_retest
+                && !dir.elastic
+                && violation <= tol.feasibility
+                && delta_m <= 100.0 * f64::EPSILON * self.merit(p.f, &p.c, rho).abs().max(1.0);
+            if d_norm <= tol.step * x_scale || unverifiable {
                 // The QP says "stay": a KKT point of the linearization. Its multipliers
                 // are the ones the termination test should see, so adopt them and
                 // re-run the test once before classifying.

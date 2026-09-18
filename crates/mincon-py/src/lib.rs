@@ -28,7 +28,8 @@ use std::sync::{Arc, Mutex};
 use mincon_core::{
     Algorithm, BarrierUpdate, Capabilities, DerivativeCheck, EvalError, ExitFlag, FdType,
     IterationCallback, IterationRecord, Nlp, NlpDims, Options, PivotSigns, QuadraticBuild,
-    QuadraticRows, ScalingMode, Sparsity, Tolerances, VariableScaling, INF_BOUND,
+    QuadraticRows, SaddleStep, ScalingMode, Sparsity, Tolerances, VariableScaling, ZeroStep,
+    INF_BOUND,
 };
 use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1, PyReadonlyArrayDyn, ToPyArray};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -608,6 +609,28 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
                 }
             };
         }
+    }
+    if let Some(v) = get!("zero_step", String) {
+        o.zero_step = match v.as_str() {
+            "norm" => ZeroStep::Norm,
+            "decrease" => ZeroStep::Decrease,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown zero_step '{other}'; use 'norm' or 'decrease'"
+                )))
+            }
+        };
+    }
+    if let Some(v) = get!("saddle_step", String) {
+        o.saddle_step = match v.as_str() {
+            "scale" => SaddleStep::Scale,
+            "linearized" => SaddleStep::Linearized,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown saddle_step '{other}'; use 'scale' or 'linearized'"
+                )))
+            }
+        };
     }
     if let Some(v) = d.get_item("kkt_pivot_signs")? {
         if !v.is_none() {
