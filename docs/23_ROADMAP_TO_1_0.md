@@ -18,17 +18,18 @@ zero in every round. The honest reading of five rounds is *not worse than
 `fmincon` at defaults, never lying, more expensive than SciPy SLSQP*. So 1.0
 is defined by gates that can be met and measured.
 
-| # | gate | standing (September 18, 2026) |
+| # | gate | standing (September 18, 2026, after Phases A to C) |
 |---|---|---|
 | G1 | **Reliability.** Two consecutive fresh sealed rounds of at least 20 problems in at least 10 families each; track-A attainment at least that of both `fmincon` algorithms; zero false certificates; every miss carrying a diagnosis in `notes` | rounds 3 and 5 meet the attainment half at 12-13 problems; no round has had 20 |
-| G2 | **Friction.** Every friction-audit problem attained or refused with an actionable message; the exit message names the limit that bound; every quadratic-probe decision in `notes`; no option that does not do what its name says | 13/14 (`bench/results/s7-friction`); items 20c and 20e of `docs/17` open; the exposed-unsupported options of `docs/14` to be re-audited |
-| G3 | **Instrument.** The benchmark oracle evaluates its first-order test on every record | blind on 90 % of bounds-only records (`docs/17` item 20d) |
+| G2 | **Friction.** Every friction-audit problem attained or refused with an actionable message; the exit message names the limit that bound; every quadratic-probe decision in `notes`; no option that does not do what its name says | 14/15 (`bench/results/s7-friction-c`; the one non-attainment is `wrong_gradient`, which mincon refuses with the offending component named, the outcome this gate asks for); items 20c and 20e of `docs/17` closed and the options of `docs/14` re-audited in Phase B; `UseParallel` does what its name says since Phase C |
+| G3 | **Instrument.** The benchmark oracle evaluates its first-order test on every record | met since Phase B: the worker passes bound multipliers on bounds-only problems (`docs/22` section 7.16); records scored before that keep their NaN |
 | G4 | **Public surface.** Packaged README accurate; the `fmincon` facade and `minimize` frozen; 0.2.0 on PyPI through `publish.yml` and a Trusted Publisher; wheels for Windows, Linux and macOS; CI green on every push | README rewritten and CI repaired September 18; no Trusted Publisher yet; `publish.yml` builds Windows and Linux only |
 | G5 | **Scope statement.** Dense coupled problems at n >= 200 either fixed by an ablated increment or documented as the known cost with numbers | documented (README, known gap 1) |
 
 Not required for 1.0 and kept as post-1.0 work: the CUTEst/S2MPJ run,
-limited-memory BFGS, AMD ordering, the batched Python evaluation protocol,
-sparse Jacobians from Python, a C ABI.
+limited-memory BFGS, AMD ordering, sparse Jacobians from Python, a C ABI.
+(The batched Python evaluation protocol was on this list and was built in
+Phase C, because parallel probes needed the same hook.)
 
 ## 2. The work, in order
 
@@ -77,7 +78,24 @@ many active rows and the interior-point member finishes at 4x fmincon-sqp's cost
 Gate: the eight development gates green, the friction audit at 13/14 with
 every record identical, the Python tests extended for each new field.
 
-### Phase C: the expensive-model path (one to two sessions)
+### Phase C: the expensive-model path (done September 18; `docs/22` section 7.17)
+
+Both increments are built on one hook (`Nlp::objective_batch` and
+`constraints_batch`, advertised by `Capabilities::batch`) and measured.
+`workers=k` (or `UseParallel=True`) takes the serial solve's iterates to the
+last bit on the 56 fixtures under all three algorithms and on the heat-flux
+surrogate through a real process pool; with a 0.2 s model the surrogate's
+78 batched calls cost `4 ceil(19 / W) + 1` call-times plus 0.5 to 1.3 s of
+pool start, and the whole solve goes from 20.9 s to 9.1 s on 8 workers,
+bounded by 26 calls that are made one at a time. Nineteen of those are one
+event, the SQP member backtracking off a saddle from a first step of
+`max |x|`, which goes to Phase D as a fifth candidate. `vectorized=True`
+cuts the crossings into Python 7x to 82x on three NumPy models (wall 3.1x at
+n = 50, 1.16x at n = 200 where the solver's dense algebra is the cost) and
+takes the scalar model's iterates exactly when the model's row arithmetic
+does not depend on the number of rows. Without either option no new code is
+reached: the friction audit's fifteen records are identical
+(`bench/results/s7-friction-c`).
 
 The case a working scientist brings most often is a model that costs seconds
 per call (a PDE solve, a simulation) in a few dozen design variables, where
@@ -108,6 +126,17 @@ increments, each behind an option and measured:
    oscillation. Trace study on DECONV_200, HS100, HS38, HS32, HS63 first.
 3. `quadratic_rows`'s residual cost on dense-objective families, and the
    low-rank-plus-diagonal Hessian build (`docs/22` sections 7.12-7.13).
+4. The SQP member on a degenerate vertex with many active rows
+   (`heatflux_design`: a `StepTolerance` stop 2.1e-5 above the optimum, then
+   the interior-point member at 4x `fmincon-sqp`'s cost; `docs/22` section
+   7.16), and whether a step-tolerance point that close is usable to the
+   portfolio.
+5. The SQP member's step off a saddle point (`docs/22` section 7.17): the
+   backtracking starts at `t = max |x|` and pays two evaluations a trial, 19
+   evaluations on the heat-flux surrogate for a step of 5.9e-3, none of
+   which `workers` can overlap. Size the first trial from the probe's own
+   curvature; ask whether the restoration step's second evaluation is
+   needed before the merit test has a chance of passing.
 
 Whatever survives is the round-6 candidate. Freeze it, build the wheel, record
 its hash.

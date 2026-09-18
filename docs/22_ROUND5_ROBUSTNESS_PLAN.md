@@ -747,3 +747,152 @@ close should count as usable).
 
 **Corpus check (`abl-b1`, track A, the mincon arm at the new wheel against
 `abl-i5-rows/mincon_quadratic_rows-values`):** 173 / 172 attained of 185, +0.6 pp [+0.0, +3.4], cost 1.00 [1.00, 1.01] on 172 common. Three records changed and they are the three clock-bound problems (COVQP_300, DECONV_200, DENSELAP_250): all stopped on the 60 s clock in both arms, and the candidate got 31-33 % more evaluations out of the same clock on each, so the machine was faster on the day, not the solver; COVQP_300's new attainment is that and is not claimed. None of the three is a quadratic-member record (the probe declines all three), so the accounting correction acted on no record in the corpus, and the 182 others are identical to the evaluation. **No change, as designed** (`bench/results/abl-b1/README.md`).
+
+
+### 7.17 Phase C of the roadmap to 1.0: the expensive-model path, September 18
+
+`docs/23` Phase C. The case is a model that costs seconds per call in a few dozen variables (the
+owner's heat-flux design: a PDE solve in 19 Fourier coefficients), where every iteration's
+finite-difference gradient is `n` model calls made one after another. Two increments share one
+mechanism, both are behind an option, and with neither option the solve is the code that ran
+before. Gate: identical iterates to the serial path, measured wall time against the structure of
+the calls, the eight development gates, and the friction audit re-run with every record identical
+(`bench/results/s7-friction-c`).
+
+**The mechanism: a batched evaluation hook.** `Nlp` gains `objective_batch` and
+`constraints_batch` (several points in, one value or one failure per point out; the defaults loop)
+and `Capabilities::batch`, by which a model says its batch calls do better than a loop. When it
+does, the derivative layer submits a whole gradient's probes in one call
+(`crates/mincon-diff/src/fd.rs`), and a whole Jacobian's coloring groups in one call, in **rounds**:
+every first attempt together, then the probes the model refused again with half their step, which
+is the serial path's retreat applied to many probes at once; the inward second probes of a
+bounds-blocked central difference are a second wave, because their position depends on the step
+the first probe realized. The points, their per-probe order and the arithmetic on their values are
+the serial path's. Every wrapper between the model and the derivative layer forwards the batch
+(the evaluator's counting wrapper, which counts and checks each value; variable scaling, which
+unscales each point; the quadratic model; the portfolio's counter), or the batching would be lost
+on the way. The SQP member's second-order probe submits its second-difference points the same way
+(up to 42 evaluations for a six-dimensional null space; two on the heat-flux surrogate). The
+serial code was not rewritten: the Jacobian's per-group step and entry arithmetic moved into two
+closures that both paths call, the probe's verdict into a function both paths call, and nothing
+else changed, so a model that does not advertise the capability never reaches new code.
+
+**From Python** (`crates/mincon-py/python/mincon/__init__.py`): `workers=k` on `minimize` and
+`fmincon` (also `options={'workers': k}`, SciPy's spelling, and `UseParallel=True` on the facade,
+which is `workers=-1`, one per core) builds a `concurrent.futures` process pool for the solve and
+evaluates each batch on it; a map-like callable is used as given, as in SciPy
+(`ThreadPoolExecutor(8).map` for a model that releases the GIL, and then a `lambda` is fine).
+`vectorized=True` says `fun` takes a `(k, n)` array and returns `k` values, so a batch is one call;
+a constraint block opts in with `'vectorized': True`, the facade's `vectorized` covers `fun` and
+`nonlcon` (or one of them by name). The friction decisions, each tested:
+
+* A process pool needs a picklable model. A `lambda` raises `ValueError` before anything runs,
+  naming the fix (`def` at module level, `args=`, or a thread map). The facade's own closures
+  (`args` binding, linear rows, the two halves of `nonlcon`, the `HessianFcn` adapter) became small
+  module-level classes so a model given through the facade can be sent; they make the same calls.
+* Constraint functions that cannot be pickled stay in the calling process, with a note saying so;
+  the objective's probes still run on the workers. The objective is the expensive part.
+* A script without `if __name__ == '__main__':` (Windows and macOS spawn their workers by
+  re-importing the script) ends in one `RuntimeError` that says exactly that, not in a hang. The
+  pool is started before the solve so this surfaces at once; the start time is in `res.notes`.
+* An exception raised on a worker is one failed probe, as it is in a serial solve: the engine
+  retreats on that probe alone. A pool that dies, or a caller's map that raises, is reported once
+  the engine returns, and from that moment the objective refuses further calls, so an expensive
+  model is not called again for nothing (test: fewer than ten calls).
+* A vectorised `fun` is **always** called with a two-dimensional array (`k = 1` for a single
+  point) and must return one value per row. That makes a wrong declaration fail on the first call
+  instead of being misread: `np.sum((X - 1)**2)` returns one number for `k` points and raises with
+  the shapes named; a scalar model that indexes `x[1]` indexes a row that is not there.
+* `res.notes` says how many batches carried how many evaluations.
+
+**Gate 1, identical iterates.** Three layers, all to the last bit.
+(a) `crates/mincon-diff/tests/batched.rs`: gradient and Jacobian, forward and central, dense and
+sparse patterns, colored and not, on a six-variable model with one variable on its upper bound, one
+on its lower, one pinned, one in a box too tight for a central pair and one whose probes the model
+refuses twice before accepting: every entry bit-equal, the evaluation counts equal, one batch call
+per round. A batch that comes back short is a failed probe, not a hang.
+(b) `crates/mincon/tests/batch_equivalence.rs`: all 56 fixtures under `auto`, `interior-point` and
+`sqp`, with forward and with central differences, 336 solves: exit flag, iterations, objective,
+constraint and failed-evaluation counts, `x`, multipliers and every trace row bit-equal, with
+21 110 of the evaluations carried in 5 664 batches.
+(c) the heat-flux surrogate through a real process pool, 2 and 8 workers: `auto` (104
+evaluations, 5 iterations), `sqp` (100, 5) and `interior-point` (551, 24) identical in `x`,
+multipliers, counts and trace. One caveat, by construction rather than by measurement: when a
+gradient fails as a whole, or an evaluation fails inside the second-order probe, the serial path
+stops at the first failure and the batched path has already submitted the rest, so the evaluation
+*count* can then be larger; the iterates cannot differ.
+
+**Gate 2, wall time, with a 0.2 s sleep in the objective** (`.local-research/phase_c`, the
+surrogate, defaults, 20 logical cores; "ideal" is the call structure priced at 0.2 s: 26 calls
+that are made one at a time, four gradients of 19 and one probe of 2):
+
+| workers | wall | speed-up | ideal | overhead (pool start, pickling) |
+|---:|---:|---:|---:|---:|
+| 1 | 20.9 s | | 20.8 s | |
+| 2 | 13.9 s | 1.50x | 13.4 s | 0.5 s |
+| 4 | 10.2 s | 2.05x | 9.4 s | 0.8 s |
+| 8 | 9.1 s | 2.30x | 7.8 s | 1.3 s |
+| 19 | 9.4 s | 2.22x | 6.2 s | 3.2 s |
+
+The batched share does what the gate asks: 78 calls (15.6 s serial) take `4 ceil(19 / W) + 1`
+call-times plus the overhead of starting `W` Python processes (each imports NumPy and the model;
+about 0.15 s a process, which is why 19 workers lose to 8 on a 21 s solve and would not on a
+20 minute one). **The solve as a whole is bounded by what is not batched: 26 of the 104 calls,
+5.2 s.** They are the start (1), the quadratic probe's line points (4), two line-search points and, for 19
+of the 26, one event: at iteration 2 the second-order probe finds negative curvature and the SQP
+member leaves the saddle by backtracking a step from `t = max |x| = 3` down to 5.86e-3, nine
+halvings. The first trial folds the surface and fails; each of the other nine costs two
+evaluations, the trial point and the same point after a restoration step that moves its objective
+in the thirteenth digit; and each trial depends on the last. Evaluating those trials together
+would be speculation (more evaluations for less waiting), not rescheduling, and it is not done
+here. The cheaper fix is algorithmic, a first trial step sized from the probe's own curvature
+instead of from `max |x|`, and it goes to Phase D as a fifth candidate: on this problem the event
+is 18 % of the evaluations of the serial solve and 73 % of what `workers` cannot touch. Without it
+the same solve would be 83 calls serial and 19 call-times on 8 workers.
+
+**Gate 3, boundary crossings with a vectorised NumPy model** (calls of the Python objective;
+evaluations are unchanged):
+
+| model | scalar | vectorised | fewer crossings | wall | same iterates |
+|---|---:|---:|---:|---|---|
+| heat-flux surrogate, n = 19 | 104 | 14 | 7.4x | 0.020 s -> 0.022 s | no (see below) |
+| chained Rosenbrock in a box, n = 50 | 28 220 | 1 564 | 18x | 0.19 s -> 0.06 s | yes, to the bit |
+| chained Rosenbrock in a box, n = 200 | 401 536 | 4 923 | 82x | 11.7 s -> 10.1 s | yes, to the bit |
+
+The gate (five times fewer) is met on all three. The wall time follows only where the interpreter
+was the cost: 3.1x at n = 50; 1.16x at n = 200, where the solver's dense quasi-Newton algebra is
+the cost (known gap 1); nothing on a 20 ms solve. **The heat-flux row took different iterates, and
+the reason is the model's arithmetic, not the solver's**: the vectorised model forms
+`(19, n) @ (n, 346)` where the scalar one forms `(346, n) @ (n,)`, BLAS blocks the two
+differently, 1405 of the 6574 entries of the product differ in the last bit, two of the 19 probe
+values move by 7e-15, the gradient by about 5e-7, and at this degenerate vertex that is enough to
+end at the other vertex of the same objective (-47.457259461579 both ways, the vertex
+`fmincon-sqp` also finds). Evaluated one row at a time the vectorised model is bit-equal to the
+scalar one. So `workers` guarantees the serial iterates and `vectorized` guarantees them only for a
+model whose row arithmetic does not depend on how many rows it is given (elementwise NumPy: yes;
+a matrix product: not necessarily). A first check of this used other points, found no difference
+and would have blamed the plumbing; the check that settled it replayed the engine's own batch.
+
+**Gate 4, nothing changes without the option.** The friction audit re-run at the Phase C wheel
+(`bench/results/s7-friction-c`, wheel sha256 `2f878929e60ce53e`; the wheel of record,
+`444c3ac506ce0ccc`, was built after the packaged README changed and carries the same extension
+module and `__init__.py` byte for byte): mincon 14/15 as before, and all fifteen
+mincon records identical to `s7-friction-b` in every field that is not a clock: the returned point
+to the last digit, the objective, the evaluation and call counts, the iterations, the status, the
+message, the notes and the verdict. One field differs in text: `wrong_gradient` is the refusal,
+its record stores the traceback, and the traceback quotes lines of mincon's own `__init__.py`,
+which moved; the exception it ends in is identical. The other four solvers' sixty records are
+identical in every non-clock field too, so nothing else moved. At the Rust level the four fixture
+tables (the interior-point member alone, and the portfolio under `auto`, `ip` and `sqp`) were
+regenerated from binaries built from the previous commit and agree with the new tree's row for row:
+iterations, evaluations, optimality, status and objective of all 56 problems. The eight gates:
+203 Rust tests (198, four in `batched.rs`, one in `batch_equivalence.rs`), clippy under both
+profiles, fmt, `cargo doc -D warnings`, doctests, 55/56 and 56/56 / 56/56 / 55/56 with no lie, the
+1.83 check, and 60 Python tests (41 + 9 in `test_batch.py`, and the oracle's 10).
+
+**Not done.** The quadratic probe's Hessian build (`n (n + 3) / 2` independent evaluations when
+it fires) still makes its calls one at a time: its budget and wall guards sit between
+evaluations and need their own design. The finite-difference error estimate (up to eight
+evaluations, every ten iterations near convergence) and the sparsity probe are serial. Line-search
+points are inherently sequential. A Rust `Problem` built from closures does not expose a batch
+closure; a Rust model implements the two trait methods.

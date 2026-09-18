@@ -84,9 +84,13 @@ let r = minimize(&p, &Options::default())?;
 > heat-flux surface design with 1384 linear rows, was added on September 18
 > (`bench/results/s7-friction-b`: 14/15, every solver attains it, mincon at
 > 4× fmincon-sqp's evaluations because its SQP member stops short of a
-> degenerate vertex and the interior-point member finishes). Development
+> degenerate vertex and the interior-point member finishes). Phase C of the
+> roadmap (September 18, `docs/22` section 7.17) added parallel and batched
+> finite-difference probes behind `workers=` and `vectorized=`; without them
+> the audit's fifteen records are identical (`bench/results/s7-friction-c`).
+> Development
 > gate: Rust tests, 56/56 fixtures with independent checks for the portfolio
-> and each member (SQP alone: 55/56, HS13 within 4e-4), 37 Python tests.
+> and each member (SQP alone: 55/56, HS13 within 4e-4), 50 Python tests.
 
 `fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
 callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
@@ -135,6 +139,17 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   derivatives). `hess=` (the Lagrangian Hessian) gives both members Newton
   convergence: on HS71 the SQP member takes 7 iterations and the interior-point
   member 10, against 5 and 10 with their quasi-Newton models.
+* **Expensive and vectorised models** — `workers=k` (or `UseParallel=True`
+  on the `fmincon` facade) evaluates every gradient's finite-difference
+  probes on `k` worker processes, or through a map-like callable, and takes
+  the serial solve's iterates to the last bit (verified on the 56 fixtures
+  under each algorithm and through a real process pool); with a 0.2 s model a
+  19-variable design solve goes from 20.9 s to 9.1 s on 8 workers, the
+  gradients at a sixth of their serial time and the rest bounded by the calls
+  a solver makes one after another. `vectorized=True` hands a NumPy model a
+  `(k, n)` array once per gradient: 7x to 82x fewer crossings into Python,
+  3x in wall time at n = 50. Underneath both is one hook on the `Nlp` trait,
+  `objective_batch` / `constraints_batch` (`docs/22` section 7.17).
 * **Seeing and steering a run** — `callback=` after every iteration with the
   trace row (return `True` to stop), `disp=True` streams the iteration table,
   `method=` on the `fmincon` facade, `mincon.multistart` for several starts,
@@ -254,7 +269,7 @@ bench/                   CUTEst harness, performance profiles, fmincon baseline
 ## Building
 
 ```bash
-cargo test --workspace                                                # 195 tests
+cargo test --workspace                                                # 203 tests
 cargo run --release -p mincon-ip --example run_testset                 # the interior-point regression table (the CI gate)
 cargo run --release -p mincon --example run_testset_portfolio -- auto  # the same fixtures through the default portfolio (auto|ip|sqp)
 cargo run --release -p mincon-ip --example diagnose HS71               # one problem, in detail

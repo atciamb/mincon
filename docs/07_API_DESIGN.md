@@ -113,12 +113,23 @@ Every callback crosses the FFI boundary and takes the GIL, so
 `Capabilities::parallel_safe` is `false` for Python models and a
 finite-difference gradient in `n` variables makes `n` round trips.
 
-**The unbuilt work:** an optional vectorized protocol where the model
-advertises that it accepts a `(k, n)` array and returns `k` values, so a whole
-coloring group crosses once. For a NumPy model this is close to a free `n`-fold
-reduction in interpreter overhead — the largest single speedup available on the
-Python side. It must be optional and detected; a scalar `lambda x: ...` has to
-keep working.
+**Built in Phase C (`docs/22` section 7.17):** a batched evaluation hook.
+`Nlp::objective_batch` and `Nlp::constraints_batch` take several points and
+return one value or one failure per point; their defaults loop, and a model
+whose batch calls do better says so with `Capabilities::batch`. The
+derivative layer then submits a gradient's probes (and a Jacobian's coloring
+groups, and the SQP member's second-difference points) in one call, the same
+points as the serial path, with the retreat on refused probes done in rounds.
+From Python the hook has two sources. `vectorized=True`: the model accepts a
+`(k, n)` array and returns `k` values, so a gradient crosses the boundary
+once (measured 7x to 82x fewer crossings on NumPy models); it is declared,
+not detected, because a scalar model can return `k` numbers for a `(k, n)`
+input by accident, and the declaration is checked by always calling such a
+model with a two-dimensional array and refusing any other return shape.
+`workers=k` (SciPy's name and meaning; `UseParallel=True` on the facade): the
+points of a batch are evaluated on a process pool, or through a map-like
+callable the caller supplies, which is what a model that costs seconds per
+call needs. A scalar `lambda x: ...` with neither option reaches no new code.
 
 The solve itself releases the GIL (`py.detach`), so a `mincon` call does not
 block other Python threads.

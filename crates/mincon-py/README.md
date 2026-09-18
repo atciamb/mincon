@@ -65,6 +65,65 @@ iteration's row and stops the solve when it returns `True`; `hess=` takes
 MATLAB's `HessianFcn(x, lambda)` matrix; `warm_start=previous_result` resumes
 from an earlier result's multipliers and quasi-Newton model.
 
+## Expensive models: `workers=`
+
+When the model costs seconds per call and you have no gradient, almost all of
+a solve is finite-difference probes: `n` model calls per iteration that do not
+depend on each other. `workers=k` evaluates them on `k` worker processes at
+once (`-1`: one per core; `options={"UseParallel": True}` means the same):
+
+```python
+import numpy as np
+from mincon import fmincon
+
+def flux(x):                      # seconds per call: a PDE solve, a simulation
+    ...
+
+if __name__ == "__main__":        # required on Windows and macOS
+    res = fmincon(flux, x0, A=A, b=b, lb=lb, ub=ub, workers=8)
+```
+
+The probes are the same points as in a serial solve, so the iterates and the
+answer are identical to the last bit; only the waiting changes. Measured on a
+19-variable design problem with a 0.2 s model: 20.9 s serial, 9.1 s on 8
+workers. The four gradients took a sixth of their serial time; what remains
+is the calls a solver must make one after another (line searches, and on that
+problem a 19-call backtracking step), plus about a second to start the
+processes. Rules: `fun` must be defined with `def` at the top level of a
+module or script, because it is sent to other processes (a `lambda` raises
+with this advice; pass data through `args=`); constraint functions are sent
+too when they can be and evaluated in the calling process, with a note,
+otherwise; an exception on a worker is a failed probe the solver retreats
+from, as in a serial solve. `workers` may also be a map-like callable, as in
+SciPy: `ThreadPoolExecutor(8).map` suits a model that releases the GIL (a
+subprocess, a compiled solver) and takes a `lambda`. `res.notes` reports how
+many batches carried how many evaluations and how long the pool took to start.
+
+## Cheap NumPy models: `vectorized=True`
+
+If `fun` can take a `(k, n)` array of `k` points and return `k` values, say
+so, and a gradient's probes cross into Python once instead of `n` times
+(measured: 18x fewer calls at n = 50 and the solve 3x faster; 82x fewer at
+n = 200, where the solver's own dense algebra is the cost and the wall time
+moves 1.16x):
+
+```python
+def fun(X):                       # X is (k, n); always 2-D, k = 1 for one point
+    return ((X - 1.0) ** 2).sum(axis=1)
+
+res = fmincon(fun, x0, lb=0, vectorized=True)
+```
+
+`fmincon`'s `vectorized=True` covers `fun` and `nonlcon` (which then returns
+`(C, Ceq)` with `k` rows each); `'fun'` or `'nonlcon'` vectorises one of
+them. With `minimize` it covers `fun`, and a constraint dict opts in with
+`"vectorized": True`. A vectorised function is always called with a
+two-dimensional array and must return one row per point; anything else
+raises instead of being misread. Same points, same arithmetic in the solver;
+the iterates equal the scalar model's exactly when your row arithmetic does
+not depend on how many rows it is given (elementwise NumPy does not; a
+matrix product may round differently for 19 rows than for one).
+
 ## Several starting points
 
 `mincon.multistart(fun, bounds, n_starts=10, x0=..., jac=..., constraints=...,
@@ -136,9 +195,12 @@ derivatives; exact objective gradients, constraint Jacobians and Lagrangian
 Hessians from Python (dense); an iteration callback and display; warm start;
 multistart.
 
-Limits: Python callbacks run serially, one point per call, so a
-finite-difference gradient in `n` variables costs `n` model evaluations per
-iteration (`2n` with `finite_diff='central'`); pass `jac=` when you have it.
+Limits: a finite-difference gradient in `n` variables costs `n` model
+evaluations per iteration (`2n` with `finite_diff='central'`); pass `jac=`
+when you have it, `workers=` when the model is expensive, `vectorized=True`
+when it is NumPy. Line-search points, the quadratic probe's Hessian build and
+the step off a saddle point are evaluated one call at a time whatever the
+options.
 `maxfev`, `maxtime` and a `maxiter` you set are shared across the portfolio
 and checked between iterations, so they cannot interrupt a running callback
 (the default iteration cap of `400 + 10 n` applies to each member). Linear
@@ -146,13 +208,12 @@ rows given as `A`, `b`, `Aeq`, `beq` carry their exact Jacobian; nonlinear
 rows use finite differences unless `nonlcon_jac` is supplied. Sparse
 Jacobians and `jac_sparsity` from Python, limited-memory curvature (dense
 quasi-Newton models make problems beyond a few hundred variables expensive
-under finite differences), and batched or parallel model evaluation are not
-implemented.
+under finite differences) are not implemented.
 
 The local development gate is 56/56 fixture outcomes through the default
 portfolio (53 strict `Optimal` returns; passes also include accurate points
 with non-success statuses and expected infeasible or unbounded diagnostics),
-195 Rust tests and 37 Python tests. The measured standing against `fmincon`
+203 Rust tests and 50 Python tests. The measured standing against `fmincon`
 and SciPy on a 185-problem corpus, including where they win, is in the
 repository README and `docs/17_CLAIM_AUDIT.md`.
 
