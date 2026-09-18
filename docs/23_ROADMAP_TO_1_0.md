@@ -115,8 +115,9 @@ increments, each behind an option and measured:
 
 ### Phase D: algorithmic candidates, each behind an option, ablated on all 185 problems
 
-Standing (September 18): candidates 4 and 5 are done and are defaults (`docs/22` section 7.18);
-candidates 1 to 3 are open. Candidate 4 turned out not to be the QP: at the degenerate vertex the
+Standing (September 18): all five candidates are measured. Candidates 4 and 5 are defaults
+(`docs/22` section 7.18), candidate 1 is a default, candidate 2 was written, ablated and falsified,
+and candidate 3 ends without a rule (section 7.19). Candidate 4 turned out not to be the QP: at the degenerate vertex the
 QP's step has a predicted decrease below the rounding noise of the merit function, no line search
 can verify it, and the termination test was looking at the previous step's multipliers (KKT error
 13.2). `zero_step='decrease'` adopts the QP's multipliers there and re-tests once. Its first form
@@ -127,6 +128,31 @@ step off a saddle by the distance to the inactive rows; it changes no corpus rec
 (`abl-phased45c`) and takes the heat-flux design from 104 evaluations to 87. Together:
 `heatflux_design` 477 to 87 (`fmincon-sqp` 120), `noisy_simulator` 202 to 89, friction audit 14/15
 with every other record identical (`bench/results/s7-friction-d`).
+
+Candidates 1 to 3 (`docs/22` section 7.19, `bench/results/abl-phased123`, one run with its own
+default arm). **1:** the `2n` cap bites on two corpus records, DECONV_200 and COVQP_300. The fit
+error at the probe's line points falls at every doubling of the band index on the first (0.61,
+0.51, 0.15, 0.002) and wanders around its starting value on the second, so
+`quadratic_bands='decaying'` doubles the band search's allowance for as long as that error keeps
+falling by a quarter. DECONV_200 goes from the time-limit exit of every earlier run to `Optimal` in
+6 639 evaluations, 173 / 172 attained, no other record changes, and it is the default. Its cost is
+measured too: with a model slower than 5.5 ms a call the band DECONV_200 needs does not fit the
+build's half of a 60 s clock, the probe declines at its deadline and the returned point is 2.5x to
+4.7x further from the optimum than before (neither attains). **2:** the rule proposed below has no
+corpus record to help: three of 185 interior-point traces end with `mu` fixed above its floor and
+none would gain from a cut. The common pattern is the adaptive rule's round trip to the floor (110
+of 185). A lower bound tied to the infeasibility (IPOPT's safeguard) was written and ablated:
+nothing on the portfolio at either factor, and on the member three certificates lost, two gained
+and a cost of 1.18 [1.14, 1.29]. It is not in the tree. **3:** the cost on dense-objective
+families is the objective's own dense build, which `quadratic_rows` only allows to happen (the rows
+are 240 of the 3 740 evaluations COVQP_120 loses); the rule proposed fires after that cost is paid,
+gain and loss fall within one family on either side of `n / 2` quasi-Newton iterations, and no
+rule is written. The low-rank-plus-diagonal build buys evaluations and no attainment and moves to
+the post-1.0 list.
+
+**Frozen for round 6** (September 18): the tree of the commit that records section 7.19, wheel
+`d57902fa79492531` (`quadratic_bands='decaying'`, `zero_step='decrease'`,
+`saddle_step='linearized'` on top of the round-5 candidate and Phases B and C).
 
 1. The quadratic probe's band budget (`crates/mincon/src/quadratic.rs`, the
    `2n` cap when the dense build is unaffordable; `docs/22` section 7.15).
@@ -195,7 +221,10 @@ PyPI is backed by a sealed run of the tree being shipped.
 
 ### Post-1.0
 
-Limited-memory BFGS in compact form (the route past n of about 1000 with
+A low-rank-plus-diagonal Hessian build for the quadratic probe (covariance
+and factor models: about `2n + k (n - 1)` evaluations instead of
+`n (n + 3) / 2`; cost only, `docs/22` section 7.19); limited-memory BFGS in
+compact form (the route past n of about 1000 with
 dense models); sparse Jacobians and `jac_sparsity` from Python; AMD ordering
 (only for n > 1000); CUTEst through S2MPJ, the only external validation, when
 authorised; a C ABI.

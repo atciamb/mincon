@@ -1,0 +1,41 @@
+{
+ "n_problems": 185,
+ "duplicates_overwritten": 0,
+ "solvers": {
+  "mincon-ip": {
+   "attained": 168,
+   "scorable": 179,
+   "kkt": 105,
+   "kkt_recovered": 122,
+   "not_ok": 0,
+   "n": 185
+  },
+  "mincon-ip@barrier_safeguard=1": {
+   "attained": 167,
+   "scorable": 179,
+   "kkt": 104,
+   "kkt_recovered": 115,
+   "not_ok": 0,
+   "n": 185
+  }
+ },
+ "paired": {
+  "mincon-ip@barrier_safeguard=1": {
+   "both": 166,
+   "only_solver": 1,
+   "only_baseline": 2,
+   "neither": 10,
+   "diff_pp": -0.5586592178770949,
+   "diff_ci": [
+    -0.8621155135175392,
+    0.0
+   ],
+   "geo_mean_ratio": 1.176814195077096,
+   "ratio_ci": [
+    1.138677458014729,
+    1.289129924924411
+   ],
+   "n_common": 166
+  }
+ }
+}

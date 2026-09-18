@@ -1020,3 +1020,197 @@ formulations now agree, at 87, but the vertex is still reached before the optimu
 `StepTolerance` exit that close to a certified point should be usable to the portfolio was the
 other half of candidate 4 and is now moot for this problem and open in general. Candidates 1 to 3
 are untouched.
+
+
+### 7.19 Phase D, candidates 1 to 3: the probe's band budget, the barrier parameter, and what `quadratic_rows` costs, September 18
+
+`docs/23` Phase D, the three candidates section 7.18 left untouched. Each was measured before any
+rule was written, as the protocol asks, and the measurements changed two of the three questions:
+the second candidate's stated rule has no corpus record it could help, and the third candidate's
+cost is not the rows'. One rule was written for each of the first two, behind an option, and
+ablated on all 185 problems, track A, against a default arm of the same run and wheel
+(`bench/results/abl-phased123`, wheel `4f06f8a3d5be6473`).
+
+**Candidate 1, the band budget. Where the `2n` cap bites: two records of 185.** Since Phase B the
+probe's decline reason is in every record's notes, so the question is a lookup: 58 probes fire, 87
+decline because the objective is not quadratic, 38 on a constraint row or on convexity, and exactly
+two decline with "no diagonal or banded Hessian within 2 off-diagonal bands, and the dense build is
+outside the size or budget limits": DECONV_200 (4.1 ms an evaluation) and COVQP_300 (10 ms). On
+both only the wall conjunct of `dense_ok` fails. One has a Hessian a band search can finish (a
+Gaussian kernel's `K'K`), the other has not (a five-factor covariance), so a budget that only asks
+what is affordable helps the first and takes 18 s of clock from the second, which `abl-b1` attained
+on a fast day. The rule has to tell them apart.
+
+**The fit error per band tells them apart.** A numpy replica of the probe (its steps, its two
+lines from the same generator, the band order, the fit and convexity tests;
+`.local-research/phase_d/band_trajectory.py`) reproduces the engine exactly where the engine has
+been seen: DECONV_60 accepted at half-bandwidth 27 after 1362 evaluations, as its record says, and
+DECONV_200 at 27 after 5422, the figure section 7.15 derived. The worst line-point error as a
+multiple of the tolerance (1 passes), after band `b`:
+
+| Hessian | n | b = 0 | 2 | 4 | 8 | 16 | 32 | fits at | convex at | evaluations | dense |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| DECONV_200 | 200 | 2.4e7 | 1.5e7 | 7.5e6 | 1.1e6 | 2.4e3 | 3.7e-7 | 23 | 27 | 5 422 | 20 300 |
+| DECONV_60 | 60 | 2.4e7 | 1.4e7 | 7.0e6 | 9.9e5 | 1.9e3 | 2.2e-7 | 23 | 27 | 1 362 | 1 890 |
+| COVQP_300 | 300 | 3.4e6 | 3.2e6 | 3.2e6 | 3.6e6 | 1.3e6 | 2.0e6 | 299 | 299 | 45 450 | 45 450 |
+| COVQP_120 | 120 | 4.6e7 | 4.6e7 | 4.7e7 | 4.6e7 | 4.4e7 | 3.6e7 | 119 | 119 | 7 380 | 7 380 |
+| POLYQP_100 | 100 | 1.0e7 | 8.8e6 | 5.5e6 | 6.3e6 | 9.1e6 | 8.0e6 | 99 | 99 | 5 150 | 5 150 |
+| Gaussian kernel, width 10 | 200 | 2.6e7 | 2.3e7 | 2.0e7 | 1.4e7 | 5.9e6 | 4.7e5 | 77 | 89 | 14 195 | 20 300 |
+| AR(1), 0.5 | 300 | 2.6e7 | 7.9e6 | 2.1e6 | 1.3e5 | 5.0e2 | 7.2e-3 | 25 | 25 | 7 775 | 45 450 |
+| 2-D Laplacian 20 x 20 | 400 | 4.4e7 | 2.2e7 | 2.2e7 | 2.2e7 | 2.2e7 | 0 | 20 | 20 | 8 590 | 80 600 |
+
+The kernel's error falls at every doubling of the band index and faster each time (0.61, 0.51,
+0.15, 0.002); a dense Hessian's is a random walk around its starting value, with dips (COVQP_300
+at band 16, POLYQP_100 at band 4) that do not last.
+
+**The rule: `quadratic_bands = 'decaying'`.** The band search keeps its `2n` allowance (bands 1
+and 2). Each time the allowance is spent it is doubled if the worst fit error is below
+`BAND_DECAY = 0.75` of its value at the previous grant (the diagonal model's error for the first
+grant), and the evaluation and wall guards between bands stay as they were. The threshold was set on
+Hessians the rule had not been fitted to (`band_gate_sim.py`): of 144 dense ones of six kinds
+(factor covariances of rank 1, 5 and 20, Wishart plus identity, a wide kernel on scattered points, a
+narrow kernel with its variables shuffled; n = 100 to 500), 11 pass the first check by chance at
+0.75, the mean waste is `0.25 n` evaluations and the worst `5.9 n`, six gradients' worth; at 0.9
+it is 21, `0.71 n` and `13.5 n`; at 0.6 DECONV's own first ratio (0.606) fails. At 0.75 a Gaussian
+kernel is followed up to width 3 (22 % of the dense pairs at n = 200, 11 % at n = 400) and AR(1)
+up to 0.7; a kernel of width 5 or more stops at `2n` as it does today, which loses nothing. A
+2-D grid Laplacian (bands 1 and N, nothing between) also stops at `2n`: no gain, no loss. Not
+written: an extrapolation of the decay to decide whether the band it needs is affordable. A linear
+one in the logarithm overestimates a Gaussian's remaining bands by 4x at band 2 and 2x at band 8,
+and would have declined DECONV_200.
+
+**At the harness's rate and at slower ones** (`band_rate.py`: the corpus's matrices as numpy
+models with a busy wait that brings one evaluation to the stated cost, 60 s, 100 000 evaluations;
+the clock is emulated, not converted, because the guard under test reads the clock):
+
+| cost of one evaluation | `fixed` | `decaying` |
+|---|---|---|
+| DECONV_200, 4.34 ms (the harness) | time limit, gap 2.1e-4, miss | **`Optimal`, 6 639 evaluations, 5 iterations, 29.0 s, gap 1.0e-9** |
+| DECONV_200, 5.2 ms | time limit, gap 2.9e-4, miss | `Optimal`, 6 639 evaluations, 34.8 s, gap 1.0e-9 |
+| DECONV_200, 6 ms | time limit, gap 3.5e-4, miss | the build reaches its deadline at 5 082 evaluations and declines; time limit, gap 1.6e-3, miss |
+| DECONV_200, 8 ms | time limit, gap 8.7e-4, miss | declines at 3 836; time limit, gap 2.1e-3, miss |
+| COVQP_300, 10 ms | declines at 1 204 | declines at 1 204, the same record |
+
+The band the kernel needs fits the build's half of the clock up to 5.5 ms an evaluation. Below
+that the option turns a miss into a certificate; above it the search runs to the build's deadline,
+the portfolio gets the other 30 s instead of 57, and the returned point is 2.5x to 4.7x further
+from the optimum than under `fixed`, neither arm attaining. That is the dense build's existing
+contract (it may take half of `maxtime`) applied to a build that is likely, not certain, to
+finish; it only exists for a caller who sets `maxtime` (or an evaluation budget the dense build does not
+fit): with the dense build affordable the option changes nothing.
+
+**Candidate 2, the frozen barrier parameter: the rule `docs/23` proposed has no corpus record to
+help.** The trace study first (`mu_trace.py`, the corpus models, `mincon-ip`, track A). DECONV_200
+reproduces section 7.15 on the harness's model: seven round trips between 1e-7 and a larger value in
+the first fourteen iterations, the monotone schedule from iteration 18, `mu = 6.02e-7` from
+iteration 19. But the harness's clock ends that solve at iteration 61 with the KKT error still
+falling (3.7e-3 to 3.8e-4 over the segment): the plateau of section 7.15 needs about 200
+iterations, which a 4.3 ms model never reaches in 60 s, so a forced reduction could not act on the
+record that motivated it. HS63 holds `mu = 2.8e-4` for 27 iterations while the KKT error falls from
+5.8 to 2.2e-3, which is a subproblem being solved, not a stall. HS38 is handed to the monotone
+schedule already at the floor (`mu = 1e-7` at a KKT error of 9e-2) and spends 37 iterations there;
+HS100 likewise, and ends `Acceptable` at 6.6e-6. HS32 converges in 17 iterations while oscillating.
+
+Then the whole corpus (`ipscan_analyze.py` over 185 traces): **three records end with `mu` fixed
+above the floor for ten iterations or more while the KKT error has stopped falling**, and none is a
+case for a forced reduction: DECONV_200 (above), OBSTACLE_500 (`mu = 1.8e-2` for 185 iterations at
+a KKT error of 4: the subproblem is not being solved at all, and the portfolio's probe solves this
+problem in 3 009 evaluations), HS13 (degenerate by design). What the scan shows instead is the other
+half of the roadmap's sentence. The adaptive rule (LOQO's: `mu = sigma x` average complementarity,
+`sigma` from the centrality alone) sends a well-centred iterate to the floor however far it is from
+stationarity: **110 of 185 records go to the floor and come back at least twice, 79 fall back to
+the monotone schedule,** and the value at which they fall back is wherever the oscillation happened
+to be, usually the floor. Thirteen of the sixteen records that are not `Optimal` and end in a long
+constant segment are at the floor, not above it.
+
+**The rule written: `barrier_safeguard`**, IPOPT's `adaptive_mu_safeguard_factor` (off by default
+there too): during the adaptive phase `mu` is bounded below by the factor times the scaled primal
+and dual infeasibility relative to its value at the first iterate (at least 1), so the bound falls
+with the infeasibility and never holds a converging iterate back. On sixteen flagged problems, the
+interior-point member alone, factors 0.01 / 0.1 / 1 (`safeguard_spot.py`): the round trips go
+(3 to 7 of them down to 0 or 1); HS63 626 evaluations to 102 / 102 / 88, HS93 550 to 400 / 414 /
+414, HS32 168 to 150 / 118 / 142, HS100 `Acceptable` to `Optimal` at 0.01 and 1 but not at 0.1;
+HS114 2 210 to 1 756 / 1 432 at 0.1 / 1 and **a step-tolerance exit at 0.01**; DECONV_60 8 015 to
+6 662 / 7 150 / 10 714; the problems with the longest stretches at the floor (ELLIPSOID_50,
+CHAINROSEN_BOX_50, CATENARY_10, HS117) within 7 % either way, because they reach the floor once and
+converge slowly there, which the bound does not touch. An effect that is not monotone in its own
+factor is a perturbation of the path as much as a mechanism.
+
+**Candidate 3, `quadratic_rows` on dense-objective families: the cost is not the rows'.** Read from
+`bench/results/abl-i5-rows` (rows off against `'values'`, the same wheel), the records on which the
+row build fires:
+
+| problem | objective's Hessian | rows' Hessian | row build | evaluations, off to values | |
+|---|---|---|---:|---|---|
+| COVQP_120 | dense, 7 380 | diagonal | 240 | 6 314 to 10 054 | 1.59x |
+| COVQP_30 | dense, 495 | diagonal | 60 | 1 382 to 1 127 | 0.82x |
+| TCPORT_100 | diagonal, 200 | dense | 5 150 | 5 882 to 6 778 | 1.15x |
+| TCPORT_20 | diagonal, 40 | dense | 230 | 702 to 632 | 0.90x |
+| ELLIPSOID2_200 | diagonal | diagonal | 400 | 170 824 to 9 308 | 0.05x, certified |
+| ELLIPSOID_500 | diagonal | diagonal | 1 000 | budget exit, infeasible, to attained | |
+| ELLIPSOID_50, ELLIPSOID2_20 | diagonal | diagonal | 100, 40 | 1.20x, 1.45x | |
+| HS113, HS43, ELLIPSOID_5 | | | | 0.63x, 0.78x, 0.67x | |
+
+On COVQP_120 the rows cost 240 evaluations of the 3 740 the record lost; the rest is the
+objective's own dense build (7 380), which the option merely allows to happen: with rows off the
+probe declines at the first quadratic row after four evaluations and never builds anything. The
+rule section 7.13 proposed (skip the row build when the objective's Hessian came back dense) fires
+after that cost is paid and would then throw the Hessian away. What decides gain or loss is the
+break-even of section 7.12, `n (n + 3) / 2` against the quasi-Newton path's `nit (n + 1)`: COVQP_30
+needs 44 quasi-Newton iterations against `n / 2 = 15` and gains, COVQP_120 needs 52 against 60 and
+loses, and the same holds with the roles of objective and row exchanged in TCPORT (20: gain, 100:
+loss). Two families, each with one record on either side, separated by an iteration count nobody
+has before the solve: **no rule is written**, for the reason section 7.12 gave for the objective
+alone. The low-rank-plus-diagonal build would remove the dense build's cost on both families
+(COVQP is rank 5 plus a diagonal, PORTFOLIO rank 3) at about `2n + k (n - 1)` evaluations for
+`k` near twice the rank, but it buys evaluations on two or three records and no attainment or
+certificate, so under the project's priority it stays where `docs/23` files it, after 1.0.
+
+**The ablation** (`bench/results/abl-phased123`, six arms in one run, the first the default):
+
+| arm | attained | paired difference | cost ratio (common) | records changed |
+|---|---|---|---|---|
+| `mincon@quadratic_bands=decaying` | **173** / 172 of 185 | +0.6 pp [+0.0, +2.7] | 1.00 [1.00, 1.00] on 172 | 3, the clock-bound ones |
+| `mincon@barrier_safeguard=0.1` | 172 / 172 | +0.0 pp [+0.0, +0.0] | 1.00 [1.00, 1.00] on 172 | 14 and the clock-bound ones, none in status |
+| `mincon@barrier_safeguard=1` | 172 / 172 | +0.0 pp [+0.0, +0.0] | 1.00 [1.00, 1.01] on 172 | the same 14, none in status |
+| `mincon-ip@barrier_safeguard=1` against `mincon-ip` | 167 / 168 | -0.6 pp [-0.9, +0.0] | **1.18 [1.14, 1.29]** on 166 | 139 |
+
+The raw native status of every arm was diffed against the default arm before scoring, as section
+7.18 learned to do. **`quadratic_bands='decaying'`:** DECONV_200 goes from the time-limit exit of
+every earlier run (16 282 evaluations, not attained) to `Optimal` in 6 639 evaluations and 24.6 s,
+the band of 27 built in 5 422, the same count as the emulation above; COVQP_300's and DENSELAP_250's
+records differ only in what their clock bought (COVQP_300's probe declines after the same 1 204
+evaluations; DENSELAP_250 is not quadratic); the other 182 are identical to the evaluation,
+DECONV_60 and ELLIPSOID_500 among them. The falsifier did not fire, and **`'decaying'` is the
+default.** Its evidence is stated as what it is: one corpus record for the benefit, from a set that
+is development material since round 5; 185 for the absence of harm; 144 dense Hessians and the
+rate table above for what it costs where it does not help.
+
+**`barrier_safeguard` is falsified and is not in the tree.** On the portfolio it changes no status
+and no attainment at either factor, because on the sizes where the interior-point member's
+oscillation is worst the SQP member runs first; the fourteen records it touches move both ways
+(MAXENT_200 160 524 to 130 564 and CHAINROSEN_EQ_50 7 050 to 5 520; HS13 1 666 to 4 160 and
+MAXENT_50 8 778 to 9 900, at factor 1). On the member itself the spot check had picked the
+favourable problems: over the corpus, factor 1 **loses three certificates** (HS19 to a
+step-tolerance exit, HS55 and LOGISTIC_NOISY2 to `Acceptable`) and gains two (HS100, POLYQP_100),
+loses the attainment of HS13 and HS57 and gains HS25's, and of the 119 records that are `Optimal`
+both ways and changed, 101 are dearer (HS75 162 to 421, NOISYQP_20 538 to 992, PORTFOLIO_100 6 472
+to 10 320). The round trips to the floor look like a defect in a trace and are, over 185 problems,
+most of why the adaptive rule is cheap: holding the parameter up to match the infeasibility costs
+18 %. The option was removed rather than kept at zero (the patch as applied, and its reversal, are
+in `.local-research/phase_d`), and with the options off the member is the code that ran before:
+its 185 default records at the ablation wheel agree with a scan at the previous wheel in status,
+evaluations and iterations on all but two clock-bound problems. Known gap 3 of the README stands
+as written, with this measurement behind it.
+
+**At the new default** (wheel `d57902fa79492531`): 205 Rust tests (two new, in `quadratic.rs`: the
+kernel at n = 60 under an evaluation budget the dense build does not fit, `Fixed` declining after
+bands 1 and 2 and `Decaying` building half-bandwidth 27 in 1 362 evaluations, the count the replica
+gave; and a Hessian with every off-diagonal entry equal, identical under either rule); clippy under
+both profiles, fmt, rustdoc, doctests and the 1.83 check clean; the four fixture tables 55/56 and
+56/56 / 56/56 / 55/56 with no lie and row for row those of section 7.18; 67 Python tests (four new,
+in `test_probe_bands.py`). The friction audit's fifteen mincon records
+(`bench/results/s7-friction-e`, mincon only; the other solvers did not change) are identical to
+`s7-friction-d` in every field that is not a clock, 14/15, except the stored traceback of the
+`wrong_gradient` refusal, which quotes lines of mincon's own `__init__.py` that moved. None of the
+fixtures or friction problems sets a budget the dense build does not fit, so none could change.

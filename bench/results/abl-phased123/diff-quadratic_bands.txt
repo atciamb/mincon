@@ -1,0 +1,4 @@
+COVQP_300              cand: status 0 evals 12651 att False wall 60.6 | base: status 0 evals 13253 att False wall 62.4
+DECONV_200             cand: status 1 evals 6639 att True wall 24.6 | base: status 0 evals 16282 att False wall 60.5
+DENSELAP_250           cand: status 0 evals 19650 att True wall 60.9 | base: status 0 evals 20694 att True wall 60.5
+changed records: 3 of 185

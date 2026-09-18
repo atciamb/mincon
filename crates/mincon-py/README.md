@@ -203,7 +203,10 @@ the step off a saddle point are evaluated one call at a time whatever the
 options.
 `maxfev`, `maxtime` and a `maxiter` you set are shared across the portfolio
 and checked between iterations, so they cannot interrupt a running callback
-(the default iteration cap of `400 + 10 n` applies to each member). Linear
+(the default iteration cap of `400 + 10 n` applies to each member). On a
+quadratic program the probe's Hessian build may use up to half of `maxtime`
+before the solve starts or before it declines; `res.notes` says what it built
+or why it declined. Linear
 rows given as `A`, `b`, `Aeq`, `beq` carry their exact Jacobian; nonlinear
 rows use finite differences unless `nonlcon_jac` is supplied. Sparse
 Jacobians and `jac_sparsity` from Python, limited-memory curvature (dense

@@ -174,6 +174,14 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   and the evaluation cost is 0.93 [0.62, 1.04] of the quasi-Newton path
   (`bench/results/abl-i5`, `abl-i5-build`); dense quadratics the
   quasi-Newton path solved in a few iterations still pay 1.1x to 1.7x.
+  When the dense build would not fit the evaluation budget or half of
+  `maxtime`, the band search goes past two bands only while the fit error
+  at the line points keeps falling (`quadratic_bands='decaying'`, the
+  default; `'fixed'` stops at two): a 200-variable deconvolution that every
+  earlier run left on the clock is certified in 6639 evaluations and no
+  other corpus record changes (`bench/results/abl-phased123`). With a model
+  too slow for the band it needs, the probe can use half of `maxtime` and
+  then decline; the notes say so.
 * **Variable scaling from the start** — by default (`scale_variables='auto'`)
   the solve runs in variables divided by their starting magnitudes when those
   span a factor of 1e4 (fmincon's `TypicalX` done for you); on the corpus it
@@ -219,6 +227,11 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
 3. **Adaptive barrier stalls** on a few problems (HS63: 39 vs 8 iterations
    monotone) before the monotone fallback fires; the SQP member now runs
    first on those sizes, so the barrier rule matters less than it did.
+   A lower bound on the barrier parameter tied to the infeasibility
+   (IPOPT's safeguard) fixes HS63 (626 evaluations to 88) and was measured
+   on the whole corpus: the interior-point member loses three certificates
+   and costs 1.18x [1.14, 1.29], so it is not shipped
+   (`docs/22_ROUND5_ROBUSTNESS_PLAN.md` section 7.19).
 4. **Finite-difference accuracy on sensitive models**: the solver stops at
    the estimated derivative accuracy (HS62: 100 evaluations, was 504) but the
    certificate is only as good as the derivatives; pass `jac` and constraint

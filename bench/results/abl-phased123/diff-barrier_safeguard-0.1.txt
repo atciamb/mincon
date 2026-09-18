@@ -1,0 +1,18 @@
+CHAINROSEN_BOX_200     cand: status 0 evals 100156 att False wall 11.8 | base: status 0 evals 100154 att False wall 11.0
+CHAINROSEN_BOX_50      cand: status 1 evals 13299 att True wall 0.4 | base: status 1 evals 12983 att True wall 0.4
+CHAINROSEN_EQ_200      cand: status 1 evals 32994 att True wall 2.2 | base: status 1 evals 30966 att True wall 1.8
+CHAINROSEN_EQ_50       cand: status 1 evals 5520 att True wall 0.1 | base: status 1 evals 7050 att True wall 0.1
+COVQP_300              cand: status 0 evals 12663 att False wall 61.4 | base: status 0 evals 13253 att False wall 62.4
+DECONV_200             cand: status 0 evals 16080 att False wall 60.0 | base: status 0 evals 16282 att False wall 60.5
+DENSELAP_100           cand: status 6 evals 6698 att True wall 3.2 | base: status 6 evals 6522 att True wall 3.2
+DENSELAP_250           cand: status 0 evals 19132 att True wall 60.9 | base: status 0 evals 20694 att True wall 60.5
+ELLIPSOID_50           cand: status 6 evals 17014 att True wall 0.2 | base: status 6 evals 16054 att True wall 0.2
+ELLIPSOID_500          cand: status 6 evals 202140 att True wall 29.0 | base: status 6 evals 202192 att True wall 28.7
+HS13                   cand: status 6 evals 1870 att True wall 0.0 | base: status 6 evals 1666 att True wall 0.0
+INFEASIBLE_NL          cand: status -4 evals 732 att None wall 0.0 | base: status -4 evals 728 att None wall 0.0
+MAXENT_200             cand: status 1 evals 161276 att True wall 23.0 | base: status 1 evals 160524 att True wall 19.9
+MAXENT_50              cand: status 1 evals 8698 att True wall 0.3 | base: status 1 evals 8778 att True wall 0.2
+SNL_150                cand: status 1 evals 15118 att True wall 24.8 | base: status 1 evals 15578 att True wall 24.7
+SNL_24                 cand: status 1 evals 2248 att True wall 0.1 | base: status 1 evals 2118 att True wall 0.1
+SNL_60                 cand: status 1 evals 3096 att True wall 0.9 | base: status 1 evals 3032 att True wall 0.8
+changed records: 17 of 185

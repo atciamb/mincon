@@ -1,0 +1,91 @@
+{
+ "n_problems": 185,
+ "duplicates_overwritten": 0,
+ "solvers": {
+  "mincon": {
+   "attained": 172,
+   "scorable": 179,
+   "kkt": 111,
+   "kkt_recovered": 148,
+   "not_ok": 0,
+   "n": 185
+  },
+  "mincon@barrier_safeguard=0.1": {
+   "attained": 172,
+   "scorable": 179,
+   "kkt": 111,
+   "kkt_recovered": 148,
+   "not_ok": 0,
+   "n": 185
+  },
+  "mincon@barrier_safeguard=1": {
+   "attained": 172,
+   "scorable": 179,
+   "kkt": 111,
+   "kkt_recovered": 148,
+   "not_ok": 0,
+   "n": 185
+  },
+  "mincon@quadratic_bands=decaying": {
+   "attained": 173,
+   "scorable": 179,
+   "kkt": 112,
+   "kkt_recovered": 149,
+   "not_ok": 0,
+   "n": 185
+  }
+ },
+ "paired": {
+  "mincon@barrier_safeguard=0.1": {
+   "both": 172,
+   "only_solver": 0,
+   "only_baseline": 0,
+   "neither": 7,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    0.0,
+    0.0
+   ],
+   "geo_mean_ratio": 1.0000599820493237,
+   "ratio_ci": [
+    0.9954774916923682,
+    1.0019732332845157
+   ],
+   "n_common": 172
+  },
+  "mincon@barrier_safeguard=1": {
+   "both": 172,
+   "only_solver": 0,
+   "only_baseline": 0,
+   "neither": 7,
+   "diff_pp": 0.0,
+   "diff_ci": [
+    0.0,
+    0.0
+   ],
+   "geo_mean_ratio": 1.0047415341714578,
+   "ratio_ci": [
+    0.9952568621861004,
+    1.0082407294002707
+   ],
+   "n_common": 172
+  },
+  "mincon@quadratic_bands=decaying": {
+   "both": 172,
+   "only_solver": 1,
+   "only_baseline": 0,
+   "neither": 6,
+   "diff_pp": 0.5586592178770949,
+   "diff_ci": [
+    0.0,
+    2.7416554119235856
+   ],
+   "geo_mean_ratio": 0.9996990774672737,
+   "ratio_ci": [
+    0.9982367904358668,
+    1.0
+   ],
+   "n_common": 172
+  }
+ }
+}
