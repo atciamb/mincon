@@ -4,7 +4,7 @@ Nonlinear constrained optimization with a Rust solver and a simple Python API.
 Supply your objective, starting point and constraints. Derivative estimation,
 scaling and solver configuration have automatic defaults.
 
-**Experimental 0.1 release.** This is research software under active
+**Experimental release.** This is research software under active
 development, not a completed or proven superior replacement for MATLAB's
 `fmincon`. It computes local solutions; it does not guarantee global minima.
 
@@ -58,7 +58,8 @@ when those span a factor of 1e4 or more, `fmincon`'s `TypicalX` done for you;
 `True` always, `False` never). `method=` selects
 `'auto'`, `'interior-point'` or `'sqp'`; `callback=` receives every
 iteration's row and stops the solve when it returns `True`; `hess=` takes
-MATLAB's `HessianFcn(x, lambda)` matrix.
+MATLAB's `HessianFcn(x, lambda)` matrix; `warm_start=previous_result` resumes
+from an earlier result's multipliers and quasi-Newton model.
 
 ## Several starting points
 
@@ -86,14 +87,13 @@ result = minimize(
 Use `bounds=[(0, None), (0, None)]` with `minimize`; use `lb=0` with `fmincon`.
 
 Supply `jac=` if you have an analytical objective gradient and `hess=` (the
-Hessian of the Lagrangian) if you have that too; the SQP member uses it with
-Newton convergence, the interior-point member's handling of it is still
-experimental, see `help(minimize)`. Supplied derivatives
-are checked along one direction at `x0` with two extra evaluations: a gross
-disagreement raises with the offending component named, a mild one is noted
-in `res.notes`. `args=(...)` passes additional arguments to your objective
-and nonlinear constraints. Inspect `help(fmincon)` or `help(minimize)` for
-the full interface.
+Hessian of the Lagrangian) if you have that too; both algorithms use them in
+place of their quasi-Newton models and converge in far fewer evaluations.
+Supplied derivatives are checked along one direction at `x0` with two extra
+evaluations: a gross disagreement raises with the offending component named,
+a mild one is noted in `res.notes`. `args=(...)` passes additional arguments
+to your objective and nonlinear constraints. Inspect `help(fmincon)` or
+`help(minimize)` for the full interface.
 
 ## Interpreting results
 
@@ -102,8 +102,11 @@ the full interface.
   This is not a second-order or global-minimum certificate.
 - `maxcv`: constraint violation in your original units.
 - `usable`: a usable-point status; it does not replace checking `success`.
-- `message`, `notes`: termination reason and solver diagnostics.
-- `nfev`, `nit`: objective calls across the portfolio and iteration count.
+- `message`, `notes`: termination reason and solver diagnostics, including
+  which portfolio member produced the answer and every compromise made.
+- `nfev`, `nit`: objective calls across the whole portfolio and iterations.
+- `trace`: one row per iteration (objective, violation, optimality, step,
+  barrier parameter), the cheapest way to see what a solve did.
 
 Always examine the status and feasibility before using the result. An
 `Acceptable` or stagnation exit has `success=False`. Finite differences and
@@ -111,23 +114,40 @@ noisy model evaluations limit attainable accuracy.
 
 ## Current scope
 
-Implemented: primal-dual interior point, feasibility restoration, automatic
-gradient scaling, bounded finite differences with retreat, Jacobian sparsity
-detection/coloring and a portfolio of interior-point configurations. Python
-callbacks run serially. SQP, sparse user Jacobians, limited-memory curvature,
-hard per-callback evaluation budgets and progress callbacks are not complete.
-`maxfev` and time limits are checked between batches/iterations; they cannot
-interrupt an ongoing callback. The derivative checker needs further validation
-for failed or unevaluable checks; it is not a certificate.
+Implemented: a primal-dual interior-point method with feasibility
+restoration; a sequential quadratic programming member (l1 merit function,
+elastic QP, damped BFGS, second-order corrections, a second-order check that
+walks off saddle points) that runs first on problems with at most 20
+variables; a portfolio that runs the members in sequence with shared
+evaluation and time budgets and stops at the first usable answer; a
+quadratic-program probe (seven evaluations at the start) that builds the
+constant Hessian by structure and takes Newton steps when the problem turns
+out to be a QP; gradient scaling and variable scaling from the start;
+bounds-aware finite differences with sparsity detection, graph coloring and
+termination at the accuracy the derivatives support; a check of supplied
+derivatives; exact objective gradients, constraint Jacobians and Lagrangian
+Hessians from Python (dense); an iteration callback and display; warm start;
+multistart.
 
-The local development suite passes 54/54 expected fixture outcomes, with
-40 strict Optimal returns. Fixture passes also include accurate points with
-non-success statuses and expected infeasible/unbounded diagnostics. Broader
-CUTEst and matched competitor comparisons remain outstanding.
+Limits: Python callbacks run serially, one point per call, so a
+finite-difference gradient in `n` variables costs `n` model evaluations per
+iteration (`2n` with `finite_diff='central'`); pass `jac=` when you have it.
+`maxfev` and `maxtime` are shared across the portfolio and checked between
+iterations, so they cannot interrupt a running callback; `maxiter` applies to
+each portfolio member separately. Sparse Jacobians and `jac_sparsity` from
+Python, limited-memory curvature (dense quasi-Newton models make problems
+beyond a few hundred variables expensive under finite differences), batched
+or parallel model evaluation, and MATLAB option names are not implemented.
+
+The local development gate is 56/56 fixture outcomes through the default
+portfolio (53 strict `Optimal` returns; passes also include accurate points
+with non-success statuses and expected infeasible or unbounded diagnostics),
+195 Rust tests and 37 Python tests. The measured standing against `fmincon`
+and SciPy on a 185-problem corpus, including where they win, is in the
+repository README and `docs/17_CLAIM_AUDIT.md`.
 
 ## License
 
 MIT OR Apache-2.0. Rust dependency notices are included in the installed
 package as `THIRD_PARTY_LICENSES.txt`. Source is included in the source
 distribution; no MATLAB installation or license is required.
-
