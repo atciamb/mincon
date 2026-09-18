@@ -220,9 +220,9 @@
    "n_bounded": 4,
    "n_fixed": 0,
    "linear_rows": 4,
-   "ref_f": 6.8429,
-   "has_ref_x": false,
-   "source": "corrugated bulkhead (Kim and Lee 1998; Rao); best-known 6.8429 at (57.692, 34.148, 57.555, 1.05)",
+   "ref_f": 6.842958010080774,
+   "has_ref_x": true,
+   "source": "corrugated bulkhead (Kim and Lee 1998; Rao); published best-known 6.8429, a rounding of the vertex value 6.842958 at (57.692308, 34.147620, 57.692308, 1.05)",
    "tags": [
     "best-known"
    ],
@@ -285,6 +285,46 @@
    ],
    "checksum": "e6679e7a21560aae",
    "split": "final4"
+  },
+  {
+   "name": "CSTR_3",
+   "family": "cstr",
+   "n": 9,
+   "m": 3,
+   "n_eq": 3,
+   "n_ranged": 0,
+   "n_bounded": 9,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 21.22850490784348,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "nonconvex",
+    "units"
+   ],
+   "checksum": "afd443a8f59cc65d",
+   "split": "final6"
+  },
+  {
+   "name": "CSTR_8",
+   "family": "cstr",
+   "n": 24,
+   "m": 8,
+   "n_eq": 8,
+   "n_ranged": 0,
+   "n_bounded": 24,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 13.301973264295214,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "nonconvex",
+    "units"
+   ],
+   "checksum": "e28804335ee49f6a",
+   "split": "final6"
   },
   {
    "name": "DECONV_200",
@@ -456,6 +496,27 @@
    ],
    "checksum": "8b4463eb61e65d2f",
    "split": "validation"
+  },
+  {
+   "name": "EIGSUB_6X2",
+   "family": "stiefel",
+   "n": 12,
+   "m": 4,
+   "n_eq": 4,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": -8.500000000000004,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "nonconvex",
+    "rank-deficient",
+    "degenerate"
+   ],
+   "checksum": "51dfb4768f4b0255",
+   "split": "final6"
   },
   {
    "name": "ELLIPSOID2_20",
@@ -655,6 +716,46 @@
    ],
    "checksum": "11e412153f8244d2",
    "split": "dev"
+  },
+  {
+   "name": "EXPSPEC_30",
+   "family": "expspec",
+   "n": 30,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 30,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 24.91825625122874,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "ill-conditioned"
+   ],
+   "checksum": "44547d1a24716ca9",
+   "split": "final6"
+  },
+  {
+   "name": "EXPSPEC_90",
+   "family": "expspec",
+   "n": 90,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 90,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 76.76546690001851,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "ill-conditioned"
+   ],
+   "checksum": "c9021b78e38f2030",
+   "split": "final6"
   },
   {
    "name": "FIXEDVARS",
@@ -2367,6 +2468,48 @@
    "split": "final5"
   },
   {
+   "name": "LOGGAS_120",
+   "family": "loggas",
+   "n": 120,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 1482.5519879999752,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "domain",
+    "dense"
+   ],
+   "checksum": "470e5bf30daa763e",
+   "split": "final6"
+  },
+  {
+   "name": "LOGGAS_30",
+   "family": "loggas",
+   "n": 30,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 53.84235721803835,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "domain",
+    "dense"
+   ],
+   "checksum": "be16bb63948d702a",
+   "split": "final6"
+  },
+  {
    "name": "LOGISTIC_CLEAN",
    "family": "logistic",
    "n": 3,
@@ -2438,6 +2581,46 @@
    "tags": [],
    "checksum": "b43918cfe665d6ce",
    "split": "final3"
+  },
+  {
+   "name": "LONGMEM_S08_200",
+   "family": "longmem",
+   "n": 200,
+   "m": 199,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 199,
+   "ref_f": 13.558555528719985,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "dense"
+   ],
+   "checksum": "ad118a3fc6147533",
+   "split": "final6"
+  },
+  {
+   "name": "LONGMEM_S20_200",
+   "family": "longmem",
+   "n": 200,
+   "m": 199,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 199,
+   "ref_f": 25.22380475932319,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "dense"
+   ],
+   "checksum": "bf93c40808a45b1d",
+   "split": "final6"
   },
   {
    "name": "LQTRAJ_10",
@@ -2775,6 +2958,66 @@
    "split": "final4"
   },
   {
+   "name": "PHASESPLIT_10",
+   "family": "phasesplit",
+   "n": 10,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 10,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": -2.1768920618370315,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "multiple-local-minima",
+    "nonconvex"
+   ],
+   "checksum": "701cdcb49485d47d",
+   "split": "final6"
+  },
+  {
+   "name": "PHASESPLIT_6",
+   "family": "phasesplit",
+   "n": 6,
+   "m": 1,
+   "n_eq": 1,
+   "n_ranged": 0,
+   "n_bounded": 6,
+   "n_fixed": 0,
+   "linear_rows": 1,
+   "ref_f": -1.9591132306735328,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "multiple-local-minima",
+    "nonconvex"
+   ],
+   "checksum": "2c919d32cef71341",
+   "split": "final6"
+  },
+  {
+   "name": "PIPE_SIZING",
+   "family": "gpdesign",
+   "n": 5,
+   "m": 4,
+   "n_eq": 4,
+   "n_ranged": 0,
+   "n_bounded": 5,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 74196.0006488676,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "units",
+    "nonconvex"
+   ],
+   "checksum": "2ae8c88697e3e2c5",
+   "split": "final6"
+  },
+  {
    "name": "PKFIT_CLEAN",
    "family": "pkfit",
    "n": 4,
@@ -2905,6 +3148,88 @@
    ],
    "checksum": "8e1d8b5375bdd2d2",
    "split": "final1-dev"
+  },
+  {
+   "name": "PROCRUSTES_3",
+   "family": "stiefel",
+   "n": 9,
+   "m": 9,
+   "n_eq": 9,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 1.3019562998699143,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "nonconvex",
+    "rank-deficient",
+    "multiple-local-minima"
+   ],
+   "checksum": "c4e20c51bd05335a",
+   "split": "final6"
+  },
+  {
+   "name": "PROCRUSTES_5",
+   "family": "stiefel",
+   "n": 25,
+   "m": 25,
+   "n_eq": 25,
+   "n_ranged": 0,
+   "n_bounded": 0,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 4.311351672616347,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "nonconvex",
+    "rank-deficient",
+    "multiple-local-minima"
+   ],
+   "checksum": "cec30739dd2cf5ad",
+   "split": "final6"
+  },
+  {
+   "name": "PROPFAIR_12",
+   "family": "propfair",
+   "n": 12,
+   "m": 6,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 12,
+   "n_fixed": 0,
+   "linear_rows": 6,
+   "ref_f": 14.962110586295987,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "domain"
+   ],
+   "checksum": "cef48712bb9a81eb",
+   "split": "final6"
+  },
+  {
+   "name": "PROPFAIR_60",
+   "family": "propfair",
+   "n": 60,
+   "m": 25,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 60,
+   "n_fixed": 0,
+   "linear_rows": 25,
+   "ref_f": 98.062297428096,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "domain"
+   ],
+   "checksum": "2a65a44101fb02ab",
+   "split": "final6"
   },
   {
    "name": "QUADSPHERE2_30",
@@ -3199,6 +3524,46 @@
    "split": "dev"
   },
   {
+   "name": "STEPNOISE_12",
+   "family": "stepnoise",
+   "n": 12,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 12,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 29.29362784501346,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "noisy",
+    "convex"
+   ],
+   "checksum": "df54297779b6cbeb",
+   "split": "final6"
+  },
+  {
+   "name": "STEPNOISE_6",
+   "family": "stepnoise",
+   "n": 6,
+   "m": 1,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 6,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 14.750735726892643,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "noisy",
+    "convex"
+   ],
+   "checksum": "c5e83bc9cf01212f",
+   "split": "final6"
+  },
+  {
    "name": "TCPORT_100",
    "family": "tcport",
    "n": 100,
@@ -3275,6 +3640,46 @@
    "split": "final2"
   },
   {
+   "name": "TVDENOISE_1000",
+   "family": "tvdenoise",
+   "n": 1000,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 1000,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 4.930156986470685,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "sparse"
+   ],
+   "checksum": "ccb58c8333382571",
+   "split": "final6"
+  },
+  {
+   "name": "TVDENOISE_500",
+   "family": "tvdenoise",
+   "n": 500,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 500,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": 3.0697293303795457,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex",
+    "sparse"
+   ],
+   "checksum": "bfb51b1d90b4807c",
+   "split": "final6"
+  },
+  {
    "name": "UNBOUNDED_PAR",
    "family": "adversarial",
    "n": 2,
@@ -3331,6 +3736,64 @@
    ],
    "checksum": "881d13e35192cd78",
    "split": "final1-dev"
+  },
+  {
+   "name": "WING_SIMPLE",
+   "family": "gpdesign",
+   "n": 9,
+   "m": 7,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 9,
+   "n_fixed": 0,
+   "linear_rows": 2,
+   "ref_f": 303.07515944946726,
+   "has_ref_x": true,
+   "source": "the simple wing of Hoburg and Abbeel, Geometric programming for aircraft design optimization (2014)",
+   "tags": [
+    "units",
+    "nonconvex"
+   ],
+   "checksum": "1ab77706f65f29ca",
+   "split": "final6"
+  },
+  {
+   "name": "WINKLER_SOFT_250",
+   "family": "winkler",
+   "n": 250,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 250,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": -71.24602875711415,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "01e0fe4745bbb93d",
+   "split": "final6"
+  },
+  {
+   "name": "WINKLER_STIFF_250",
+   "family": "winkler",
+   "n": 250,
+   "m": 0,
+   "n_eq": 0,
+   "n_ranged": 0,
+   "n_bounded": 250,
+   "n_fixed": 0,
+   "linear_rows": 0,
+   "ref_f": -159.44168819705507,
+   "has_ref_x": true,
+   "source": "bench/corpus/structured.py",
+   "tags": [
+    "convex"
+   ],
+   "checksum": "cb696014c6e14362",
+   "split": "final6"
   }
  ]
 }

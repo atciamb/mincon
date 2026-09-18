@@ -109,14 +109,19 @@ rec.row_map = struct('hi', hiRows(:)', 'lo', loRows(:)', 'eq', eqRows(:)');
         c = [cx_(hiRows) - p.cu(hiRows); p.cl(loRows) - cx_(loRows)];
         ceq = cx_(eqRows) - p.cl(eqRows);
     end
+    % Protocol v3: derivatives are evaluated only when fmincon asks for them (nargout). Before, every
+    % objective call on track C was charged a gradient, which measured this wrapper and not the solver.
     function [c, ceq, gc, gceq] = nonlcon_grad(x)
         [c, ceq] = nonlcon(x);
-        J = jcount(x);
-        gc = [J(hiRows, :); -J(loRows, :)]';   % fmincon wants n-by-(#ineq)
-        gceq = J(eqRows, :)';
+        if nargout > 2
+            J = jcount(x);
+            gc = [J(hiRows, :); -J(loRows, :)]';   % fmincon wants n-by-(#ineq)
+            gceq = J(eqRows, :)';
+        end
     end
     function [f, g] = obj_grad(x)
-        f = fcount(x); g = gcount(x);
+        f = fcount(x);
+        if nargout > 1, g = gcount(x); end
     end
 lb = p.xl; ub = p.xu;
 if strcmp(track, 'C')

@@ -209,6 +209,23 @@ Then: MATLAB equivalence, targets v7, seal with hashes, the run on both tracks
 with all seven solvers, timing with three repeats, the adversarial pass,
 `docs/17` items, the README status block. Negative results are results.
 
+Standing (September 18): **designed and sealed, not yet scored.**
+`bench/corpus/heldout6.py` holds 23 problems in 11 families (expspec, loggas,
+stiefel, cstr, propfair, tvdenoise, gpdesign, stepnoise, phasesplit, winkler,
+longmem); its docstring names each family's nearest relative and the reason
+the solvers should differ, written before any run. Every reference is exact
+or verified at 1e-10, and `bench/corpus/verify_refs.py` checks under the
+corpus model that the stored point is feasible, stationary and reproduces its
+target to 1e-6; every target is above 1 in magnitude, so the 1e-4 bar is
+relative throughout, and none is a published rounding. CORRUGATED_BULKHEAD's
+reference was recomputed: the point printed with the published value is not
+the model's optimum, the vertex value is 6.842958, and targets v7 carries it.
+Protocol v3 (`docs/15`, Revisions) was decided first: the shared budget binds
+SciPy too, fmincon runs at factory defaults and with its limits lifted to the
+budget, and derivative calls are counted when made. Equivalence: 4160
+quantities on 208 problems, no mismatch. Seal record:
+`bench/results/s6v6-final6/SEAL.md`.
+
 ### Phase F: release 0.2.0
 
 Version 0.2.0 in the workspace (the defaults changed since 0.1.0: the

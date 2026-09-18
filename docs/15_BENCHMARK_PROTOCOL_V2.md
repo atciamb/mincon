@@ -133,6 +133,35 @@ or budgets after the fact.
 
 ## Revisions
 
+* 2026-09-18, **protocol v3**: decided and implemented before the round-6 set
+  (`final6`) was sealed and before any record on it existed; rounds 1 to 5
+  stand as run under v2. Reason: the solvers were not held to the same
+  stopping rule (`bench/results/s6v5-final5/README.md`, section 1). Three
+  changes, none to a tolerance, a target, the cost metric or a track:
+  1. *The shared budget binds every solver.* `maxtime` (60 s) and `maxfev`
+     (100 000 objective evaluations) reached mincon through its options and
+     fmincon only as the cooperative deadline; SciPy had neither
+     (trust-constr ran 210 s on DECONV_200 before the supervisor's hard
+     limit). The Python worker now stops a SciPy run at the first model call
+     after the deadline, or after `maxfev` objective evaluations at the model
+     boundary, and reports the last iterate the solver's own callback saw
+     (`native_status = -98`, `reported_success = false`, no invented point).
+     A run that ends inside the budget has the same iterates and counts as
+     before.
+  2. *fmincon runs in two tiers.* `fmincon-interior-point` and `fmincon-sqp`
+     stay at factory defaults, the first-try reading of track A (section 4:
+     its own evaluation limit is part of "defaults"), and are joined by
+     `fmincon-interior-point@MaxFunctionEvaluations=100000;MaxIterations=100000`
+     and the same for `fmincon-sqp`, the capability reading in which only the
+     shared budget binds. Gate G1 of `docs/23` is read against all four arms.
+     SciPy stays as in rounds 1 to 5 (`maxiter` 1000 for SLSQP, 3000 for
+     trust-constr, ten and three times the factory values): its iteration
+     caps were already lifted, which is the unfavourable choice for mincon
+     and is kept for comparability across rounds.
+  3. *Derivative calls are counted when they are made.* On track C the MATLAB
+     worker evaluated the gradient at every objective call without looking
+     at `nargout`, so every fmincon record was charged exactly twice its
+     objective count. It now evaluates derivatives only when fmincon asks.
 * 2026-09-07 23:20 — harness bug, no protocol change: `worker_matlab.m` crashed
   when fmincon returned an empty `lambda` after the cooperative deadline
   stopped a run (fmincon-sqp on QUADSPHERE_1000, validation split). The

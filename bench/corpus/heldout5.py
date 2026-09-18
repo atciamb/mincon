@@ -455,15 +455,32 @@ def CORRUGATED_BULKHEAD():
          t - 0.0156 * ln - 0.15,
          t - 1.05,
          ln - h]
-    spec = st("CORRUGATED_BULKHEAD", "engineering3", x, f, c, [0] * 6, [INF] * 6, xl=[10, 10, 10, 1.05], xu=[100, 100, 100, 5],
-              x0=[50, 20, 60, 1.5], ref_f=6.8429, tags=["best-known"],
-              source="corrugated bulkhead (Kim and Lee 1998; Rao); best-known 6.8429 at (57.692, 34.148, 57.555, 1.05)",
-              notes="units: cm and cm^2 in the constraints, the weight in kg; sqrt(l^2 - h^2) is undefined for h > l, "
-                    "which the row l - h >= 0 excludes")
-    p = spec.numpy()
-    xb = np.array([57.692, 34.148, 57.555, 1.05])
-    assert p.violation(xb) < 2e-3 and abs(p.f(xb) - 6.8429) < 5e-3, "CORRUGATED_BULKHEAD: best-known point does not check"
-    return spec
+    def mk(ref_f, ref_x):
+        return st("CORRUGATED_BULKHEAD", "engineering3", x, f, c, [0] * 6, [INF] * 6, xl=[10, 10, 10, 1.05], xu=[100, 100, 100, 5],
+                  x0=[50, 20, 60, 1.5], ref_f=ref_f, ref_x=ref_x, tags=["best-known"],
+                  source="corrugated bulkhead (Kim and Lee 1998; Rao); published best-known 6.8429, a rounding of the vertex "
+                         "value 6.842958 at (57.692308, 34.147620, 57.692308, 1.05)",
+                  notes="units: cm and cm^2 in the constraints, the weight in kg; sqrt(l^2 - h^2) is undefined for h > l, "
+                        "which the row l - h >= 0 excludes; reference recomputed for round 6: the optimum is a vertex (t at "
+                        "its bound, both thickness rows and the second section row active)")
+    # The point usually printed with the published value, (57.692, 34.148, 57.555, 1.05), is not the
+    # optimum of this model: its third coordinate gives f = 6.846036, 4.6 scoring tolerances above the
+    # target, and the 5e-3 assertion of round 5 let it through (s6v5-final5/README.md, section 8). The
+    # optimum is a vertex: t = 1.05, the two thickness rows give w = l = 0.9 / 0.0156, and the second
+    # section row fixes h. Four active constraints in four variables, so the multipliers are a 4 x 4 solve.
+    from scipy.optimize import brentq
+    p = mk(None, None).numpy()
+    t_b = 1.05
+    w_b = (t_b - 0.15) / 0.0156
+    h_b = brentq(lambda v: v ** 2 * t_b * (0.2 * w_b + w_b / 12) - 2.2 * (8.94 * (w_b + np.sqrt(w_b ** 2 - v ** 2))) ** (4.0 / 3.0),
+                 30.0, 40.0, xtol=1e-14, rtol=1e-15)
+    xb = np.array([w_b, h_b, w_b, t_b])
+    active = np.vstack([p.jac(xb)[[1, 2, 3]], [0.0, 0.0, 0.0, 1.0]])
+    y = np.linalg.solve(active.T, p.grad(xb))          # grad f = sum y_i grad c_i with y >= 0 at a minimum
+    assert np.all(y > 1e-6), f"CORRUGATED_BULKHEAD: multiplier signs {y}"
+    assert np.max(np.abs(active.T @ y - p.grad(xb))) < 1e-10, "CORRUGATED_BULKHEAD: reference stationarity"
+    assert p.violation(xb) < 1e-10 and abs(p.f(xb) - 6.8429) < 1e-4, "CORRUGATED_BULKHEAD: reference point does not check"
+    return mk(float(p.f(xb)), [list(map(float, xb))])
 
 
 @register

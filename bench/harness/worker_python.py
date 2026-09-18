@@ -114,23 +114,91 @@ def solve_mincon(model, track, budget, threads, variant, overrides=None):
                 trace=list(r.get("trace", [])))
 
 
+class _BudgetExhausted(Exception):
+    """Raised at the model boundary when a SciPy run passes the shared wall or evaluation budget."""
+
+
+class _BudgetedModel:
+    """Protocol v3: SciPy is held to the budget mincon gets through its options and fmincon through its
+    OutputFcn. SciPy's methods have no such options, so the model stops the run: the first call after
+    the deadline, or after `maxfev` objective evaluations at the model boundary, raises."""
+
+    def __init__(self, model, maxtime, maxfev):
+        self._m, self.p = model, model.p
+        self.maxtime, self.maxfev, self.t0 = maxtime, maxfev, None
+
+    def _check(self):
+        if self.t0 is None:
+            return
+        if self.maxtime and time.perf_counter() - self.t0 > self.maxtime:
+            raise _BudgetExhausted("time")
+        if self.maxfev and self._m.counts["f_model"] >= self.maxfev:
+            raise _BudgetExhausted("evaluations")
+
+    def f(self, x):
+        self._check()
+        return self._m.f(x)
+
+    def grad(self, x):
+        self._check()
+        return self._m.grad(x)
+
+    def c(self, x):
+        self._check()
+        return self._m.c(x)
+
+    def jac(self, x):
+        self._check()
+        return self._m.jac(x)
+
+    def row_groups(self):
+        return self._m.row_groups()
+
+
 def solve_scipy(model, track, budget, method):
     from scipy.optimize import minimize, NonlinearConstraint, Bounds
+    import scipy
+    maxtime, maxfev = float(budget.get("maxtime") or 0.0), int(budget.get("maxfev") or 0)
+    model = _BudgetedModel(model, maxtime, maxfev)
     p = model.p
     groups = model.row_groups()
+    # the point reported after a budget stop is the last iterate the solver's own callback saw:
+    # no invented point and no point from the middle of a line search
+    last = {"x": np.asarray(p.x0, float).copy(), "nit": 0}
+
+    def remember(xk, *_state):
+        last["x"] = np.array(xk, float)
+        last["nit"] += 1
     bounds = Bounds(np.where(np.isfinite(p.xl), p.xl, -np.inf), np.where(np.isfinite(p.xu), p.xu, np.inf))
     jac = model.grad if track == "C" else None
     opts = {}
     if budget.get("maxfev") and method == "SLSQP":
         opts["maxiter"] = 1000
-    t0 = time.perf_counter()
+    t0 = model.t0 = time.perf_counter()
+    try:
+        r = _run_scipy(minimize, NonlinearConstraint, model, p, groups, track, jac, bounds, opts, method, remember)
+    except _BudgetExhausted as stop:
+        wall = time.perf_counter() - t0
+        limit = f"{maxtime:g} s" if str(stop) == "time" else f"{maxfev} objective evaluations"
+        return dict(x=last["x"], lam=None, zl=None, zu=None, native_status=-98,
+                    native_message=f"stopped by the harness at the shared budget of {limit} (protocol v3); last iterate reported",
+                    reported_success=False, solver_version=scipy.__version__, wall=wall, solver_time=float("nan"),
+                    nit=last["nit"], notes=[f"budget: {stop}"], options=dict(opts, method=method, budget_enforced=True))
+    wall = time.perf_counter() - t0
+    return dict(x=np.asarray(r.x, float), lam=None, zl=None, zu=None, native_status=int(getattr(r, "status", -99)),
+                native_message=str(getattr(r, "message", "")), reported_success=bool(r.success), solver_version=scipy.__version__,
+                wall=wall, solver_time=float("nan"), nit=int(getattr(r, "nit", -1)), notes=[],
+                options=dict(opts, method=method, budget_enforced=True))
+
+
+def _run_scipy(minimize, NonlinearConstraint, model, p, groups, track, jac, bounds, opts, method, remember):
     if method == "trust-constr":
         cons = []
         if p.m:
             cl = np.where(np.isfinite(p.cl), p.cl, -np.inf); cu = np.where(np.isfinite(p.cu), p.cu, np.inf)
             cons = [NonlinearConstraint(model.c, cl, cu, jac=(model.jac if track == "C" else "2-point"))]
-        r = minimize(model.f, p.x0, jac=jac if jac else "2-point", bounds=bounds, constraints=cons, method="trust-constr",
-                     options={"maxiter": 3000, "verbose": 0})
+        return minimize(model.f, p.x0, jac=jac if jac else "2-point", bounds=bounds, constraints=cons, method="trust-constr",
+                        callback=remember, options={"maxiter": 3000, "verbose": 0})
     else:
         cons = []
         if p.m:
@@ -146,12 +214,8 @@ def solve_scipy(model, track, budget, method):
                 i = groups["hi"]; d = {"type": "ineq", "fun": lambda x, i=i: p.cu[i] - model.c(x)[i]}
                 if track == "C": d["jac"] = lambda x, i=i: -model.jac(x)[i]
                 cons.append(d)
-        r = minimize(model.f, p.x0, jac=jac, bounds=bounds, constraints=cons, method="SLSQP", options=dict(opts, maxiter=1000))
-    wall = time.perf_counter() - t0
-    import scipy
-    return dict(x=np.asarray(r.x, float), lam=None, zl=None, zu=None, native_status=int(getattr(r, "status", -99)),
-                native_message=str(getattr(r, "message", "")), reported_success=bool(r.success), solver_version=scipy.__version__,
-                wall=wall, solver_time=float("nan"), nit=int(getattr(r, "nit", -1)), notes=[], options=dict(opts, method=method))
+        return minimize(model.f, p.x0, jac=jac, bounds=bounds, constraints=cons, method="SLSQP", callback=remember,
+                        options=dict(opts, maxiter=1000))
 
 
 SOLVERS = {
