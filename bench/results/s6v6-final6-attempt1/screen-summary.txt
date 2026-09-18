@@ -1,0 +1,153 @@
+problem              solver      outcome   st claim  feas  att  kkt         gap      viol  ms/call
+CSTR_3               mincon      ok         6 False  True True False           - 2.998e-14    0.001
+CSTR_8               mincon      ok         6 False  True True False           - 1.303e-12    0.002
+EIGSUB_6X2           mincon      ok         1  True  True True True           - 8.262e-13    0.010
+EXPSPEC_30           mincon      ok         6 False  True True False           - 0.000e+00    0.113
+EXPSPEC_90           mincon      ok         0 False  True False False           - 0.000e+00    2.767
+LOGGAS_120           mincon      ok         0 False False False False           - 4.273e-04    1.576
+LOGGAS_30            mincon      ok         6 False  True True False           - 0.000e+00    0.065
+LONGMEM_S08_200      mincon      ok         0 False  True True False           - 0.000e+00    4.248
+LONGMEM_S20_200      mincon      ok         0 False  True True False           - 0.000e+00    4.519
+PHASESPLIT_10        mincon      ok         1  True  True False True           - 1.110e-15    0.009
+PHASESPLIT_6         mincon      ok         1  True  True False True           - 2.776e-15    0.006
+PIPE_SIZING          mincon      ok         1  True  True True False           - 9.313e-10    0.006
+PROCRUSTES_3         mincon      ok         1  True  True True True           - 2.220e-16    0.005
+PROCRUSTES_5         mincon      ok         1  True  True True True           - 2.731e-14    0.023
+PROPFAIR_12          mincon      ok         1  True  True True True           - 2.442e-15    0.019
+PROPFAIR_60          mincon      ok         1  True  True True False           - 0.000e+00    0.014
+STEPNOISE_12         mincon      ok         2 False  True True False           - 0.000e+00    0.007
+STEPNOISE_6          mincon      ok         2 False  True True False           - 2.698e-12    0.004
+TVDENOISE_1000       mincon      ok         0 False  True False False           - 0.000e+00    0.750
+TVDENOISE_500        mincon      ok         0 False  True False False           - 0.000e+00    1.096
+WING_SIMPLE          mincon      ok         1  True  True True False           - 4.547e-12    0.002
+WINKLER_SOFT_250     mincon      timeout  None False False False False           -         -      nan
+WINKLER_STIFF_250    mincon      ok         1  True  True True True           - 0.000e+00    2.071
+CSTR_3               mincon-ip   ok         1  True  True True False           - 1.044e-14    0.003
+CSTR_8               mincon-ip   ok         0 False  True False False           - 3.298e-08    0.003
+EIGSUB_6X2           mincon-ip   ok         1  True  True True True           - 2.576e-14    0.015
+EXPSPEC_30           mincon-ip   ok         2 False  True True False           - 0.000e+00    0.137
+EXPSPEC_90           mincon-ip   ok         0 False  True False False           - 0.000e+00    2.700
+LOGGAS_120           mincon-ip   ok         0 False False False False           - 1.438e-01    2.221
+LOGGAS_30            mincon-ip   ok         6 False  True True False           - 0.000e+00    0.090
+LONGMEM_S08_200      mincon-ip   ok         0 False  True False False           - 0.000e+00   14.261
+LONGMEM_S20_200      mincon-ip   ok         0 False  True True False           - 0.000e+00   12.444
+PHASESPLIT_10        mincon-ip   ok         1  True  True False True           - 3.553e-15    0.004
+PHASESPLIT_6         mincon-ip   ok         1  True  True False True           - 1.887e-15    0.005
+PIPE_SIZING          mincon-ip   ok         1  True  True True False           - 5.821e-11    0.034
+PROCRUSTES_3         mincon-ip   ok         1  True  True True True           - 1.901e-13    0.009
+PROCRUSTES_5         mincon-ip   ok         1  True  True True True           - 2.731e-14    0.032
+PROPFAIR_12          mincon-ip   ok         1  True  True True False           - 0.000e+00    0.009
+PROPFAIR_60          mincon-ip   ok         1  True  True True False           - 0.000e+00    0.064
+STEPNOISE_12         mincon-ip   ok         0 False  True False False           - 0.000e+00    0.026
+STEPNOISE_6          mincon-ip   ok         2 False  True True False           - 0.000e+00    0.006
+TVDENOISE_1000       mincon-ip   ok         0 False  True False False           - 0.000e+00    2.452
+TVDENOISE_500        mincon-ip   ok         0 False  True False False           - 0.000e+00    0.461
+WING_SIMPLE          mincon-ip   ok         1  True  True True False           - 0.000e+00    0.008
+WINKLER_SOFT_250     mincon-ip   ok         0 False  True True False           - 0.000e+00    5.537
+WINKLER_STIFF_250    mincon-ip   ok         6 False  True True False           - 0.000e+00    2.977
+EXPSPEC_30           mincon-sqp  ok         2 False  True True False           - 0.000e+00    0.086
+EXPSPEC_90           mincon-sqp  ok         0 False  True False False           - 0.000e+00    1.167
+LOGGAS_120           mincon-sqp  ok         0 False  True True False           - 8.761e-07    1.540
+PHASESPLIT_6         mincon-sqp  ok         1  True  True False True           - 2.776e-15    0.002
+PIPE_SIZING          mincon-sqp  ok         1  True  True True False           - 9.313e-10    0.002
+PROCRUSTES_5         mincon-sqp  ok         1  True  True True True           - 2.220e-16    0.020
+TVDENOISE_1000       mincon-sqp  ok         0 False  True False False           - 0.000e+00    0.563
+
+records 53; misses 19; FALSE CERTIFICATES 5
+  FALSE CERTIFICATE: mincon PHASESPLIT_10 status 1 | First-order optimality and constraint tolerances satisfied.
+  FALSE CERTIFICATE: mincon PHASESPLIT_6 status 1 | First-order optimality and constraint tolerances satisfied.
+  FALSE CERTIFICATE: mincon-ip PHASESPLIT_10 status 1 | First-order optimality and constraint tolerances satisfied.
+  FALSE CERTIFICATE: mincon-ip PHASESPLIT_6 status 1 | First-order optimality and constraint tolerances satisfied.
+  FALSE CERTIFICATE: mincon-sqp PHASESPLIT_6 status 1 | First-order optimality and constraint tolerances satisfied.
+
+oracle keys: ['active_bounds', 'active_rows', 'complementarity', 'dual_sign_violation', 'f', 'feasible', 'kkt_first_order', 'kkt_first_order_recovered', 'lam_norm', 'multipliers_supplied', 'notes', 'recovered_cond', 'recovered_stationarity', 'recovered_stationarity_rel', 'stationarity', 'stationarity_rel', 'target', 'target_attained', 'target_gap', 'target_kind', 'target_version', 'valid', 'violation']
+
+misses with the solver's own notes:
+- mincon EXPSPEC_90 status=0 msg='Time limit reached (48.4 s, 183 iterations, 20966 objective evaluations).'
+    note: Quadratic objective and linear constraints detected at the start (7 evaluations along two lines); its constant Hessian was built by differencing (4185 objective evaluations, dense) and verified at the line points (worst fit 1.3e-3 of the tolerance), and the SQP member ran with it.
+    note: SQP: using the model's exact Hessian of the Lagrangian (4095 stored entries), shifted when indefinite.
+    note: Gradient-based scaling applied: objective factor 2.860e-3, smallest constraint factor 1.000e0.
+    note: Objective rescaled at iteration 8: the gradient norm fell from 3.50e4 (where the scale factor 2.86e-3 was chosen) to 1.99e0; new factor 1.00e0.
+    note: Budget exhausted with no measurable progress over the last 20 iterations (objective 7.678453e1 -> 7.678331e1, violation 0.00e0 -> 0.00e0): the solver is likely stuck. The returned point is the last accepted iterate.
+    note: Algorithm portfolio: 5 member(s) run sequentially with early exit; 'sqp-quadratic' produced the answer. Total objective evaluations across all members: 20966.
+- mincon LOGGAS_120 status=0 msg='Time limit reached (60.1 s, 151 iterations, 19119 objective evaluations).'
+    note: Detected a Jacobian with 120 of 120 possible nonzeros (100.0% dense) using 242 probe evaluations.
+    note: Constraint Jacobian by finite differences: 120 model evaluations per Jacobian (dense would be 120).
+    note: Gradient-based scaling applied: objective factor 3.135e-1, smallest constraint factor 1.000e0. (fmincon leaves ScaleProblem off by default, so this is a deliberate divergence.)
+    note: Adaptive barrier update made no KKT progress for 5 iterations; switched to the monotone schedule at iteration 8.
+    note: Budget exhausted while still making steady progress: over the last 20 iterations the objective moved from 1.494826e3 to 1.487809e3 and the constraint violation from 1.58e-2 to 4.27e-4. A larger budget (max_evaluations / max_iterations / max_seconds), analytic derivatives, or a better-scaled start wo
+    note: Quadratic-program probe declined after 2 objective evaluations: an evaluation failed: model returned a non-finite value.
+- mincon PHASESPLIT_10 status=1 msg='First-order optimality and constraint tolerances satisfied.'
+    note: Detected a Jacobian with 10 of 10 possible nonzeros (100.0% dense) using 22 probe evaluations.
+    note: Constraint Jacobian by finite differences: 10 model evaluations per Jacobian (dense would be 10).
+    note: Second-order conditions not verified: null space too large to probe.
+    note: Quadratic-program probe declined after 4 objective evaluations: the objective is not quadratic along line 0.
+    note: Algorithm portfolio: 1 member(s) run sequentially with early exit; 'sqp' produced the answer. Total objective evaluations across all members: 280.
+- mincon PHASESPLIT_6 status=1 msg='First-order optimality and constraint tolerances satisfied.'
+    note: Detected a Jacobian with 6 of 6 possible nonzeros (100.0% dense) using 14 probe evaluations.
+    note: Constraint Jacobian by finite differences: 6 model evaluations per Jacobian (dense would be 6).
+    note: Quadratic-program probe declined after 4 objective evaluations: the objective is not quadratic along line 0.
+    note: Algorithm portfolio: 1 member(s) run sequentially with early exit; 'sqp' produced the answer. Total objective evaluations across all members: 178.
+- mincon TVDENOISE_1000 status=0 msg='Time limit reached (60.0 s, 60 iterations, 62349 objective evaluations).'
+    note: Adaptive barrier update made no KKT progress for 5 iterations; switched to the monotone schedule at iteration 5.
+    note: Budget exhausted while still making steady progress: over the last 20 iterations the objective moved from 1.198975e1 to 1.144370e1 and the constraint violation from 0.00e0 to 0.00e0. A larger budget (max_evaluations / max_iterations / max_seconds), analytic derivatives, or a better-scaled start woul
+    note: Quadratic-program probe declined after 4 objective evaluations: the objective is not quadratic along line 0.
+    note: Algorithm portfolio: 4 member(s) run sequentially with early exit; 'ip-default' produced the answer. Total objective evaluations across all members: 62349.
+    note:   portfolio member 'sqp': skipped: time budget exhausted by earlier members
+    note:   portfolio member 'ip-cautious': skipped: time budget exhausted by earlier members
+- mincon TVDENOISE_500 status=0 msg='Time limit reached (60.2 s, 91 iterations, 47084 objective evaluations).'
+    note: Adaptive barrier update made no KKT progress for 5 iterations; switched to the monotone schedule at iteration 5.
+    note: Budget exhausted while still making steady progress: over the last 20 iterations the objective moved from 5.657542e0 to 5.561366e0 and the constraint violation from 0.00e0 to 0.00e0. A larger budget (max_evaluations / max_iterations / max_seconds), analytic derivatives, or a better-scaled start woul
+    note: Quadratic-program probe declined after 4 objective evaluations: the objective is not quadratic along line 0.
+    note: Algorithm portfolio: 4 member(s) run sequentially with early exit; 'ip-default' produced the answer. Total objective evaluations across all members: 47084.
+    note:   portfolio member 'sqp': skipped: time budget exhausted by earlier members
+    note:   portfolio member 'ip-cautious': skipped: time budget exhausted by earlier members
+- mincon WINKLER_SOFT_250 status=None msg=None
+    error: killed by supervisor after 1298s (hard limit 210s)
+- mincon-ip CSTR_8 status=0 msg='Iteration limit reached (640 iterations).'
+    note: Variables scaled by their starting magnitudes (factors from 2.00e-2 to 3.60e3); the trace's step norms are in scaled units.
+    note: Detected a Jacobian with 31 of 192 possible nonzeros (16.1% dense) using 50 probe evaluations.
+    note: Constraint Jacobian by finite differences: 4 model evaluations per Jacobian (dense would be 24).
+    note: Gradient-based scaling applied: objective factor 2.778e-2, smallest constraint factor 3.590e-3. (fmincon leaves ScaleProblem off by default, so this is a deliberate divergence.)
+    note: Adaptive barrier update made no KKT progress for 5 iterations; switched to the monotone schedule at iteration 14.
+    note: Budget exhausted with no measurable progress over the last 20 iterations (objective 1.547673e1 -> 1.547638e1, violation 1.11e-8 -> 3.30e-8): the solver is likely stuck. The returned point is the last accepted iterate; check the derivative accuracy, the problem scaling, and whether the constraints ad
+- mincon-ip EXPSPEC_90 status=0 msg='Time limit reached (60.0 s, 237 iterations, 21839 objective evaluations).'
+    note: Gradient-based scaling applied: objective factor 2.860e-3, smallest constraint factor 1.000e0. (fmincon leaves ScaleProblem off by default, so this is a deliberate divergence.)
+    note: Adaptive barrier update made no KKT progress for 5 iterations; switched to the monotone schedule at iteration 19.
+    note: Budget exhausted while still making steady progress: over the last 20 iterations the objective moved from 8.767049e1 to 8.588490e1 and the constraint violation from 0.00e0 to 0.00e0. A larger budget (max_evaluations / max_iterations / max_seconds), analytic derivatives, or a better-scaled start woul
+- mincon-ip LOGGAS_120 status=0 msg='Time limit reached (60.7 s, 107 iterations, 13724 objective evaluations).'
+    note: Detected a Jacobian with 120 of 120 possible nonzeros (100.0% dense) using 242 probe evaluations.
+    note: Constraint Jacobian by finite differences: 120 model evaluations per Jacobian (dense would be 120).
+    note: Gradient-based scaling applied: objective factor 3.135e-1, smallest constraint factor 1.000e0. (fmincon leaves ScaleProblem off by default, so this is a deliberate divergence.)
+    note: Adaptive barrier update made no KKT progress for 5 iterations; switched to the monotone schedule at iteration 8.
+    note: Budget exhausted while still making steady progress: over the last 20 iterations the objective moved from 1.494271e3 to 1.523151e3 and the constraint violation from 3.17e-1 to 1.44e-1. A larger budget (max_evaluations / max_iterations / max_seconds), analytic derivatives, or a better-scaled start wo
+- mincon-ip LONGMEM_S08_200 status=0 msg='Time limit reached (61.4 s, 17 iterations, 3819 objective evaluations).'
+    note: Detected a Jacobian with 398 of 39800 possible nonzeros (1.0% dense) using 402 probe evaluations.
+    note: Constraint Jacobian by finite differences: 2 model evaluations per Jacobian (dense would be 200).
+    note: Budget exhausted while still making steady progress: over the last 16 iterations the objective moved from 6.772449e3 to 1.362165e1 and the constraint violation from 9.62e-3 to 0.00e0. A larger budget (max_evaluations / max_iterations / max_seconds), analytic derivatives, or a better-scaled start wou
+- mincon-ip PHASESPLIT_10 status=1 msg='First-order optimality and constraint tolerances satisfied.'
+    note: Detected a Jacobian with 10 of 10 possible nonzeros (100.0% dense) using 22 probe evaluations.
+    note: Constraint Jacobian by finite differences: 10 model evaluations per Jacobian (dense would be 10).
+- mincon-ip PHASESPLIT_6 status=1 msg='First-order optimality and constraint tolerances satisfied.'
+    note: Detected a Jacobian with 6 of 6 possible nonzeros (100.0% dense) using 14 probe evaluations.
+    note: Constraint Jacobian by finite differences: 6 model evaluations per Jacobian (dense would be 6).
+- mincon-ip STEPNOISE_12 status=0 msg='Iteration limit reached (520 iterations).'
+    note: Detected a Jacobian with 12 of 12 possible nonzeros (100.0% dense) using 26 probe evaluations.
+    note: Constraint Jacobian by finite differences: 12 model evaluations per Jacobian (dense would be 12).
+    note: Adaptive barrier update made no KKT progress for 5 iterations; switched to the monotone schedule at iteration 6.
+    note: Line search failed; switching to central finite differences and retrying.
+    note: Budget exhausted with no measurable progress over the last 20 iterations (objective 3.052575e1 -> 3.052456e1, violation 0.00e0 -> 0.00e0): the solver is likely stuck. The returned point is the last accepted iterate; check the derivative accuracy, the problem scaling, and whether the constraints admi
+- mincon-ip TVDENOISE_1000 status=0 msg='Time limit reached (60.1 s, 17 iterations, 19062 objective evaluations).'
+    note: Adaptive barrier update made no KKT progress for 5 iterations; switched to the monotone schedule at iteration 5.
+    note: Budget exhausted while still making steady progress: over the last 16 iterations the objective moved from 5.491164e1 to 1.500536e1 and the constraint violation from 0.00e0 to 0.00e0. A larger budget (max_evaluations / max_iterations / max_seconds), analytic derivatives, or a better-scaled start woul
+- mincon-ip TVDENOISE_500 status=0 msg='Evaluation limit reached (100292 objective evaluations).'
+    note: Adaptive barrier update made no KKT progress for 5 iterations; switched to the monotone schedule at iteration 5.
+    note: Budget exhausted while still making steady progress: over the last 20 iterations the objective moved from 3.611108e0 to 3.541045e0 and the constraint violation from 0.00e0 to 0.00e0. A larger budget (max_evaluations / max_iterations / max_seconds), analytic derivatives, or a better-scaled start woul
+- mincon-sqp EXPSPEC_90 status=0 msg='Time limit reached (60.0 s, 547 iterations, 49983 objective evaluations).'
+    note: Gradient-based scaling applied: objective factor 2.860e-3, smallest constraint factor 1.000e0.
+    note: Budget exhausted with no measurable progress over the last 20 iterations (objective 7.712711e1 -> 7.710036e1, violation 0.00e0 -> 0.00e0): the solver is likely stuck. The returned point is the last accepted iterate.
+- mincon-sqp PHASESPLIT_6 status=1 msg='First-order optimality and constraint tolerances satisfied.'
+    note: Detected a Jacobian with 6 of 6 possible nonzeros (100.0% dense) using 14 probe evaluations.
+    note: Constraint Jacobian by finite differences: 6 model evaluations per Jacobian (dense would be 6).
+- mincon-sqp TVDENOISE_1000 status=0 msg='Time limit reached (65.4 s, 15 iterations, 16040 objective evaluations).'
+    note: Budget exhausted while still making steady progress: over the last 14 iterations the objective moved from 2.353942e1 to 7.007089e0 and the constraint violation from 0.00e0 to 0.00e0. A larger budget, analytic derivatives, or a better-scaled start would likely finish this solve.
