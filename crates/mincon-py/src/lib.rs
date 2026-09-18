@@ -386,7 +386,7 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
     }
 
     if let Some(v) = get!("maxiter", usize) {
-        o.max_iterations = v;
+        o.max_iterations = Some(v);
     }
     if let Some(v) = get!("maxfev", u64) {
         o.max_evaluations = Some(v);
@@ -407,6 +407,9 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
     }
     if let Some(v) = get!("ctol", f64) {
         o.tol.feasibility = v;
+    }
+    if let Some(v) = get!("xtol", f64) {
+        o.tol.step = v;
     }
     if let Some(v) = get!("threads", usize) {
         o.threads = Some(v);
@@ -440,10 +443,9 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
         o.scaling = match v.as_str() {
             "none" => ScalingMode::None,
             "gradient" | "gradient-based" => ScalingMode::GradientBased,
-            "equilibration" => ScalingMode::Equilibration,
             other => {
                 return Err(PyValueError::new_err(format!(
-                    "unknown scaling '{other}'; use 'none', 'gradient' or 'equilibration'"
+                    "unknown scaling '{other}'; use 'none' or 'gradient'"
                 )))
             }
         };
@@ -845,7 +847,8 @@ fn minimize(
     d.set_item("fun", report.solution.f)?;
     d.set_item("success", report.exit_flag.is_success())?;
     d.set_item("status", report.exit_flag as i32)?;
-    d.set_item("message", report.exit_flag.message())?;
+    d.set_item("message", report.message())?;
+    d.set_item("limit", report.limit.map(mincon_core::Limit::name))?;
     d.set_item("nit", report.iterations)?;
     d.set_item("nfev", report.f_evals)?;
     d.set_item("njev", report.g_evals)?;

@@ -80,7 +80,11 @@ let r = minimize(&p, &Options::default())?;
 > member.
 > Earlier in the round a friction audit of fourteen realistic problems
 > (`bench/results/s7-friction`) went from 12/14 to 13/14 as D11 and D12 were
-> fixed (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`). Development
+> fixed (`docs/22_ROUND5_ROBUSTNESS_PLAN.md`); a fifteenth problem, a
+> heat-flux surface design with 1384 linear rows, was added on September 18
+> (`bench/results/s7-friction-b`: 14/15, every solver attains it, mincon at
+> 4× fmincon-sqp's evaluations because its SQP member stops short of a
+> degenerate vertex and the interior-point member finishes). Development
 > gate: Rust tests, 56/56 fixtures with independent checks for the portfolio
 > and each member (SQP alone: 55/56, HS13 within 4e-4), 37 Python tests.
 
@@ -112,8 +116,11 @@ an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
   (`docs/20_SQP_MATHEMATICS.md`, `docs/21_LARGE_N_CURVATURE_PLAN.md`).
 * **Termination you can trust** — the scaled KKT test is guarded by the
   stationarity relative to the gradient in your units (the same measure the
-  benchmark's independent oracle uses), budget exits say whether the solve
-  was still progressing, and degenerate multipliers are reported as such.
+  benchmark's independent oracle uses), budget exits say which limit bound
+  (`res.limit`: iterations, evaluations or time) and whether the solve was
+  still progressing, and degenerate multipliers are reported as such. An
+  iteration cap you set is a limit on the whole solve, shared across the
+  portfolio's members like the evaluation and time budgets.
 * **Sparse `LDL^T`** written from scratch: dynamic regularization, inertia
   certified by Sylvester's law, element-growth detection, iterative refinement.
   **No HSL, no MUMPS, no Fortran** — which is what makes the wheel possible.

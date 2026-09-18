@@ -156,22 +156,24 @@ pub fn probe<'a, P: Nlp + ?Sized>(nlp: &'a P, opts: &Options) -> Option<Quadrati
 
 /// [`probe`] returning the objective evaluations spent even when it declines
 /// (three per line at most, plus the build when it was attempted), so the
-/// caller can keep the count honest.
+/// caller can keep the count honest, and the reason for a decline so the
+/// report can say why (it used to reach only `MINCON_QP_DEBUG=1` stderr).
 pub fn probe_counted<'a, P: Nlp + ?Sized>(
     nlp: &'a P,
     opts: &Options,
-) -> (Option<QuadraticModel<'a, P>>, u64) {
+) -> (Option<QuadraticModel<'a, P>>, u64, Option<String>) {
     let debug = std::env::var_os("MINCON_QP_DEBUG").is_some();
     match probe_inner(nlp, opts) {
         Ok(q) => {
             let spent = q.f_evals;
-            (Some(q), spent)
+            (Some(q), spent, None)
         }
         Err((why, spent)) => {
+            let reason = why.to_string();
             if debug {
-                eprintln!("quadratic probe declined: {why} after {spent} objective evaluations");
+                eprintln!("quadratic probe declined: {reason} after {spent} objective evaluations");
             }
-            (None, spent)
+            (None, spent, Some(reason))
         }
     }
 }
@@ -1401,7 +1403,7 @@ mod tests {
             x.iter().map(|v| v * v).sum::<f64>() + 0.001 * s * s
         })
         .start_at(&vec![0.4; n]);
-        let (q, spent) = probe_counted(&dense, &structured());
+        let (q, spent, _) = probe_counted(&dense, &structured());
         assert!(q.is_none());
         assert!(spent <= 7 + 4 * n as u64, "spent {spent}");
         assert!(spent > 7 + 2 * n as u64, "spent {spent}");
@@ -1413,7 +1415,7 @@ mod tests {
             100.0 * (x[1] - x[0] * x[0]).powi(2) + (1.0 - x[0]).powi(2)
         })
         .start_at(&[-1.2, 1.0]);
-        let (q, spent) = probe_counted(&p, &Options::default());
+        let (q, spent, _) = probe_counted(&p, &Options::default());
         assert!(q.is_none());
         assert_eq!(spent, 4);
     }
@@ -1506,7 +1508,7 @@ mod tests {
         let cubic = Problem::new(2, |x| x[0] * x[0] + 2.0 * x[1] * x[1])
             .start_at(&[0.5, 0.5])
             .inequality(1, |x, c| c[0] = x[0] * x[0] * x[0] + x[1] - 1.0);
-        let (q, spent) = probe_counted(&cubic, &with_rows());
+        let (q, spent, _) = probe_counted(&cubic, &with_rows());
         assert!(q.is_none());
         assert_eq!(spent, 4);
     }

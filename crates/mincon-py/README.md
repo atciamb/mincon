@@ -49,7 +49,11 @@ For example, `fmincon(fun, x0, A=[[1, 1]], b=[1], lb=0)` uses only linear
 constraints and bounds. The result is a Python object, not MATLAB's output
 tuple. `result.multipliers` groups multipliers with MATLAB's signs, readable
 as `result.multipliers["eqlin"]` or `result.multipliers.eqlin`. Options use
-Python names such as `options={"maxiter": 500}`, not MATLAB option names;
+Python names such as `options={"maxiter": 500}`; MATLAB's names are accepted
+as aliases where an equivalent exists (`MaxIterations`,
+`MaxFunctionEvaluations`, `OptimalityTolerance`, `ConstraintTolerance`,
+`StepTolerance`, `FiniteDifferenceType`, `Display`, `Algorithm`), and a
+MATLAB option with no equivalent raises rather than being ignored.
 `options={"disp": True}` streams one line per iteration and prints the final
 line (`"display": "final"` prints only the last), and `"scaling": True` /
 `False` map to the default gradient scaling / none; `"scale_variables"` is
@@ -103,7 +107,10 @@ to your objective and nonlinear constraints. Inspect `help(fmincon)` or
 - `maxcv`: constraint violation in your original units.
 - `usable`: a usable-point status; it does not replace checking `success`.
 - `message`, `notes`: termination reason and solver diagnostics, including
-  which portfolio member produced the answer and every compromise made.
+  which portfolio member produced the answer, why the quadratic-program
+  probe declined, and every compromise made.
+- `limit`: at a budget exit (`status == 0`), which limit bound:
+  `'iterations'`, `'evaluations'` or `'time'`; `None` otherwise.
 - `nfev`, `nit`: objective calls across the whole portfolio and iterations.
 - `trace`: one row per iteration (objective, violation, optimality, step,
   barrier parameter), the cheapest way to see what a solve did.
@@ -132,12 +139,15 @@ multistart.
 Limits: Python callbacks run serially, one point per call, so a
 finite-difference gradient in `n` variables costs `n` model evaluations per
 iteration (`2n` with `finite_diff='central'`); pass `jac=` when you have it.
-`maxfev` and `maxtime` are shared across the portfolio and checked between
-iterations, so they cannot interrupt a running callback; `maxiter` applies to
-each portfolio member separately. Sparse Jacobians and `jac_sparsity` from
-Python, limited-memory curvature (dense quasi-Newton models make problems
-beyond a few hundred variables expensive under finite differences), batched
-or parallel model evaluation, and MATLAB option names are not implemented.
+`maxfev`, `maxtime` and a `maxiter` you set are shared across the portfolio
+and checked between iterations, so they cannot interrupt a running callback
+(the default iteration cap of `400 + 10 n` applies to each member). Linear
+rows given as `A`, `b`, `Aeq`, `beq` carry their exact Jacobian; nonlinear
+rows use finite differences unless `nonlcon_jac` is supplied. Sparse
+Jacobians and `jac_sparsity` from Python, limited-memory curvature (dense
+quasi-Newton models make problems beyond a few hundred variables expensive
+under finite differences), and batched or parallel model evaluation are not
+implemented.
 
 The local development gate is 56/56 fixture outcomes through the default
 portfolio (53 strict `Optimal` returns; passes also include accurate points

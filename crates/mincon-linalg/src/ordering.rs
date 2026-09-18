@@ -11,9 +11,11 @@
 //! is exactly the kind of thing that should be measured rather than guessed.
 //!
 //! The task is to wire in the `amd` crate (v0.2.2, a port of SuiteSparse AMD,
-//! BSD-3-Clause, so licence-compatible) behind [`Ordering::Amd`], and to gate
-//! the switch on the fill and factor-time comparison in
-//! `docs/08_BENCHMARK_PROTOCOL.md`. Until then [`Ordering::Rcm`] is the
+//! BSD-3-Clause, so licence-compatible) behind a new `Ordering::Amd` variant
+//! (there is deliberately none today: a variant that fell back to RCM was an
+//! option that did not do what its name said), and to gate the switch on the
+//! fill and factor-time comparison in `docs/08_BENCHMARK_PROTOCOL.md`. Until
+//! then [`Ordering::Rcm`] is the
 //! default: it is genuinely good on the banded systems that come out of
 //! discretized optimal control, which is a large share of real NLPs, and it is
 //! 60 lines that are obviously correct.
@@ -30,11 +32,6 @@ pub enum Ordering {
     /// mediocre on unstructured ones.
     #[default]
     Rcm,
-    /// Approximate minimum degree. **Not yet implemented** — see the module
-    /// docs. Selecting it currently falls back to [`Ordering::Rcm`] and is
-    /// reported in the solve notes rather than failing, so that benchmark
-    /// scripts written against the final API run today.
-    Amd,
 }
 
 /// Compute a permutation for the symmetric matrix whose **upper triangle**
@@ -50,7 +47,7 @@ pub fn compute_ordering(
 ) -> Vec<usize> {
     match kind {
         Ordering::Natural => (0..n).collect(),
-        Ordering::Rcm | Ordering::Amd => rcm(n, col_ptr, row_idx),
+        Ordering::Rcm => rcm(n, col_ptr, row_idx),
     }
 }
 

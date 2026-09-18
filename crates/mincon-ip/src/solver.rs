@@ -30,12 +30,10 @@
 //! Soft and reduced-elastic feasibility restoration are implemented; see
 //! `docs/12_RESTORATION_IMPLEMENTATION.md` for the variant and its evidence.
 //!
-//! Current implementation limitations:
-//!
-//! 1. **Limited-memory BFGS.** Dense BFGS caps usable `n` at a couple of
-//!    thousand.
-//! 2. **Adaptive barrier update.** Only `Monotone` is wired up.
-//! 3. **The watchdog and qualified inertia-free fallback.**
+//! Not implemented, and not exposed as options either: limited-memory BFGS
+//! (dense BFGS caps usable `n` at a couple of thousand), a watchdog step, and
+//! an inertia-free regularisation fallback (every `RegularizationMode` still
+//! requires certified inertia, see `kkt.rs`).
 
 use std::time::Instant;
 
@@ -47,7 +45,7 @@ const DIVERGING_GROWTH_FACTOR: f64 = 1e10;
 const STALL_ITERATIONS: usize = 8;
 
 use mincon_core::{
-    Algorithm, EvalError, ExitFlag, HessianMode, IterationRecord, Nlp, Options, PivotSigns,
+    Algorithm, EvalError, ExitFlag, HessianMode, IterationRecord, Limit, Nlp, Options, PivotSigns,
     ScalingMode, Solution, SolveError, SolveReport, Sparsity, Timings,
 };
 use mincon_diff::Evaluator;
@@ -162,6 +160,8 @@ struct Solver<'a, P: Nlp + ?Sized> {
 
     notes: Vec<String>,
     start: Instant,
+    /// Which limit ended the solve, set at a budget exit.
+    limit: Option<Limit>,
     /// Unscaled objective at the starting point, for the divergence diagnosis.
     f0_user: f64,
 }
@@ -243,26 +243,9 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                     upper_values: vec![0.0; nnz],
                 }
             }
-            (HessianMode::DenseBfgs | HessianMode::Auto | HessianMode::LimitedMemoryBfgs, _) => {
-                if matches!(opts.hessian, HessianMode::LimitedMemoryBfgs) {
-                    notes.push(
-                        "Limited-memory BFGS is not implemented yet; using dense BFGS.".into(),
-                    );
-                }
-                Hess::Bfgs(Box::new(DenseBfgs::with_curvature_rescale(
-                    n,
-                    opts.bfgs_curvature_rescale,
-                )))
-            }
-            (HessianMode::FiniteDifference, _) => {
-                notes.push(
-                    "Finite-difference Hessians are not implemented yet; using dense BFGS.".into(),
-                );
-                Hess::Bfgs(Box::new(DenseBfgs::with_curvature_rescale(
-                    n,
-                    opts.bfgs_curvature_rescale,
-                )))
-            }
+            (HessianMode::DenseBfgs | HessianMode::Auto, _) => Hess::Bfgs(Box::new(
+                DenseBfgs::with_curvature_rescale(n, opts.bfgs_curvature_rescale),
+            )),
         };
 
         // Transposed Jacobian, embedded into the nv-row primal space.
@@ -318,6 +301,7 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             correction: CorrectionParams::default(),
             notes,
             start: Instant::now(),
+            limit: None,
             f0_user: f64::NAN,
         })
     }
@@ -1005,15 +989,16 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
             }
             // Progress history for the verdict given at a budget exit.
             progress.push((point.f / self.d_f, violation));
-            let budget_exit = self.opts.max_evaluations.is_some_and(|limit| {
+            let evaluations_hit = self.opts.max_evaluations.is_some_and(|limit| {
                 mincon_core::EvalCounters::get(&self.eval.counters().f) >= limit
-            }) || self
+            });
+            let time_hit = self
                 .opts
                 .max_seconds
-                .is_some_and(|limit| self.start.elapsed().as_secs_f64() >= limit)
-                || iterations >= max_iter;
-            if budget_exit {
+                .is_some_and(|limit| self.start.elapsed().as_secs_f64() >= limit);
+            if let Some(which) = Limit::which(evaluations_hit, time_hit, iterations >= max_iter) {
                 exit = ExitFlag::MaxReached;
+                self.limit = Some(which);
                 self.notes
                     .push(progress_verdict(&progress, self.opts.tol.feasibility));
                 break;
@@ -1845,6 +1830,12 @@ impl<'a, P: Nlp + ?Sized> Solver<'a, P> {
                 z_u: z_u_user,
             },
             exit_flag: exit,
+            // A loop that ran out without a break is the iteration cap.
+            limit: if exit == ExitFlag::MaxReached {
+                self.limit.or(Some(Limit::Iterations))
+            } else {
+                None
+            },
             algorithm: Algorithm::InteriorPoint,
             iterations,
             f_evals: mincon_core::EvalCounters::get(&counters.f),

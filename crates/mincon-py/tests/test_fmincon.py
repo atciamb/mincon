@@ -44,7 +44,7 @@ def test_bound_multiplier_and_no_outside_probes():
 @pytest.mark.parametrize("kwargs", [
     {"A": [[1., 2.]], "b": [1.]}, {"A": [[1.]]},
     {"Aeq": [[1.]], "beq": [1., 2.]}, {"lb": [0., 0.]},
-    {"options": {"MaxIterations": 10}},
+    {"options": {"TolX": 10}},
     {"lb": float("nan")}, {"lb": 2., "ub": 1.},
 ])
 def test_invalid_input_is_rejected_before_callbacks(kwargs):
@@ -298,3 +298,51 @@ def test_warm_start_resumes_an_interrupted_solve():
     assert any("Warm start" in note for note in warm.notes)
     with pytest.raises(ValueError, match="warm_start does not match"):
         mincon.fmincon(f, x0, warm_start={"lambda": [1., 2.], "z_l": np.zeros(n), "z_u": np.zeros(n)}, **kw)
+
+
+def test_matlab_option_names_are_accepted_on_the_facade():
+    f = lambda x: np.sum((x-1.)**2)  # noqa: E731
+    r = mincon.fmincon(f, [0., 0.], A=[[1., 1.]], b=[1.],
+                      options={"MaxIterations": 50, "OptimalityTolerance": 1e-8, "Display": "off",
+                               "Algorithm": "sqp", "ConstraintTolerance": 1e-8})
+    assert r.success, r
+    np.testing.assert_allclose(r.x, [0.5, 0.5], atol=1e-6)
+    with pytest.raises(ValueError, match="TolX"):
+        mincon.fmincon(f, [0., 0.], options={"TolX": 1e-6})
+    with pytest.raises(ValueError, match="UseParallel"):
+        mincon.fmincon(f, [0., 0.], options={"UseParallel": True})
+    with pytest.raises(ValueError, match="not both"):
+        mincon.fmincon(f, [0., 0.], options={"MaxIterations": 5, "maxiter": 5})
+    with pytest.raises(ValueError, match="SpecifyObjectiveGradient"):
+        mincon.fmincon(f, [0., 0.], options={"SpecifyObjectiveGradient": True})
+    with pytest.raises(ValueError, match="active-set"):
+        mincon.fmincon(f, [0., 0.], options={"Algorithm": "active-set"})
+
+
+def test_limit_names_the_binding_limit_and_a_set_iteration_cap_is_shared():
+    def f(x):
+        return float(np.sum((x-1.)**4))
+    r = mincon.fmincon(f, [0.3, -0.2, 0.1], options={"maxiter": 2})
+    assert r.status == 0 and r.limit == "iterations", r
+    assert r.message.startswith("Iteration limit reached"), r.message
+    assert r.nit <= 2
+    assert any("iteration budget" in n for n in r.notes), r.notes
+    r = mincon.fmincon(f, [0.3, -0.2, 0.1], options={"maxfev": 12})
+    assert r.status == 0 and r.limit == "evaluations", r
+    assert r.message.startswith("Evaluation limit reached"), r.message
+    r = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.])
+    assert r.success and r.limit is None
+
+
+def test_linear_rows_carry_their_jacobian():
+    r = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.], A=[[1., 1.]], b=[1.], Aeq=[[1., -1.]], beq=[0.])
+    assert r.success, r
+    assert r.ncjev >= 1, "the linear rows' Jacobian should be analytic"
+    assert not any("Constraint Jacobian by finite differences" in n for n in r.notes), r.notes
+
+
+def test_step_tolerance_option_is_accepted():
+    r = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.], options={"xtol": 1e-12})
+    assert r.success
+    r = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.], options={"StepTolerance": 1e-12, "MaxIterations": None})
+    assert r.success

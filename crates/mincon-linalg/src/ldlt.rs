@@ -855,7 +855,7 @@ mod tests {
         let n = a.nrows();
         let rhs: Vec<f64> = (0..n).map(|i| 1.0 + i as f64 * 0.3).collect();
         let mut reference: Option<Vec<f64>> = None;
-        for ord in [Ordering::Natural, Ordering::Rcm, Ordering::Amd] {
+        for ord in [Ordering::Natural, Ordering::Rcm] {
             let sym = Arc::new(Symbolic::analyse(a.pattern(), ord).unwrap());
             let mut f = Factorization::new(sym);
             f.factor(a.values(), &signs, &RegularizationParams::disabled())

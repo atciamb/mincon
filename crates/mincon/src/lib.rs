@@ -42,9 +42,9 @@ pub mod scaled;
 
 pub use builder::{to_fmincon_multipliers, FminconMultipliers, Problem};
 pub use mincon_core::{
-    Algorithm, Capabilities, DerivativeCheck, Display, EvalError, ExitFlag, FdType, HessianMode,
-    IterationRecord, LinearSolverKind, Nlp, NlpDims, Options, RegularizationMode, ScalingMode,
-    Solution, SolveError, SolveReport, Sparsity, Timings, Tolerances, VariableScaling,
+    Algorithm, Capabilities, DerivativeCheck, EvalError, ExitFlag, FdType, HessianMode,
+    IterationRecord, Limit, Nlp, NlpDims, Options, RegularizationMode, ScalingMode, Solution,
+    SolveError, SolveReport, Sparsity, Timings, Tolerances, VariableScaling,
 };
 pub use mincon_diff::{check_derivatives, check_derivatives_directional, CheckReport};
 pub use portfolio::PortfolioReport;
@@ -153,7 +153,7 @@ fn minimize_unscaled<P: Nlp + Sync + ?Sized>(
     let mut report = match opts.algorithm {
         Algorithm::Auto => portfolio::solve(nlp, opts).map(|p| p.best),
         Algorithm::InteriorPoint => mincon_ip::solve(nlp, opts),
-        Algorithm::Sqp | Algorithm::Slqp => mincon_sqp::solve(nlp, opts),
+        Algorithm::Sqp => mincon_sqp::solve(nlp, opts),
     }?;
     if let Some(note) = check_note {
         report.notes.insert(0, note);

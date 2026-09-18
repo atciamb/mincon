@@ -22,8 +22,8 @@
 use std::time::Instant;
 
 use mincon_core::{
-    Algorithm, EvalCounters, EvalError, ExitFlag, HessianMode, IterationRecord, Nlp, Options,
-    ScalingMode, Solution, SolveError, SolveReport, Timings,
+    Algorithm, EvalCounters, EvalError, ExitFlag, HessianMode, IterationRecord, Limit, Nlp,
+    Options, ScalingMode, Solution, SolveError, SolveReport, Timings,
 };
 use mincon_diff::Evaluator;
 use mincon_ip::DenseBfgs;
@@ -74,6 +74,8 @@ struct Sqp<'a, P: Nlp + ?Sized> {
     step_bound: f64,
     notes: Vec<String>,
     start: Instant,
+    /// Which limit ended the solve, set at a budget exit.
+    limit: Option<Limit>,
 }
 
 /// Everything known at an accepted iterate, in scaled units.
@@ -158,6 +160,7 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
             step_bound: f64::INFINITY,
             notes,
             start: Instant::now(),
+            limit: None,
         })
     }
 
@@ -1007,6 +1010,12 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                 z_u: zu_user,
             },
             exit_flag: exit,
+            // A loop that ran out without a break is the iteration cap.
+            limit: if exit == ExitFlag::MaxReached {
+                self.limit.or(Some(Limit::Iterations))
+            } else {
+                None
+            },
             algorithm: Algorithm::Sqp,
             iterations,
             f_evals: EvalCounters::get(&counters.f),
@@ -1415,17 +1424,17 @@ impl<'a, P: Nlp + ?Sized> Sqp<'a, P> {
                 break;
             }
             progress.push((p.f / self.d_f, violation));
-            let budget_exit = self
+            let evaluations_hit = self
                 .opts
                 .max_evaluations
-                .is_some_and(|limit| EvalCounters::get(&self.eval.counters().f) >= limit)
-                || self
-                    .opts
-                    .max_seconds
-                    .is_some_and(|limit| self.start.elapsed().as_secs_f64() >= limit)
-                || iter >= max_iter;
-            if budget_exit {
+                .is_some_and(|limit| EvalCounters::get(&self.eval.counters().f) >= limit);
+            let time_hit = self
+                .opts
+                .max_seconds
+                .is_some_and(|limit| self.start.elapsed().as_secs_f64() >= limit);
+            if let Some(which) = Limit::which(evaluations_hit, time_hit, iter >= max_iter) {
                 exit = ExitFlag::MaxReached;
+                self.limit = Some(which);
                 self.notes.push(progress_verdict(&progress));
                 break;
             }

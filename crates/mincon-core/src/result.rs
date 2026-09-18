@@ -88,6 +88,51 @@ impl ExitFlag {
     }
 }
 
+/// Which limit ended a solve that stopped with [`ExitFlag::MaxReached`].
+///
+/// Three limits share that exit flag, and a user who set one of them needs to
+/// know whether it was the one that bound: a solve that stopped on the clock
+/// after 17 % of its evaluation budget is a different situation from one that
+/// spent the budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Limit {
+    /// `Options::max_iterations`, or the `n`-scaled default in its place.
+    Iterations,
+    /// `Options::max_evaluations`.
+    Evaluations,
+    /// `Options::max_seconds`.
+    Time,
+}
+
+impl Limit {
+    /// The lowercase name used in reports and in the Python result.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Limit::Iterations => "iterations",
+            Limit::Evaluations => "evaluations",
+            Limit::Time => "time",
+        }
+    }
+
+    /// Which of the three limits bound, given whether each fired. Several can
+    /// fire on the same iteration; the evaluation budget is named first
+    /// because it is the reproducible one, the clock second, and the
+    /// iteration cap last.
+    #[must_use]
+    pub fn which(evaluations: bool, time: bool, iterations: bool) -> Option<Self> {
+        if evaluations {
+            Some(Limit::Evaluations)
+        } else if time {
+            Some(Limit::Time)
+        } else if iterations {
+            Some(Limit::Iterations)
+        } else {
+            None
+        }
+    }
+}
+
 /// One row of the iteration trace.
 ///
 /// This is deliberately the same set of columns `fmincon`'s `Display='iter'`
@@ -169,6 +214,9 @@ pub struct SolveReport {
     pub solution: Solution,
     /// Why it stopped.
     pub exit_flag: ExitFlag,
+    /// Which limit bound when `exit_flag` is [`ExitFlag::MaxReached`];
+    /// `None` for every other exit.
+    pub limit: Option<Limit>,
     /// Which algorithm produced this answer. Meaningful when the portfolio ran.
     pub algorithm: Algorithm,
     /// Iterations taken.
@@ -206,13 +254,36 @@ pub struct SolveReport {
 }
 
 impl SolveReport {
+    /// The termination message. The same as [`ExitFlag::message`] except at a
+    /// budget exit, where it names the limit that bound and how much of it was
+    /// used, since three limits share [`ExitFlag::MaxReached`].
+    #[must_use]
+    pub fn message(&self) -> String {
+        match (self.exit_flag, self.limit) {
+            (ExitFlag::MaxReached, Some(Limit::Iterations)) => {
+                format!("Iteration limit reached ({} iterations).", self.iterations)
+            }
+            (ExitFlag::MaxReached, Some(Limit::Evaluations)) => format!(
+                "Evaluation limit reached ({} objective evaluations).",
+                self.f_evals
+            ),
+            (ExitFlag::MaxReached, Some(Limit::Time)) => format!(
+                "Time limit reached ({:.1} s, {} iterations, {} objective evaluations).",
+                self.timings.total.as_secs_f64(),
+                self.iterations,
+                self.f_evals
+            ),
+            _ => self.exit_flag.message().to_string(),
+        }
+    }
+
     /// A one-line summary in the shape `fmincon` users expect from
     /// `Display='final'`.
     #[must_use]
     pub fn summary(&self) -> String {
         format!(
             "{}\n  f = {:.10e}   max constraint violation = {:.3e}   first-order optimality = {:.3e}\n  {} iterations, {} objective evaluations, {:.3}s ({:?})",
-            self.exit_flag.message(),
+            self.message(),
             self.solution.f,
             self.constraint_violation,
             self.optimality,

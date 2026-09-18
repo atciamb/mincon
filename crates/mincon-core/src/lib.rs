@@ -44,12 +44,12 @@ mod sparsity;
 
 pub use error::{EvalError, SolveError};
 pub use options::{
-    Algorithm, BarrierUpdate, DerivativeCheck, Display, FdType, HessianMode, IterationCallback,
-    LinearSolverKind, Options, PivotSigns, QuadraticBuild, QuadraticRows, RegularizationMode,
-    ScalingMode, Tolerances, VariableScaling, WarmStart,
+    Algorithm, BarrierUpdate, DerivativeCheck, FdType, HessianMode, IterationCallback, Options,
+    PivotSigns, QuadraticBuild, QuadraticRows, RegularizationMode, ScalingMode, Tolerances,
+    VariableScaling, WarmStart,
 };
 pub use problem::{validate, Capabilities, EvalCounters, Nlp, NlpDims};
-pub use result::{ExitFlag, IterationRecord, Solution, SolveReport, Timings};
+pub use result::{ExitFlag, IterationRecord, Limit, Solution, SolveReport, Timings};
 pub use sparsity::{ColoringKind, Sparsity};
 
 /// Machine epsilon for `f64`, hoisted so algorithm code reads like the papers.

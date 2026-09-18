@@ -78,6 +78,7 @@ class OptimizeResult(dict):
             "usable",
             "status",
             "message",
+            "limit",
             "fun",
             "x",
             "maxcv",
@@ -239,9 +240,13 @@ def minimize(
     tol : float, optional
         Sets the optimality, feasibility and complementarity tolerances at once.
     options : dict, optional
-        ``maxiter``, ``maxfev``, ``maxtime`` (seconds), ``ftol``, ``ctol``,
+        ``maxiter`` (an iteration cap you set is a limit on the whole solve,
+        shared across the portfolio's members like ``maxfev`` and ``maxtime``;
+        the default cap of ``400 + 10 n`` applies to each member separately),
+        ``maxfev``, ``maxtime`` (seconds), ``ftol`` (optimality tolerance),
+        ``ctol`` (constraint tolerance), ``xtol`` (step tolerance),
         ``threads``, ``seed``, ``check_derivatives``,
-        ``scaling`` in ``{'none', 'gradient', 'equilibration'}`` (``True``
+        ``scaling`` in ``{'none', 'gradient'}`` (``True``
         keeps the default ``'gradient'``, ``False`` means ``'none'``),
         ``disp`` (bool: stream one line per iteration as it happens and print
         the final line) or ``display`` in ``{'none', 'final', 'iter'}``,
@@ -304,6 +309,8 @@ def minimize(
     -------
     OptimizeResult
         With ``x``, ``fun``, ``success``, ``usable``, ``status``, ``message``,
+        ``limit`` (at a budget exit, ``status == 0``, which limit bound:
+        ``'iterations'``, ``'evaluations'`` or ``'time'``; ``None`` otherwise),
         ``nit``, ``nfev``, ``njev``, ``maxcv``, ``optimality``, ``con``,
         ``lambda``, ``notes``, ``trace``, ``time``, ``model_time``. ``trace`` is
         a list of per-iteration dicts (``iter``, ``nfev``, ``f``, ``maxcv``,
@@ -340,7 +347,7 @@ def minimize(
 
     opts = dict(options or {})
     display = _display_level(opts)
-    supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "threads",
+    supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "xtol", "threads",
                  "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
                  "bfgs_rescale", "scale_variables", "kkt_pivot_signs", "quadratic_probe", "quadratic_build",
                  "quadratic_rows"}
@@ -395,6 +402,69 @@ def _warm_start_dict(warm_start):
             "hess_approx": None if hess_approx is None else np.asarray(hess_approx, float)}
 
 
+_MATLAB_OPTIONS = {
+    "MaxIterations": "maxiter",
+    "MaxFunctionEvaluations": "maxfev",
+    "OptimalityTolerance": "ftol",
+    "ConstraintTolerance": "ctol",
+    "StepTolerance": "xtol",
+    "FiniteDifferenceType": "finite_diff",
+}
+_MATLAB_DISPLAY = {"off": "none", "none": "none", "final": "final", "final-detailed": "final",
+                   "iter": "iter", "iter-detailed": "iter", "notify": "final", "notify-detailed": "final"}
+
+
+def _matlab_options(options, method, jac, nonlcon_jac):
+    """Accept MATLAB's option names on the ``fmincon`` facade, mapped onto the Python names
+    :func:`minimize` documents. A MATLAB option with no equivalent raises: silently ignoring
+    ``TolX`` or ``UseParallel`` would be worse than refusing it."""
+    if not options:
+        return options, method, jac, nonlcon_jac
+    # A MATLAB name set to None means "the default", as [] does in optimoptions.
+    opts = {k: v for k, v in options.items() if not (isinstance(k, str) and k[:1].isupper() and v is None)}
+    for name, key in _MATLAB_OPTIONS.items():
+        if name in opts:
+            if key in opts:
+                raise ValueError(f"give either {name} or {key}, not both")
+            opts[key] = opts.pop(name)
+    if "Display" in opts:
+        if "display" in opts or "disp" in opts:
+            raise ValueError("give either Display or display/disp, not both")
+        level = str(opts.pop("Display")).lower()
+        if level not in _MATLAB_DISPLAY:
+            raise ValueError(f"unknown Display '{level}'; use 'off', 'final' or 'iter'")
+        opts["display"] = _MATLAB_DISPLAY[level]
+    if "Algorithm" in opts:
+        if method is not None:
+            raise ValueError("give either Algorithm or method, not both")
+        alg = str(opts.pop("Algorithm")).lower()
+        if alg not in ("interior-point", "sqp", "auto"):
+            raise ValueError(f"Algorithm '{alg}' is not available; mincon has 'interior-point', 'sqp' and "
+                             "'auto' (the portfolio, the default)")
+        method = alg
+    for name, arg in (("SpecifyObjectiveGradient", "jac"), ("SpecifyConstraintGradient", "nonlcon_jac")):
+        if name in opts:
+            want = bool(opts.pop(name))
+            have = (jac if arg == "jac" else nonlcon_jac) is not None
+            if want and not have:
+                raise ValueError(f"{name}=True but no {arg} was supplied")
+            if not want:          # MATLAB ignores a supplied gradient when the flag is false
+                if arg == "jac":
+                    jac = None
+                else:
+                    nonlcon_jac = None
+    if "UseParallel" in opts:
+        if bool(opts.pop("UseParallel")):
+            raise ValueError("UseParallel is not available yet: model evaluations run one at a time "
+                             "(parallel finite-difference probes are planned)")
+    unknown = sorted(k for k in opts if isinstance(k, str) and k[:1].isupper())
+    if unknown:
+        raise ValueError(f"unsupported MATLAB option(s) {unknown}; the aliases are {sorted(_MATLAB_OPTIONS)} plus "
+                         "Display, Algorithm, SpecifyObjectiveGradient, SpecifyConstraintGradient and "
+                         "UseParallel=False; everything else uses the Python names in help(minimize)")
+    return opts, method, jac, nonlcon_jac
+
+
 def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
             nonlcon=None, options=None, *, jac=None, nonlcon_jac=None, hess=None, args=(), tol=None,
             method=None, callback=None, warm_start=None):
@@ -404,7 +474,13 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     ``nonlcon(x, *args) -> (c, ceq)`` with ``c <= 0`` and ``ceq == 0``.
     Every constraint argument is optional. Bounds may be scalars or vectors.
     No derivatives or solver options are required. Options use the Python
-    names documented by :func:`minimize`, not MATLAB option names.
+    names documented by :func:`minimize`; MATLAB's names are accepted as
+    aliases where an equivalent exists (``MaxIterations``,
+    ``MaxFunctionEvaluations``, ``OptimalityTolerance``,
+    ``ConstraintTolerance``, ``StepTolerance``, ``FiniteDifferenceType``,
+    ``Display``, ``Algorithm``, ``SpecifyObjectiveGradient``,
+    ``SpecifyConstraintGradient``), and a MATLAB option with no equivalent
+    raises rather than being ignored.
 
     ``jac(x, *args)`` optionally returns the objective gradient and
     ``nonlcon_jac(x, *args)`` optionally returns ``(Jc, Jceq)`` with shapes
@@ -431,6 +507,7 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     Example: ``fmincon(lambda x: ((x-1)**2).sum(), [0., 0.],
     nonlcon=lambda x: ([x.sum()-1], []))`` returns approximately ``[.5, .5]``.
     """
+    options, method, jac, nonlcon_jac = _matlab_options(options, method, jac, nonlcon_jac)
     x0 = np.asarray(x0, dtype=float).ravel()
     n = x0.size
     cons = []
@@ -451,7 +528,11 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
         if not np.all(np.isfinite(mat)) or not np.all(np.isfinite(vec)):
             raise ValueError(f"{name} and its right-hand side must be finite")
         sign = -1.0 if kind == "ineq" else 1.0
-        cons.append({"type": kind, "fun": lambda x, mat=mat, vec=vec, sign=sign: sign*(mat @ x-vec)})
+        # A linear row's Jacobian is the row: pass it, so these rows are never
+        # finite-differenced (the engine uses analytic Jacobians when every
+        # block has one, so nonlcon without nonlcon_jac still costs probes).
+        cons.append({"type": kind, "fun": lambda x, mat=mat, vec=vec, sign=sign: sign*(mat @ x-vec),
+                     "jac": lambda x, mat=mat, sign=sign: sign*mat})
         sizes.append(vec.size)
 
     def bound(value, default, name):

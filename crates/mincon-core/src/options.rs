@@ -2,7 +2,9 @@
 //!
 //! Gradient-based scaling, sparsity detection and the automatic portfolio
 //! support use without user-supplied derivatives or algorithm settings.
-//! The current portfolio uses interior-point configurations; SQP is not implemented.
+//! Every option here is consumed by some part of the solver; an option that
+//! did nothing, or silently did something else, is removed rather than kept
+//! as a promise (September 18, 2026 re-audit of `docs/14`).
 
 use std::fmt;
 use std::sync::Arc;
@@ -40,36 +42,20 @@ impl fmt::Debug for IterationCallback {
     }
 }
 
-/// Console output verbosity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Display {
-    /// Nothing.
-    #[default]
-    None,
-    /// One line at the end.
-    Final,
-    /// One line per iteration.
-    Iter,
-    /// Per-iteration plus regularization / line-search internals. For
-    /// debugging the solver, not the model.
-    Debug,
-}
-
 /// Which algorithm to run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Algorithm {
-    /// Race every applicable algorithm on separate threads, return the first
-    /// that converges (ties broken by objective, then by constraint violation).
-    /// Falls back to [`Algorithm::InteriorPoint`] on a single thread.
+    /// The portfolio: the SQP member first on problems with at most 20
+    /// variables, the interior-point member first above that, then the
+    /// cautious and unscaled interior-point configurations, run in sequence
+    /// with shared budgets and early exit at the first usable answer (in
+    /// parallel, at most `threads` at a time, when the model allows it).
     #[default]
     Auto,
     /// Primal-dual interior point with a filter line search.
     InteriorPoint,
     /// Sequential quadratic programming with an l1 merit function.
     Sqp,
-    /// Sequential linear-quadratic programming (LP step + EQP step). Best when
-    /// the active set is large and changes a lot.
-    Slqp,
 }
 
 /// How the barrier parameter is driven.
@@ -96,12 +82,6 @@ pub enum ScalingMode {
     /// likewise per constraint row. Cheap, one extra gradient, very effective.
     #[default]
     GradientBased,
-    /// Ruiz equilibration on the KKT matrix, refreshed on a schedule. Stronger
-    /// on problems whose conditioning is structural rather than unit-driven,
-    /// but costs a factorization's worth of work per refresh.
-    Equilibration,
-    /// User-supplied factors.
-    User,
 }
 
 /// How second derivatives are obtained.
@@ -109,15 +89,10 @@ pub enum ScalingMode {
 pub enum HessianMode {
     /// Exact Hessian of the Lagrangian from the model.
     Exact,
-    /// Limited-memory BFGS on the Lagrangian, with Powell damping.
-    LimitedMemoryBfgs,
-    /// Dense BFGS. `fmincon`'s interior-point default. `O(n^2)` memory; only
-    /// sensible for small `n`.
+    /// Dense BFGS. `fmincon`'s interior-point default. `O(n^2)` memory; the
+    /// practical ceiling is a few thousand variables.
     DenseBfgs,
-    /// Finite differences of the gradient, with graph coloring when a Hessian
-    /// pattern is known.
-    FiniteDifference,
-    /// Exact if the model provides it, else limited-memory BFGS.
+    /// Exact if the model provides it, else dense BFGS.
     #[default]
     Auto,
 }
@@ -271,18 +246,6 @@ pub enum RegularizationMode {
     Hybrid,
 }
 
-/// Which linear solver backs the KKT systems.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LinearSolverKind {
-    /// Dense Bunch–Kaufman `LBL^T`. Fastest below roughly `n + m < 500`.
-    DenseLblt,
-    /// Sparse `LDL^T` with AMD ordering and dynamic regularization.
-    SparseLdlt,
-    /// Choose by density and dimension.
-    #[default]
-    Auto,
-}
-
 /// Termination tolerances.
 ///
 /// Note the split between "converged" and "acceptable". A solver that only
@@ -347,15 +310,17 @@ pub struct Options {
     pub algorithm: Algorithm,
     /// Termination tolerances.
     pub tol: Tolerances,
-    /// Iteration cap. `fmincon` uses a flat 400; that is far too few for large
-    /// problems and generous for tiny ones, so we scale with `n`.
-    pub max_iterations: usize,
+    /// Iteration cap, or `None` for the default `400 + 10 n` (at most 10 000):
+    /// `fmincon` uses a flat 400, which is far too few for large problems and
+    /// generous for tiny ones. A cap the caller sets is a limit on the whole
+    /// solve and the portfolio shares it across its members, like
+    /// `max_evaluations` and `max_seconds`; the default applies to each member
+    /// separately, as a safety net rather than a budget.
+    pub max_iterations: Option<usize>,
     /// Objective-evaluation cap, or `None` for unlimited.
     pub max_evaluations: Option<u64>,
     /// Wall-clock cap in seconds, or `None`.
     pub max_seconds: Option<f64>,
-    /// Console verbosity.
-    pub display: Display,
     /// Record a per-iteration trace in the report. Cheap; on by default because
     /// "why did it stop there" is the most common user question.
     pub record_trace: bool,
@@ -371,8 +336,6 @@ pub struct Options {
 
     /// Second-derivative strategy.
     pub hessian: HessianMode,
-    /// L-BFGS history length.
-    pub lbfgs_history: usize,
     /// Replace the unit initial quasi-Newton matrix by a diagonal built from
     /// the first curvature pair when the first line search had to cut its step
     /// hard (a sign the unit matrix misjudged the problem's scale). A scalar
@@ -483,18 +446,12 @@ pub struct Options {
     /// Default [`PivotSigns::Auto`]: counted with an exact Hessian, expected
     /// with a quasi-Newton one (round 5 S-E, `bench/results/abl-se`).
     pub kkt_pivot_signs: PivotSigns,
-    /// Linear solver backend.
-    pub linear_solver: LinearSolverKind,
     /// Steps of iterative refinement on each KKT solve. One is nearly free and
     /// buys a lot on ill-conditioned systems.
     pub refinement_steps: usize,
 
     /// Maximum second-order corrections per line search. IPOPT's `max_soc`.
     pub max_soc: usize,
-    /// Enable the watchdog (accept a non-monotone step, verify next iteration).
-    pub watchdog: bool,
-    /// Enable the feasibility restoration phase.
-    pub restoration: bool,
 
     /// Worker threads, or `None` for "all available".
     pub threads: Option<usize>,
@@ -512,10 +469,9 @@ impl Default for Options {
         Self {
             algorithm: Algorithm::Auto,
             tol: Tolerances::default(),
-            max_iterations: 3000,
+            max_iterations: None,
             max_evaluations: None,
             max_seconds: None,
-            display: Display::None,
             record_trace: true,
             callback: None,
 
@@ -523,7 +479,6 @@ impl Default for Options {
             scaling_max_gradient: 100.0,
 
             hessian: HessianMode::Auto,
-            lbfgs_history: 10,
             bfgs_guarded_scaling: true,
             bfgs_curvature_rescale: f64::INFINITY,
 
@@ -548,12 +503,9 @@ impl Default for Options {
             warm_start: None,
             regularization: RegularizationMode::Hybrid,
             kkt_pivot_signs: PivotSigns::Auto,
-            linear_solver: LinearSolverKind::Auto,
             refinement_steps: 1,
 
             max_soc: 4,
-            watchdog: true,
-            restoration: true,
 
             threads: None,
             check_derivatives: DerivativeCheck::Directional,
@@ -589,7 +541,7 @@ impl Options {
                 step: 1e-10,
                 ..Tolerances::default()
             },
-            max_iterations: 400,
+            max_iterations: Some(400),
             scaling: ScalingMode::None,
             hessian: HessianMode::DenseBfgs,
             fd_type: FdType::Forward,
@@ -599,15 +551,12 @@ impl Options {
         }
     }
 
-    /// Resolve `max_iterations` for a problem of size `n` when the user left
+    /// Resolve `max_iterations` for a problem of size `n` when the caller left
     /// the default in place.
     #[must_use]
     pub fn effective_max_iterations(&self, n: usize) -> usize {
-        if self.max_iterations == 3000 {
-            (400 + 10 * n).min(10_000)
-        } else {
-            self.max_iterations
-        }
+        self.max_iterations
+            .unwrap_or_else(|| (400 + 10 * n).min(10_000))
     }
 
     /// Check for self-consistency.
@@ -632,9 +581,6 @@ impl Options {
                 "bfgs_curvature_rescale must exceed 1 (use infinity to disable the rule)".into(),
             );
         }
-        if self.lbfgs_history == 0 && matches!(self.hessian, HessianMode::LimitedMemoryBfgs) {
-            return Err("lbfgs_history must be positive for limited-memory BFGS".into());
-        }
         Ok(())
     }
 }
@@ -655,7 +601,7 @@ mod tests {
         assert_eq!(o.effective_max_iterations(10), 500);
         assert_eq!(o.effective_max_iterations(100_000), 10_000);
         let o2 = Options {
-            max_iterations: 42,
+            max_iterations: Some(42),
             ..Options::default()
         };
         assert_eq!(o2.effective_max_iterations(10), 42);
