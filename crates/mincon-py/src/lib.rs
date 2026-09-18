@@ -27,9 +27,9 @@ use std::sync::{Arc, Mutex};
 
 use mincon_core::{
     Algorithm, BarrierUpdate, Capabilities, DerivativeCheck, EvalError, ExitFlag, FdType,
-    IterationCallback, IterationRecord, Nlp, NlpDims, Options, PivotSigns, QuadraticBuild,
-    QuadraticRows, SaddleStep, ScalingMode, Sparsity, Tolerances, VariableScaling, ZeroStep,
-    INF_BOUND,
+    IterationCallback, IterationRecord, Nlp, NlpDims, Options, PivotSigns, QuadraticBands,
+    QuadraticBuild, QuadraticRows, SaddleStep, ScalingMode, Sparsity, Tolerances, VariableScaling,
+    ZeroStep, INF_BOUND,
 };
 use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1, PyReadonlyArrayDyn, ToPyArray};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
@@ -587,6 +587,17 @@ fn parse_options(py: Python<'_>, options: Option<&Bound<'_, PyDict>>) -> PyResul
                 }
             };
         }
+    }
+    if let Some(v) = get!("quadratic_bands", String) {
+        o.quadratic_bands = match v.as_str() {
+            "fixed" => QuadraticBands::Fixed,
+            "decaying" => QuadraticBands::Decaying,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown quadratic_bands '{other}'; use 'fixed' or 'decaying'"
+                )))
+            }
+        };
     }
     if let Some(v) = d.get_item("quadratic_rows")? {
         if !v.is_none() {

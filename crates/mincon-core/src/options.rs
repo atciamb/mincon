@@ -179,12 +179,38 @@ pub enum QuadraticBuild {
     /// structure that reproduces them. A diagonal Hessian costs `2n`, a
     /// tridiagonal one `3n - 1`, a dense one exactly what [`Self::Dense`]
     /// costs, in a different order. Above the dense size limit, or when the
-    /// dense build would exceed the budget, the band search may spend `2n`
-    /// evaluations more before it declines.
+    /// dense build would exceed the budget, the band search spends `2n`
+    /// evaluations more and then goes on only while the fit error decays
+    /// ([`QuadraticBands`]).
     #[default]
     Structured,
     /// Every pair at once, `n (n + 3) / 2` evaluations, up to `n = 500`.
     Dense,
+}
+
+/// How far the structured build's band search goes when the dense build is
+/// outside the evaluation or wall budget (see [`Options::quadratic_bands`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QuadraticBands {
+    /// `2n` evaluations (bands 1 and 2), then decline. The behaviour from
+    /// `bench/results/abl-i5-build` to Phase D.
+    Fixed,
+    /// As [`Self::Fixed`], and each time the allowance is spent it is doubled
+    /// when the worst line-point fit error has fallen below three quarters of
+    /// its value at the previous grant (the diagonal model's error for the
+    /// first). A Hessian whose entries decay away from the diagonal (a
+    /// deconvolution kernel) keeps passing and is built at the half-bandwidth
+    /// it needs; a dense one without decay stops at `2n` as before (of 144
+    /// dense Hessians of six kinds, 11 pass the first check by chance and
+    /// waste `0.25 n` evaluations on average, `5.9 n` at worst). The
+    /// evaluation and wall limits of the build still apply between bands, so
+    /// on a model too slow for the band it needs the search ends at the build's
+    /// deadline, half of the wall budget, and declines. The default since
+    /// Phase D (`docs/22` section 7.19: DECONV_200 goes from a time-limit exit
+    /// to a certificate in 6639 evaluations, and no other corpus record
+    /// changes).
+    #[default]
+    Decaying,
 }
 
 /// Whether the quadratic-program probe also accepts quadratic constraint rows
@@ -426,6 +452,10 @@ pub struct Options {
     /// zero Hessians, OBSTACLE's is tridiagonal, and a dense Hessian costs
     /// the same either way.
     pub quadratic_build: QuadraticBuild,
+    /// How far the structured build's band search goes when the dense build
+    /// is outside the evaluation or wall budget. Default
+    /// [`QuadraticBands::Decaying`].
+    pub quadratic_bands: QuadraticBands,
     /// Whether the probe also accepts quadratic constraint rows. A row is
     /// accepted only when it keeps the feasible set convex (a convex function
     /// bounded above or a concave one bounded below, never an equality or a
@@ -530,6 +560,7 @@ impl Default for Options {
             scale_variables: VariableScaling::Auto,
             quadratic_probe: true,
             quadratic_build: QuadraticBuild::Structured,
+            quadratic_bands: QuadraticBands::Decaying,
             quadratic_rows: QuadraticRows::Values,
             saddle_step: SaddleStep::Linearized,
             zero_step: ZeroStep::Decrease,

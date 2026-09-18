@@ -573,6 +573,15 @@ def minimize(
         time until the model reproduces the probe's line points, so a
         diagonal Hessian costs 2n evaluations and a tridiagonal one 3n
         instead of n(n+3)/2; a dense one costs the same either way),
+        ``quadratic_bands`` (``'decaying'`` (default) or ``'fixed'``: how far
+        that band search goes when the dense build would not fit the
+        evaluation budget or half of ``maxtime``; ``'fixed'`` declines after
+        two bands, ``'decaying'`` keeps doubling its allowance for as long as
+        the fit error at the line points keeps falling by a quarter, which a
+        Hessian that decays away from its diagonal does and a dense one does
+        not, and still stops at the build's limits, so with a model too slow
+        for the band it needs the probe can use half of ``maxtime`` and then
+        decline),
         ``quadratic_rows`` (``'values'`` (default), ``'jacobian'`` or
         ``False``: whether the probe also accepts quadratic constraint
         rows that keep the feasible set convex, such as a variance limit,
@@ -690,7 +699,7 @@ def minimize(
     supported = {"maxiter", "maxfev", "maxtime", "tol", "ftol", "ctol", "xtol", "threads",
                  "seed", "check_derivatives", "scaling", "finite_diff", "barrier", "fd_error_aware", "bfgs_scaling",
                  "bfgs_rescale", "scale_variables", "kkt_pivot_signs", "quadratic_probe", "quadratic_build",
-                 "quadratic_rows", "saddle_step", "zero_step"}
+                 "quadratic_bands", "quadratic_rows", "saddle_step", "zero_step"}
     unknown = set(opts) - supported
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown, key=str)}; "

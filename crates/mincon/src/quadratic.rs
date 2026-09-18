@@ -44,8 +44,8 @@
 //! is a few more iterations, never a wrong answer.
 
 use mincon_core::{
-    is_free, Capabilities, EvalError, Nlp, NlpDims, Options, QuadraticBuild, QuadraticRows,
-    Sparsity,
+    is_free, Capabilities, EvalError, Nlp, NlpDims, Options, QuadraticBands, QuadraticBuild,
+    QuadraticRows, Sparsity,
 };
 
 /// Largest `n` for which the Hessian is built from function values alone.
@@ -64,6 +64,15 @@ pub const ROW_BUILD_MAX_ENTRIES: usize = 16_000_000;
 const REL_TOL: f64 = 1e-8;
 /// Absolute floor of those tests, relative to the magnitude of the values.
 const ABS_TOL: f64 = 1e-12;
+/// `QuadraticBands::Decaying`: the band search's allowance is doubled when the
+/// worst line-point fit error is below this fraction of its value at the
+/// previous grant. Measured on the probe's own lines
+/// (`docs/22` section 7.19): a Gaussian deconvolution kernel of width 3 gives
+/// 0.61, 0.51, 0.15 and 0.002 at the four grants it needs, dense covariance and
+/// Wishart Hessians stay near 1 (COVQP_300 0.94), and of 144 dense Hessians of
+/// six kinds 11 pass the first check by chance, for `0.25 n` wasted
+/// evaluations on average.
+const BAND_DECAY: f64 = 0.75;
 
 /// A problem whose objective was found to be quadratic and whose constraints
 /// are linear, carrying the constant Hessian as an exact one.
@@ -481,6 +490,7 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
                 line_vals: &line_f,
                 signs: &[1.0],
                 structured,
+                bands: opts.quadratic_bands,
                 eval_limit: opts.max_evaluations.map(|l| l.saturating_sub(f_evals + 8)),
                 clock: &probe_clock,
                 wall_deadline,
@@ -574,6 +584,7 @@ fn probe_inner<'a, P: Nlp + ?Sized>(
                 line_vals: &line_q,
                 signs: &qrow_sign,
                 structured,
+                bands: opts.quadratic_bands,
                 eval_limit: None,
                 clock: &probe_clock,
                 wall_deadline,
@@ -793,6 +804,9 @@ struct FdBuildSpec<'a> {
     /// positive semidefinite, `-1.0` negative semidefinite.
     signs: &'a [f64],
     structured: bool,
+    /// What the band search does once an unaffordable dense build has capped
+    /// it at `2n`.
+    bands: QuadraticBands,
     /// Evaluations this build may spend, when they are budgeted.
     eval_limit: Option<u64>,
     clock: &'a std::time::Instant,
@@ -896,6 +910,13 @@ where
         }
         (fit, convex)
     };
+    // The worst line-point error of any function as a multiple of its
+    // tolerance: what the band search's decay test watches.
+    let fit_ratio = |q: &[Vec<f64>]| -> f64 {
+        (0..k)
+            .map(|f| worst_fit_ratio(&points[f], &q[f], spec.f0[f]))
+            .fold(0.0, f64::max)
+    };
     // One pair (i, j): its mixed second differences, one per function.
     let mut pair = |i: usize, j: usize, x: &mut Vec<f64>, evals: &mut u64| {
         let (hi, hj) = ((spec.step)(i), (spec.step)(j));
@@ -927,11 +948,24 @@ where
                 && spec
                     .wall_deadline
                     .is_none_or(|l| per_eval * dense_rest as f64 <= l);
-            let band_budget: u64 = if dense_ok { dense_rest } else { 2 * n as u64 };
+            let mut band_budget: u64 = if dense_ok { dense_rest } else { 2 * n as u64 };
+            // Under `QuadraticBands::Decaying` an unaffordable dense build
+            // does not end the search at `2n`: the allowance doubles each
+            // time it is spent while the fit error keeps falling. The limits
+            // below still end it between bands.
+            let decaying = !dense_ok && spec.bands == QuadraticBands::Decaying;
+            let mut granted_at = if decaying { fit_ratio(&q) } else { 0.0 };
             let mut band_spent: u64 = 0;
             while !(fit.is_ok() && convex) {
                 band += 1;
                 let cost = (n - band) as u64;
+                if decaying && band < n && band_spent + cost > band_budget {
+                    let now = fit_ratio(&q);
+                    if now < BAND_DECAY * granted_at {
+                        granted_at = now;
+                        band_budget = band_budget.saturating_mul(2);
+                    }
+                }
                 if band >= n || band_spent + cost > band_budget {
                     return Err((
                         if fit.is_ok() {
@@ -1012,6 +1046,27 @@ fn model_fit(line_points: &[(Vec<f64>, f64)], q: &[f64], f0: f64) -> Result<f64,
         }
     }
     Ok(worst)
+}
+
+/// The worst error of [`model_fit`]'s test as a multiple of its tolerance,
+/// over every line point instead of up to the first failure (infinite when a
+/// point with a zero tolerance is missed, or when an error is not a number).
+fn worst_fit_ratio(line_points: &[(Vec<f64>, f64)], q: &[f64], f0: f64) -> f64 {
+    let mut worst = 0.0_f64;
+    for ((_, f), q) in line_points.iter().zip(q) {
+        let var = (f - f0).abs().max((q - f0).abs());
+        let tol = REL_TOL * var + ABS_TOL * f0.abs().max(f.abs());
+        let err = (f - q).abs();
+        let ratio = if err.is_nan() || (tol <= 0.0 && err > 0.0) {
+            f64::INFINITY
+        } else if tol > 0.0 {
+            err / tol
+        } else {
+            0.0
+        };
+        worst = worst.max(ratio);
+    }
+    worst
 }
 
 /// Cholesky of `H + delta I` with `delta = 1e-10 max(1, max |H_ii|)`: succeeds
@@ -1413,6 +1468,113 @@ mod tests {
         assert!(q.is_none());
         assert!(spent <= 7 + 4 * n as u64, "spent {spent}");
         assert!(spent > 7 + 2 * n as u64, "spent {spent}");
+    }
+
+    /// DECONV's shape at `n = 60`: `0.5 |K x - y|^2` in a box with a Gaussian
+    /// kernel of the given width, whose Hessian `K'K` decays away from the
+    /// diagonal.
+    fn deconvolution(n: usize, width: f64) -> Problem<'static> {
+        let k: Vec<Vec<f64>> = (0..n)
+            .map(|i| {
+                let row: Vec<f64> = (0..n)
+                    .map(|j| (-0.5 * ((i as f64 - j as f64) / width).powi(2)).exp())
+                    .collect();
+                let s: f64 = row.iter().sum();
+                row.into_iter().map(|v| v / s).collect()
+            })
+            .collect();
+        let y: Vec<f64> = (0..n)
+            .map(|i| {
+                if (n / 3..n / 3 + n / 4).contains(&i) {
+                    0.8
+                } else {
+                    0.1
+                }
+            })
+            .collect();
+        Problem::new(n, move |x| {
+            let mut v = 0.0;
+            for i in 0..n {
+                let r: f64 = k[i].iter().zip(x).map(|(a, b)| a * b).sum::<f64>() - y[i];
+                v += 0.5 * r * r;
+            }
+            v
+        })
+        .start_at(&vec![0.5; n])
+        .lower_bounds(&vec![0.0; n])
+        .upper_bounds(&vec![1.0; n])
+    }
+
+    #[test]
+    fn a_decaying_hessian_is_built_past_two_bands_when_the_dense_build_is_unaffordable() {
+        // DECONV_200's situation with the evaluation budget in the role of
+        // the clock: the dense rest (1770 pairs) does not fit, the band the
+        // kernel needs (half-bandwidth 27, 1362 evaluations) does. `Fixed`
+        // declines after bands 1 and 2; `Decaying` is granted four doublings
+        // (the fit error falls to 0.60, 0.50, 0.14 and below 1e-3 of its value
+        // at the previous grant) and goes on from the band that fits, 23, to
+        // the band that is convex.
+        let n = 60;
+        let p = deconvolution(n, 3.0);
+        let limited = |bands| Options {
+            max_evaluations: Some(1700),
+            quadratic_bands: bands,
+            ..structured()
+        };
+        let (q, spent, why) = probe_counted(&p, &limited(QuadraticBands::Fixed));
+        assert!(q.is_none());
+        assert_eq!(spent, 7 + 2 * n as u64 + 59 + 58);
+        assert!(
+            why.as_deref()
+                .is_some_and(|w| w.contains("within 2 off-diagonal bands")),
+            "{why:?}"
+        );
+        let q = probe(&p, &limited(QuadraticBands::Decaying))
+            .expect("the band search must go on while the fit error decays");
+        assert!(q.note.contains("half-bandwidth 27"), "{}", q.note);
+        assert_eq!(q.f_evals, 7 + 1362, "{}", q.note);
+        let r = mincon_sqp::solve(
+            &q,
+            &Options {
+                algorithm: mincon_core::Algorithm::Sqp,
+                ..structured()
+            },
+        )
+        .unwrap();
+        assert!(r.exit_flag.is_success(), "{:?}", r.exit_flag);
+        assert!(r.iterations <= 5, "iterations {}", r.iterations);
+        // With the dense build affordable the option changes nothing.
+        let free = |bands| Options {
+            quadratic_bands: bands,
+            ..structured()
+        };
+        let a = probe(&p, &free(QuadraticBands::Fixed)).unwrap();
+        let b = probe(&p, &free(QuadraticBands::Decaying)).unwrap();
+        assert_eq!(a.f_evals, b.f_evals);
+        assert_eq!(a.note, b.note);
+    }
+
+    #[test]
+    fn a_dense_hessian_without_decay_stops_at_two_bands_under_either_band_rule() {
+        // Every off-diagonal entry equal: two bands remove 4 / n of the misfit,
+        // far from a quarter, so the decay rule grants nothing.
+        let n = 600;
+        let dense = Problem::new(n, move |x| {
+            let s: f64 = x.iter().sum();
+            x.iter().map(|v| v * v).sum::<f64>() + 0.001 * s * s
+        })
+        .start_at(&vec![0.4; n]);
+        let fixed = probe_counted(&dense, &structured());
+        let decaying = probe_counted(
+            &dense,
+            &Options {
+                quadratic_bands: QuadraticBands::Decaying,
+                ..structured()
+            },
+        );
+        assert!(fixed.0.is_none() && decaying.0.is_none());
+        assert_eq!(fixed.1, decaying.1);
+        assert_eq!(fixed.2, decaying.2);
     }
 
     #[test]
