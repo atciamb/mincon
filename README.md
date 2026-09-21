@@ -1,8 +1,7 @@
 # mincon
-
+Python supremacy:
 A nonlinear constrained optimizer in Rust, aimed at what MATLAB's `fmincon`
-does well — solving the problem a working scientist actually has, without being
-told how — with Rust computations and Python wheels built using maturin.
+does well, with Rust computations for blazing speed and Python wheels built using maturin.
 Experimental releases are [on PyPI](https://pypi.org/project/mincon/): install with
 `pip install mincon`. Version 0.2.0 ([changelog](CHANGELOG.md)) adds macOS wheels to
 Windows and Linux x86_64.
