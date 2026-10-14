@@ -6,6 +6,32 @@ after an ablation on the whole development corpus (`docs/22`, `docs/23`). What
 is measured against `fmincon` and SciPy, including where they win, is in
 `README.md` and `docs/17_CLAIM_AUDIT.md`.
 
+## Unreleased
+
+Repository and packaging hygiene after the intellectual-property audit
+(`docs/IP_AUDIT.md`). No solver numerics changed, and round 6 still measures
+the frozen 0.2.0 tree (wheel `d57902fa79492531`), installed as sealed.
+
+* A trademark and non-affiliation notice in both READMEs, the `fmincon`
+  docstring and `NOTICE`.
+* Package metadata no longer positions mincon against `fmincon`: the `mincon`
+  crate's description is reworded and `fmincon` is dropped from the PyPI
+  keywords (from the next release; published metadata cannot be edited).
+* `LICENSE-APACHE` carries the full licence text. The QDLDL code adapted in
+  `crates/mincon-linalg/src/ldlt.rs` carries QDLDL's copyright notice (file
+  header, `NOTICE`, the wheel's `THIRD_PARTY_LICENSES.txt`), and the wheel's
+  notices include the Rust standard library.
+* The step- and objective-tolerance exit messages no longer open with
+  `fmincon`'s wording.
+* `Options::fmincon_compatible()` caps iterations at 1000, the documented
+  interior-point default; it said interior-point and used `sqp`'s 400.
+* Comments that misdescribed `fmincon` are corrected (`JacobPattern`, BFGS
+  damping, `CheckGradients`, bounds in finite differences), and the components
+  that had no citation have one (`docs/09`).
+* Benchmark records: `fmincon`'s exit messages, warnings and stack traces, and
+  the benchmark machine's host and user names, are removed
+  (`scripts/scrub_matlab_records.py`; CI checks the messages).
+
 ## 0.2.0 (September 18, 2026)
 
 Experimental. `success` still means a certified point and nothing else; an
