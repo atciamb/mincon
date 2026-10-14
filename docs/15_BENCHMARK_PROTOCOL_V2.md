@@ -133,6 +133,18 @@ or budgets after the fact.
 
 ## Revisions
 
+* 2026-10-14, **protocol v3a** (round 6 only; `bench/results/s6v6-final6/PROTOCOL_V3A.md`):
+  decided before any record of the arms it keeps exists on `final6`, and committed before the
+  run. Reason: this project no longer runs MATLAB. The four `fmincon` arms are not run; the five
+  others (`mincon`, `mincon-ip`, `mincon-sqp`, `scipy-slsqp`, `scipy-trust-constr`) run on
+  tracks A and C with every budget, tolerance, target, seed and the cost metric unchanged;
+  timing pairs `mincon` with `scipy-slsqp`. Section 6, items 2 and 3, are not evaluated on
+  `final6`, and item 4's secondary baselines become `scipy-slsqp` and `scipy-trust-constr`. Gate
+  G1 of `docs/23` is read against SLSQP and trust-constr (G1'). This bends the rule above that no
+  revision may change the final protocol once a final record exists: attempt 1 left 53 mincon
+  records on `final6` (`bench/results/s6v6-final6-attempt1`). It is disclosed in the amendment;
+  it only removes comparators, for a reason outside the benchmark, before any comparator record
+  exists on the set.
 * 2026-09-18, **protocol v3**: decided and implemented before the round-6 set
   (`final6`) was sealed and before any record on it existed; rounds 1 to 5
   stand as run under v2. Reason: the solvers were not held to the same

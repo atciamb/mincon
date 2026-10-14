@@ -20,7 +20,7 @@ is defined by gates that can be met and measured.
 
 | # | gate | standing (September 18, 2026, after Phases A to C) |
 |---|---|---|
-| G1 | **Reliability.** Two consecutive fresh sealed rounds of at least 20 problems in at least 10 families each; track-A attainment at least that of both `fmincon` algorithms; zero false certificates; every miss carrying a diagnosis in `notes` | rounds 3 and 5 meet the attainment half at 12-13 problems; no round has had 20 |
+| G1 | **Reliability.** Two consecutive fresh sealed rounds of at least 20 problems in at least 10 families each; track-A attainment at least that of `scipy-slsqp` and of `scipy-trust-constr`, both held to the shared budget; zero false certificates; every miss carrying a diagnosis in `notes`. (Read this way since October 14, 2026, protocol v3a; it was written against both `fmincon` algorithms, which this project no longer runs.) | rounds 3 and 5 meet the attainment half at 12-13 problems; no round has had 20 |
 | G2 | **Friction.** Every friction-audit problem attained or refused with an actionable message; the exit message names the limit that bound; every quadratic-probe decision in `notes`; no option that does not do what its name says | 14/15 (`bench/results/s7-friction-d`; the one non-attainment is `wrong_gradient`, which mincon refuses with the offending component named, the outcome this gate asks for); items 20c and 20e of `docs/17` closed and the options of `docs/14` re-audited in Phase B; `UseParallel` does what its name says since Phase C |
 | G3 | **Instrument.** The benchmark oracle evaluates its first-order test on every record | met since Phase B: the worker passes bound multipliers on bounds-only problems (`docs/22` section 7.16); records scored before that keep their NaN |
 | G4 | **Public surface.** Packaged README accurate; `solve` (named `fmincon` until 0.2.0; that name is a deprecated alias until 0.4.0) and `minimize` frozen; 0.2.0 on PyPI through `publish.yml` and a Trusted Publisher; wheels for Windows, Linux and macOS; CI green on every push | README rewritten and CI repaired September 18; no Trusted Publisher yet; `publish.yml` builds Windows and Linux only |
@@ -225,6 +225,16 @@ SciPy too, fmincon runs at factory defaults and with its limits lifted to the
 budget, and derivative calls are counted when made. Equivalence: 4160
 quantities on 208 problems, no mismatch. Seal record:
 `bench/results/s6v6-final6/SEAL.md`.
+
+Standing (October 14): **amended before the run, protocol v3a**
+(`bench/results/s6v6-final6/PROTOCOL_V3A.md`). This project no longer runs
+MATLAB, so the round runs the five arms that need none (mincon's three, SLSQP
+and trust-constr) on both tracks, timing pairs mincon with SLSQP, and G1 is
+read against SLSQP and trust-constr. The amendment discloses what it bends:
+the no-revision rule of `docs/15` (attempt 1 left 53 mincon records on the
+set) and the seal's reservation of `docs/17` and the README status block,
+from which statements resting on fmincon results may be withdrawn before the
+run, never replaced. The run is the benchmark laptop's, once.
 
 ### Phase F: release 0.2.0
 
