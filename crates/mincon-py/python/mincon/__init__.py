@@ -996,6 +996,11 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     The raw ``con`` and ``lambda`` fields retain the conventions of minimize.
     This is a convenience interface, not MATLAB output-tuple compatibility.
 
+    MATLAB is a registered trademark of The MathWorks, Inc.; ``fmincon`` is a
+    function of its Optimization Toolbox. mincon is independent of, and not
+    affiliated with or endorsed by, The MathWorks, Inc.; the name is used to
+    describe the calling convention.
+
     Example: ``fmincon(lambda x: ((x-1)**2).sum(), [0., 0.],
     nonlcon=lambda x: ([x.sum()-1], []))`` returns approximately ``[.5, .5]``.
     """

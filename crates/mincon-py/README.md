@@ -7,6 +7,8 @@ scaling and solver configuration have automatic defaults.
 **Experimental release.** This is research software under active
 development, not a completed or proven superior replacement for MATLAB's
 `fmincon`. It computes local solutions; it does not guarantee global minima.
+mincon is independent of, and not endorsed by, The MathWorks, Inc.
+([Trademarks](#trademarks)).
 
 ## Install
 
@@ -230,6 +232,16 @@ goes to the repository whatever it finds.
 
 ## License
 
-MIT OR Apache-2.0. Rust dependency notices are included in the installed
-package as `THIRD_PARTY_LICENSES.txt`. Source is included in the source
-distribution; no MATLAB installation or license is required.
+MIT OR Apache-2.0. Rust dependency notices, and the notice of the QDLDL code
+adapted in the sparse factorization, are included in the installed package as
+`THIRD_PARTY_LICENSES.txt`. Source is included in the source distribution; no
+MATLAB installation or license is required.
+
+## Trademarks
+
+MATLAB is a registered trademark of The MathWorks, Inc., and `fmincon` is a
+function of MathWorks' Optimization Toolbox. mincon is an independent project,
+not affiliated with, sponsored by or endorsed by The MathWorks, Inc. The names
+are used only to describe compatibility: a function with `fmincon`'s argument
+order, and MATLAB option names accepted as aliases. mincon contains no
+MathWorks code.

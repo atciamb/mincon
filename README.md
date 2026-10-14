@@ -1,7 +1,10 @@
 # mincon
-Python supremacy:
-A nonlinear constrained optimizer in Rust, aimed at what MATLAB's `fmincon`
-does well, with Rust computations for blazing speed and Python wheels built using maturin.
+
+A nonlinear constrained optimizer in Rust with Python wheels built using
+maturin. It aims at what MATLAB's `fmincon` does well: solving the problem a
+working scientist actually has, without being told how. mincon is an
+independent project, not affiliated with or endorsed by The MathWorks, Inc.
+([trademarks](#trademarks-and-independence)).
 Experimental releases are [on PyPI](https://pypi.org/project/mincon/): install with
 `pip install mincon`. Version 0.2.0 ([changelog](CHANGELOG.md)) adds macOS wheels to
 Windows and Linux x86_64.
@@ -344,8 +347,34 @@ A benchmark with no losses in it is a benchmark nobody believes.
 
 ## Licence
 
-MIT or Apache-2.0, at your option. Every dependency is MIT, Apache-2.0 or BSD;
-nothing here requires a licence, a Fortran toolchain, or HSL.
+MIT or Apache-2.0, at your option. Every dependency is under a permissive
+licence (MIT, Apache-2.0, BSD; the optional `bench` extra adds matplotlib's
+PSF-based licence); nothing here requires a licence, a Fortran toolchain, or
+HSL. Third-party notices, including the QDLDL code adapted in
+`crates/mincon-linalg`, are in [`NOTICE`](NOTICE) and in the wheel's
+`THIRD_PARTY_LICENSES.txt`.
+
+## Trademarks and independence
+
+MATLAB is a registered trademark of The MathWorks, Inc., and `fmincon` is a
+function of MathWorks' Optimization Toolbox. mincon is an independent project:
+it is not affiliated with, sponsored by or endorsed by The MathWorks, Inc. The
+names `fmincon`, `MATLAB` and MATLAB's option names are used only to describe
+compatibility (a function with the same argument order, and option names
+accepted as aliases) and to identify the solver that the benchmarks compare
+against. mincon contains no MathWorks code; its algorithms come from the
+published literature cited in [`docs/09_RESOURCES.md`](docs/09_RESOURCES.md),
+and where MathWorks' public documentation is quoted it is attributed. MATLAB is
+not needed to install or use mincon.
+
+The `fmincon` figures in this repository describe one MATLAB release on this
+project's corpus under the protocol in
+[`docs/15_BENCHMARK_PROTOCOL_V2.md`](docs/15_BENCHMARK_PROTOCOL_V2.md), and
+nothing more. The published records keep `fmincon`'s exit flag, iterates and
+counts, and leave out its exit messages and any MATLAB console text
+(`scripts/scrub_matlab_records.py`). See mathworks.com/trademarks for a list of
+MathWorks' other trademarks; all other product names are the trademarks of
+their owners.
 
 ## Acknowledgements
 

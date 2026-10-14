@@ -1,3 +1,17 @@
+// Portions of this file are adapted from QDLDL (https://github.com/osqp/qdldl):
+// the elimination-tree and column-count loop in `Symbolic::analyse` follows
+// `QDLDL_etree`, and the numeric up-looking kernel follows the structure of
+// `QDLDL_factor` (its `lnext` and `dinv` work arrays among it).
+//
+//   Copyright 2018, Paul Goulart, Bartolomeo Stellato, Goran Banjac,
+//   The OSQP developers. Licensed under the Apache License, Version 2.0
+//   (see LICENSE-APACHE at the repository root).
+//
+// mincon translated that code to Rust and modified it: a fill-reducing
+// permutation in the symbolic phase, per-pivot sign expectations, the inertia
+// report, dynamic regularization, the growth guard and iterative refinement.
+// These modifications are part of mincon, licensed MIT OR Apache-2.0.
+
 //! Sparse `LDL^T` factorization with dynamic regularization and inertia.
 //!
 //! An up-looking `LDL^T` in the style of `QDLDL`, with three additions that the
@@ -238,7 +252,7 @@ impl Symbolic {
             diag_pos[k] = ap[k] + off;
         }
 
-        // Elimination tree and column counts (QDLDL formulation).
+        // Elimination tree and column counts, after `QDLDL_etree` (see the file header).
         let mut etree = vec![NONE; n];
         let mut lnz = vec![0usize; n];
         let mut work = vec![NONE; n];
@@ -426,6 +440,8 @@ impl Factorization {
             self.signs_perm[k] = signs[self.sym.perm[k]];
         }
 
+        // The up-looking numeric phase, after the structure of `QDLDL_factor`
+        // (see the file header).
         self.y.fill(0.0);
         self.mark.fill(NONE);
         self.lnext.copy_from_slice(&self.sym.lp[..n]);
