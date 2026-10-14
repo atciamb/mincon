@@ -5,8 +5,8 @@ import mincon
 
 
 def test_just_function_start_and_nonlinear_constraints():
-    r = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.],
-                      nonlcon=lambda x: ([x.sum()-1.], []))
+    r = mincon.solve(lambda x: np.sum((x-1.)**2), [0., 0.],
+                    nonlcon=lambda x: ([x.sum()-1.], []))
     assert r.success, r
     np.testing.assert_allclose(r.x, [0.5, 0.5], atol=1e-6)
     assert abs(r.fun-0.5) < 1e-6
@@ -14,9 +14,9 @@ def test_just_function_start_and_nonlinear_constraints():
 
 
 def test_linear_constraints_scalar_bounds_and_args():
-    r = mincon.fmincon(lambda x, target: np.sum((x-target)**2), [0.5, 0.5],
-                      A=[[1., 0.]], b=[1.], Aeq=[[0., 1.]], beq=[1.],
-                      lb=0., ub=4., args=(np.array([2., 3.]),))
+    r = mincon.solve(lambda x, target: np.sum((x-target)**2), [0.5, 0.5],
+                    A=[[1., 0.]], b=[1.], Aeq=[[0., 1.]], beq=[1.],
+                    lb=0., ub=4., args=(np.array([2., 3.]),))
     assert r.success, r
     np.testing.assert_allclose(r.x, [1., 1.], atol=1e-6)
     np.testing.assert_allclose(r.multipliers["ineqlin"], [2.], atol=1e-5)
@@ -24,8 +24,8 @@ def test_linear_constraints_scalar_bounds_and_args():
 
 
 def test_nonlinear_equality_and_empty_linear_pairs():
-    r = mincon.fmincon(lambda x: (x[0]-2.)**2, [0.], A=[], b=[], Aeq=[], beq=[], lb=[], ub=[],
-                      nonlcon=lambda x: ([], x[0]-0.5))
+    r = mincon.solve(lambda x: (x[0]-2.)**2, [0.], A=[], b=[], Aeq=[], beq=[], lb=[], ub=[],
+                    nonlcon=lambda x: ([], x[0]-0.5))
     assert r.success, r
     assert abs(r.x[0]-0.5) < 1e-6
     np.testing.assert_allclose(r.multipliers["eqnonlin"], [3.], atol=1e-5)
@@ -35,7 +35,7 @@ def test_bound_multiplier_and_no_outside_probes():
     def f(x):
         assert 0. <= x[0] <= 1.
         return (x[0]-2.)**2
-    r = mincon.fmincon(f, [-3.], lb=0., ub=1.)
+    r = mincon.solve(f, [-3.], lb=0., ub=1.)
     assert r.success, r
     assert abs(r.x[0]-1.) < 1e-6
     np.testing.assert_allclose(r.multipliers["upper"], [2.], atol=1e-5)
@@ -51,7 +51,7 @@ def test_invalid_input_is_rejected_before_callbacks(kwargs):
     def never(x):
         pytest.fail("invalid setup evaluated the model")
     with pytest.raises(ValueError):
-        mincon.fmincon(never, [0.], **kwargs)
+        mincon.solve(never, [0.], **kwargs)
 
 
 def test_nonlcon_is_called_once_per_point_and_jacobians_cut_evaluations():
@@ -66,13 +66,13 @@ def test_nonlcon_is_called_once_per_point_and_jacobians_cut_evaluations():
 
     f = lambda x: x[0]*x[3]*(x[0]+x[1]+x[2]) + x[2]
     g = lambda x: np.array([x[3]*(2*x[0]+x[1]+x[2]), x[0]*x[3], x[0]*x[3]+1., x[0]*(x[0]+x[1]+x[2])])
-    r_fd = mincon.fmincon(f, [1., 5., 5., 1.], lb=1., ub=5., nonlcon=nonlcon, options={"threads": 1})
+    r_fd = mincon.solve(f, [1., 5., 5., 1.], lb=1., ub=5., nonlcon=nonlcon, options={"threads": 1})
     assert r_fd.success, r_fd
     # one model call per distinct point: the ineq and eq components share it
     assert calls["n"] <= r_fd.ncev + 2, (calls["n"], r_fd.ncev)
     calls["n"] = 0
-    r = mincon.fmincon(f, [1., 5., 5., 1.], lb=1., ub=5., nonlcon=nonlcon, jac=g, nonlcon_jac=nonlcon_jac,
-                       options={"threads": 1, "check_derivatives": True})
+    r = mincon.solve(f, [1., 5., 5., 1.], lb=1., ub=5., nonlcon=nonlcon, jac=g, nonlcon_jac=nonlcon_jac,
+                     options={"threads": 1, "check_derivatives": True})
     assert r.success, r
     np.testing.assert_allclose(r.x, [1., 4.7429996, 3.8211500, 1.3794083], atol=1e-4)
     assert r.ncjev > 0 and r.ncev < r_fd.ncev / 2, (r.ncev, r_fd.ncev)
@@ -81,15 +81,15 @@ def test_nonlcon_is_called_once_per_point_and_jacobians_cut_evaluations():
 
 def test_wrong_constraint_jacobian_is_rejected_when_checked():
     with pytest.raises(RuntimeError, match="FAILED"):
-        mincon.fmincon(lambda x: (x[0]-1.)**2 + (x[1]-1.)**2, [0., 0.],
-                       nonlcon=lambda x: ([x[0] + x[1] - 1.], []),
-                       nonlcon_jac=lambda x: ([[3., 3.]], []),
-                       options={"check_derivatives": True})
+        mincon.solve(lambda x: (x[0]-1.)**2 + (x[1]-1.)**2, [0., 0.],
+                     nonlcon=lambda x: ([x[0] + x[1] - 1.], []),
+                     nonlcon_jac=lambda x: ([[3., 3.]], []),
+                     options={"check_derivatives": True})
 
 
 def test_check_derivatives_without_analytic_derivatives_is_inconclusive_not_silent():
     with pytest.raises(RuntimeError, match="INCONCLUSIVE"):
-        mincon.fmincon(lambda x: (x[0]-1.)**2, [0.], options={"check_derivatives": True})
+        mincon.solve(lambda x: (x[0]-1.)**2, [0.], options={"check_derivatives": True})
 
 
 def _double_well(x):
@@ -123,8 +123,8 @@ def test_disp_prints_iteration_table_and_final_line(capsys):
 
 
 def test_multipliers_allow_attribute_access():
-    r = mincon.fmincon(lambda x: np.sum((x - 1.0)**2), [0.0, 0.0], A=[[1.0, 1.0]], b=[1.0],
-                       nonlcon=lambda x: ([], [x[0] - x[1]]))
+    r = mincon.solve(lambda x: np.sum((x - 1.0)**2), [0.0, 0.0], A=[[1.0, 1.0]], b=[1.0],
+                     nonlcon=lambda x: ([], [x[0] - x[1]]))
     assert r.success, r
     assert isinstance(r.multipliers, mincon.Multipliers)
     np.testing.assert_allclose(r.multipliers.ineqlin, r.multipliers["ineqlin"])
@@ -144,15 +144,15 @@ def test_nonlcon_may_return_its_jacobians():
 
     f = lambda x: -(x[0] + x[1])  # noqa: E731
     jac = lambda x: [-1.0, -1.0]  # noqa: E731
-    r4 = mincon.fmincon(f, [0.1, 0.1], nonlcon=nonlcon4, jac=jac, options={"check_derivatives": True})
-    r2 = mincon.fmincon(f, [0.1, 0.1], nonlcon=lambda x: nonlcon4(x)[:2], jac=jac)
+    r4 = mincon.solve(f, [0.1, 0.1], nonlcon=nonlcon4, jac=jac, options={"check_derivatives": True})
+    r2 = mincon.solve(f, [0.1, 0.1], nonlcon=lambda x: nonlcon4(x)[:2], jac=jac)
     assert r4.success and r2.success, (r4, r2)
     expect = [4.0 / np.sqrt(5.0), 2.0 / np.sqrt(5.0)]
     np.testing.assert_allclose(r4.x, expect, atol=1e-5)
     np.testing.assert_allclose(r2.x, expect, atol=1e-5)
     assert r4.ncjev > 0 and r2.ncjev == 0 and r4.ncev < r2.ncev  # the supplied Jacobians replace finite differences
     with pytest.raises(ValueError, match="do not also pass nonlcon_jac"):
-        mincon.fmincon(f, [0.1, 0.1], nonlcon=nonlcon4, nonlcon_jac=lambda x: nonlcon4(x)[2:])
+        mincon.solve(f, [0.1, 0.1], nonlcon=nonlcon4, nonlcon_jac=lambda x: nonlcon4(x)[2:])
 
 
 def test_multistart_finds_the_lower_basin_and_reports_the_others():
@@ -181,33 +181,33 @@ def test_wrong_gradient_is_named_by_the_default_check():
         g[1] = -g[1]
         return g
     with pytest.raises(RuntimeError) as info:
-        mincon.fmincon(f, np.zeros(4), lb=-10, ub=10, jac=wrong)
+        mincon.solve(f, np.zeros(4), lb=-10, ub=10, jac=wrong)
     assert "grad f [    1]" in str(info.value)
     # a slightly noisy gradient is noted, not rejected
-    r = mincon.fmincon(f, np.zeros(4), lb=-10, ub=10, jac=lambda x: (2 * (x - tgt) + 0.4 * x ** 3) * (1 + 1e-4))
+    r = mincon.solve(f, np.zeros(4), lb=-10, ub=10, jac=lambda x: (2 * (x - tgt) + 0.4 * x ** 3) * (1 + 1e-4))
     assert r.success and any("Derivative check" in n for n in r.notes)
     # and the check can be turned off
-    r = mincon.fmincon(f, np.zeros(4), lb=-10, ub=10, jac=wrong, options={"check_derivatives": False})
+    r = mincon.solve(f, np.zeros(4), lb=-10, ub=10, jac=wrong, options={"check_derivatives": False})
     assert not r.success
 
 
 def test_callback_streams_rows_and_can_stop():
     rows = []
-    r = mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []),
-                       callback=lambda row: rows.append(dict(row)) or False)
+    r = mincon.solve(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []),
+                     callback=lambda row: rows.append(dict(row)) or False)
     assert r.success and len(rows) == len(r.trace) and rows[0]["iter"] == 0 and "optimality" in rows[-1]
-    r = mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []),
-                       callback=lambda row: row["iter"] >= 1)
+    r = mincon.solve(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []),
+                     callback=lambda row: row["iter"] >= 1)
     assert r.status == mincon.ExitFlag.STOPPED_BY_USER and not r.success and r.usable is False
     assert any("callback" in n for n in r.notes)
     with pytest.raises(RuntimeError, match="callback raised"):
-        mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], callback=lambda row: 1 / 0)
+        mincon.solve(lambda x: ((x - 1) ** 2).sum(), [0., 0.], callback=lambda row: 1 / 0)
 
 
 def test_disp_streams_before_the_final_line(capsys):
     seen = []
-    mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []),
-                   options={"disp": True}, callback=lambda row: seen.append(capsys.readouterr().out) or False)
+    mincon.solve(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []),
+                 options={"disp": True}, callback=lambda row: seen.append(capsys.readouterr().out) or False)
     # by the time the callback for a row runs, the header and the previous rows are already printed
     assert seen[0].startswith(" Iter") or seen[0].lstrip().startswith("Iter")
     assert len(seen) >= 2 and seen[1].strip() != ""
@@ -240,8 +240,8 @@ def test_hessian_is_used_when_supplied():
                         [x[1] * x[2], x[0] * x[2], x[0] * x[1], 0.]])
         return h + li * hc + lam.eqnonlin[0] * 2 * np.eye(4)
     kw = dict(lb=1., ub=5., nonlcon=nonlcon, jac=jac, nonlcon_jac=nonlcon_jac)
-    quasi = mincon.fmincon(f, [1., 5., 5., 1.], **kw)
-    exact = mincon.fmincon(f, [1., 5., 5., 1.], hess=hess, **kw)
+    quasi = mincon.solve(f, [1., 5., 5., 1.], **kw)
+    exact = mincon.solve(f, [1., 5., 5., 1.], hess=hess, **kw)
     # The exact Hessian is used, certified, and (I9) not slower than the quasi-Newton
     # default by more than a couple of iterations (HS71: 7 vs 5; it was 370 before I9).
     assert quasi.success and exact.success
@@ -250,22 +250,22 @@ def test_hessian_is_used_when_supplied():
     assert exact.nit <= quasi.nit + 3
     # S-E: the interior-point member counts the pivot signs of an exact Hessian's
     # KKT matrix instead of perturbing them (HS71: 56 iterations -> 10, quasi-Newton 10).
-    ip_quasi = mincon.fmincon(f, [1., 5., 5., 1.], method="interior-point", **kw)
-    ip_exact = mincon.fmincon(f, [1., 5., 5., 1.], method="interior-point", hess=hess, **kw)
+    ip_quasi = mincon.solve(f, [1., 5., 5., 1.], method="interior-point", **kw)
+    ip_exact = mincon.solve(f, [1., 5., 5., 1.], method="interior-point", hess=hess, **kw)
     assert ip_quasi.success and ip_exact.success
     assert abs(ip_exact.fun - 17.0140173) < 1e-5 * 17.0
     assert ip_exact.nit <= 10 and ip_exact.nit <= ip_quasi.nit
     assert any("inertia is counted" in n for n in ip_exact.notes)
-    old = mincon.fmincon(f, [1., 5., 5., 1.], method="interior-point", hess=hess,
-                         options={"kkt_pivot_signs": "expected"}, **kw)
+    old = mincon.solve(f, [1., 5., 5., 1.], method="interior-point", hess=hess,
+                       options={"kkt_pivot_signs": "expected"}, **kw)
     assert old.nit > 3 * ip_exact.nit  # the mechanism, kept reproducible
 
 
 def test_facade_selects_the_method():
-    r = mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []), method="sqp")
+    r = mincon.solve(lambda x: ((x - 1) ** 2).sum(), [0., 0.], nonlcon=lambda x: ([x.sum() - 1], []), method="sqp")
     assert r.success and r.algorithm == "Sqp"
     with pytest.raises(ValueError):
-        mincon.fmincon(lambda x: ((x - 1) ** 2).sum(), [0., 0.], method="simplex")
+        mincon.solve(lambda x: ((x - 1) ** 2).sum(), [0., 0.], method="simplex")
 
 
 def test_a_start_without_scale_gets_a_hint():
@@ -273,10 +273,10 @@ def test_a_start_without_scale_gets_a_hint():
     def f(x):
         u, v = 1e6 * x[0], 1e-6 * x[1]
         return (u - 1.) ** 2 + (v - 1.) ** 2
-    r = mincon.fmincon(f, [0., 0.], A=[[-1e6, -1e-6]], b=[-3.])
+    r = mincon.solve(f, [0., 0.], A=[[-1e6, -1e-6]], b=[-3.])
     assert any("carries no scale" in n for n in r.notes), r.notes
     # A start of typical magnitudes carries the scale: no hint, and the solve lands.
-    r2 = mincon.fmincon(f, [1e-6, 1e6], A=[[-1e6, -1e-6]], b=[-3.])
+    r2 = mincon.solve(f, [1e-6, 1e6], A=[[-1e6, -1e-6]], b=[-3.])
     assert not any("carries no scale" in n for n in r2.notes), r2.notes
     assert r2.success and abs(r2.fun - 0.5) < 1e-4
 
@@ -289,61 +289,72 @@ def test_warm_start_resumes_an_interrupted_solve():
         return float(np.sum(100. * (x[1:] - x[:-1] ** 2) ** 2 + (1. - x[:-1]) ** 2))
     x0 = np.array([-1.2 if i % 2 == 0 else 1. for i in range(n)])
     kw = dict(lb=-2., ub=2., nonlcon=lambda x: ([x.sum() - n + 0.5], []))
-    full = mincon.fmincon(f, x0, **kw)
+    full = mincon.solve(f, x0, **kw)
     assert full.success
-    cut = mincon.fmincon(f, x0, options={"maxfev": full.nfev // 3}, **kw)
+    cut = mincon.solve(f, x0, options={"maxfev": full.nfev // 3}, **kw)
     assert not cut.success
-    warm = mincon.fmincon(f, cut.x, warm_start=cut, **kw)
+    warm = mincon.solve(f, cut.x, warm_start=cut, **kw)
     assert warm.success and abs(warm.fun - full.fun) < 1e-6 * max(1., abs(full.fun))
     assert any("Warm start" in note for note in warm.notes)
     with pytest.raises(ValueError, match="warm_start does not match"):
-        mincon.fmincon(f, x0, warm_start={"lambda": [1., 2.], "z_l": np.zeros(n), "z_u": np.zeros(n)}, **kw)
+        mincon.solve(f, x0, warm_start={"lambda": [1., 2.], "z_l": np.zeros(n), "z_u": np.zeros(n)}, **kw)
 
 
 def test_matlab_option_names_are_accepted_on_the_facade():
     f = lambda x: np.sum((x-1.)**2)  # noqa: E731
-    r = mincon.fmincon(f, [0., 0.], A=[[1., 1.]], b=[1.],
-                      options={"MaxIterations": 50, "OptimalityTolerance": 1e-8, "Display": "off",
+    r = mincon.solve(f, [0., 0.], A=[[1., 1.]], b=[1.],
+                    options={"MaxIterations": 50, "OptimalityTolerance": 1e-8, "Display": "off",
                                "Algorithm": "sqp", "ConstraintTolerance": 1e-8})
     assert r.success, r
     np.testing.assert_allclose(r.x, [0.5, 0.5], atol=1e-6)
     with pytest.raises(ValueError, match="TolX"):
-        mincon.fmincon(f, [0., 0.], options={"TolX": 1e-6})
+        mincon.solve(f, [0., 0.], options={"TolX": 1e-6})
     # UseParallel=True is workers=-1 (test_batch.py); a lambda cannot be sent to a worker process
     with pytest.raises(ValueError, match="picklable"):
-        mincon.fmincon(f, [0., 0.], options={"UseParallel": True})
+        mincon.solve(f, [0., 0.], options={"UseParallel": True})
     with pytest.raises(ValueError, match="not both"):
-        mincon.fmincon(f, [0., 0.], options={"MaxIterations": 5, "maxiter": 5})
+        mincon.solve(f, [0., 0.], options={"MaxIterations": 5, "maxiter": 5})
     with pytest.raises(ValueError, match="SpecifyObjectiveGradient"):
-        mincon.fmincon(f, [0., 0.], options={"SpecifyObjectiveGradient": True})
+        mincon.solve(f, [0., 0.], options={"SpecifyObjectiveGradient": True})
     with pytest.raises(ValueError, match="active-set"):
-        mincon.fmincon(f, [0., 0.], options={"Algorithm": "active-set"})
+        mincon.solve(f, [0., 0.], options={"Algorithm": "active-set"})
 
 
 def test_limit_names_the_binding_limit_and_a_set_iteration_cap_is_shared():
     def f(x):
         return float(np.sum((x-1.)**4))
-    r = mincon.fmincon(f, [0.3, -0.2, 0.1], options={"maxiter": 2})
+    r = mincon.solve(f, [0.3, -0.2, 0.1], options={"maxiter": 2})
     assert r.status == 0 and r.limit == "iterations", r
     assert r.message.startswith("Iteration limit reached"), r.message
     assert r.nit <= 2
     assert any("iteration budget" in n for n in r.notes), r.notes
-    r = mincon.fmincon(f, [0.3, -0.2, 0.1], options={"maxfev": 12})
+    r = mincon.solve(f, [0.3, -0.2, 0.1], options={"maxfev": 12})
     assert r.status == 0 and r.limit == "evaluations", r
     assert r.message.startswith("Evaluation limit reached"), r.message
-    r = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.])
+    r = mincon.solve(lambda x: np.sum((x-1.)**2), [0., 0.])
     assert r.success and r.limit is None
 
 
 def test_linear_rows_carry_their_jacobian():
-    r = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.], A=[[1., 1.]], b=[1.], Aeq=[[1., -1.]], beq=[0.])
+    r = mincon.solve(lambda x: np.sum((x-1.)**2), [0., 0.], A=[[1., 1.]], b=[1.], Aeq=[[1., -1.]], beq=[0.])
     assert r.success, r
     assert r.ncjev >= 1, "the linear rows' Jacobian should be analytic"
     assert not any("Constraint Jacobian by finite differences" in n for n in r.notes), r.notes
 
 
 def test_step_tolerance_option_is_accepted():
-    r = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.], options={"xtol": 1e-12})
+    r = mincon.solve(lambda x: np.sum((x-1.)**2), [0., 0.], options={"xtol": 1e-12})
     assert r.success
-    r = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.], options={"StepTolerance": 1e-12, "MaxIterations": None})
+    r = mincon.solve(lambda x: np.sum((x-1.)**2), [0., 0.], options={"StepTolerance": 1e-12, "MaxIterations": None})
     assert r.success
+
+
+def test_fmincon_is_a_deprecated_name_of_solve():
+    kw = dict(A=[[1., 1.]], b=[1.], nonlcon=lambda x: ([x[0] ** 2 - 0.5], []), options={"threads": 1})
+    new = mincon.solve(lambda x: np.sum((x-1.)**2), [0., 0.], **kw)
+    with pytest.warns(DeprecationWarning, match="mincon.solve"):
+        old = mincon.fmincon(lambda x: np.sum((x-1.)**2), [0., 0.], **kw)
+    assert np.array_equal(old.x, new.x) and (old.nfev, old.nit, old.status) == (new.nfev, new.nit, new.status)
+    np.testing.assert_array_equal(old.multipliers.ineqlin, new.multipliers.ineqlin)
+    from mincon import fmincon  # noqa: F401 - the old import keeps working for this release
+    assert "fmincon" in mincon.__all__ and "solve" in mincon.__all__

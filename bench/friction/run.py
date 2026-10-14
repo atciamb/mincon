@@ -87,7 +87,8 @@ def run_mincon_fmincon(p, cnt):
         kw["jac"] = p.user_jac
     if MINCON_OPTIONS:
         kw["options"] = dict(MINCON_OPTIONS)
-    r = mincon.fmincon(cnt.fun, p.x0, **kw)
+    solve = getattr(mincon, "solve", None) or mincon.fmincon   # the facade's name before 0.3.0
+    r = solve(cnt.fun, p.x0, **kw)
     return dict(x=np.asarray(r.x, float), f=float(r.fun), status=int(r.status), message=str(r.message),
                 reported_success=bool(r.success), usable=bool(r.usable), nit=int(r.nit), nfev_reported=int(r.nfev),
                 notes=list(r.notes), algorithm=str(r.get("algorithm", "")), solver_time=float(r.time),

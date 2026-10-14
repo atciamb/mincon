@@ -66,7 +66,7 @@ def design(operator):
 
 def solve(operator, **options):
     f, kw = design(operator)
-    return mincon.fmincon(f, method="sqp", options=options, **kw)
+    return mincon.solve(f, method="sqp", options=options, **kw)
 
 
 def saddle_step_taken(result):
@@ -93,7 +93,7 @@ def test_zero_step_decrease_retests_with_the_qp_multipliers_at_a_degenerate_vert
     # and the whole portfolio does not need its second member on this problem
     for operator in (True, False):
         f, kw = design(operator)
-        auto = mincon.fmincon(f, **kw)
+        auto = mincon.solve(f, **kw)
         assert auto.success and any("1 member(s) run" in note for note in auto.notes), auto.notes
 
 
@@ -114,4 +114,4 @@ def test_the_two_options_are_checked():
     f, kw = design(False)
     for name in ("zero_step", "saddle_step"):
         with pytest.raises(ValueError, match=name):
-            mincon.fmincon(f, options={name: "sometimes"}, **kw)
+            mincon.solve(f, options={name: "sometimes"}, **kw)

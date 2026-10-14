@@ -9,6 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import problems  # noqa: E402
 import mincon  # noqa: E402
 
+solve = getattr(mincon, "solve", None) or mincon.fmincon   # the facade's name before 0.3.0
+
 names = sys.argv[1:] or ["chainrosen20", "box_lsq", "portfolio_risk", "pressure_vessel", "hs71", "odefit",
                           "infeasible_start_far", "linear_only", "equality_circle", "with_args"]
 fractions = (0.33, 0.66)
@@ -23,16 +25,16 @@ for name in names:
     if getattr(p, "args", None):
         kw["args"] = p.args
     opts = {"quadratic_probe": False}
-    full = mincon.fmincon(p.fun, p.x0, options=dict(opts), **kw)
+    full = solve(p.fun, p.x0, options=dict(opts), **kw)
     tgt = p.target
     def att(r):
         return abs(r.fun - tgt) <= 1e-4 * max(1.0, abs(tgt)) and r.maxcv <= 1e-6
 
     for frac in fractions:
         budget = max(5, int(full.nfev * frac))
-        cut = mincon.fmincon(p.fun, p.x0, options=dict(opts, maxfev=budget), **kw)
-        warm = mincon.fmincon(p.fun, cut.x, options=dict(opts), warm_start=cut, **kw)
-        cold = mincon.fmincon(p.fun, cut.x, options=dict(opts), **kw)
+        cut = solve(p.fun, p.x0, options=dict(opts, maxfev=budget), **kw)
+        warm = solve(p.fun, cut.x, options=dict(opts), warm_start=cut, **kw)
+        cold = solve(p.fun, cut.x, options=dict(opts), **kw)
         rows.append(dict(problem=name, frac=frac, full=full.nfev, full_att=att(full), cut=cut.nfev, cut_success=cut.success,
                          warm_total=cut.nfev + warm.nfev, warm_att=att(warm), warm_success=warm.success,
                          cold_total=cut.nfev + cold.nfev, cold_att=att(cold), cold_success=cold.success))

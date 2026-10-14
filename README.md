@@ -17,10 +17,10 @@ subject to  c_L <= c(x) <= c_U
 ```
 
 ```python
-from mincon import fmincon
+from mincon import solve
 
-r = fmincon(lambda x: ((x - 1)**2).sum(), [0., 0.],
-            nonlcon=lambda x: ([x.sum() - 1], []))
+r = solve(lambda x: ((x - 1)**2).sum(), [0., 0.],
+          nonlcon=lambda x: ([x.sum() - 1], []))
 print(r.x, r.fun, r.success)  # approximately [0.5, 0.5], 0.5, True
 ```
 
@@ -118,8 +118,10 @@ let r = minimize(&p, &Options::default())?;
 > is not success); 57 Python tests of the package, run against the installed
 > wheel, and 10 of the benchmark oracle.
 
-`fmincon` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`; its nonlinear
-callback returns `(c, ceq)` with `c <= 0`. The existing `minimize` interface
+`solve` accepts optional `A, b, Aeq, beq, lb, ub, nonlcon`, in the order of
+MATLAB's `fmincon`; its nonlinear callback returns `(c, ceq)` with `c <= 0`.
+It was named `mincon.fmincon` until 0.2.0, and that name remains for one
+release as a deprecated alias. The existing `minimize` interface
 uses SciPy's `ineq >= 0` convention. Both have automatic defaults and return
 an `OptimizeResult`. See the [Python guide](crates/mincon-py/README.md) and
 [release procedure](docs/13_RELEASE.md). A fresh PyPI installation of 0.1.0 passed all 18
@@ -159,7 +161,7 @@ Python tests of that version.
   displacements and second-order inward boundary stencils, graph coloring,
   sparsity detection, a multi-point derivative checker that cannot pass
   without evidence; exact objective gradients and constraint Jacobians from
-  Python (`jac` in SciPy-style constraint dicts, `nonlcon_jac` in `fmincon`).
+  Python (`jac` in SciPy-style constraint dicts, `nonlcon_jac` in `solve`).
   Supplied derivatives are checked along one direction at the start with two
   evaluations: a gross disagreement stops the solve naming the component, a
   mild one is a note (zero false alarms on the 172-problem corpus with exact
@@ -167,7 +169,7 @@ Python tests of that version.
   convergence: on HS71 the SQP member takes 7 iterations and the interior-point
   member 10, against 5 and 10 with their quasi-Newton models.
 * **Expensive and vectorised models** — `workers=k` (or `UseParallel=True`
-  on the `fmincon` facade) evaluates every gradient's finite-difference
+  on `solve`) evaluates every gradient's finite-difference
   probes on `k` worker processes, or through a map-like callable, and takes
   the serial solve's iterates to the last bit (verified on the 56 fixtures
   under each algorithm and through a real process pool); with a 0.2 s model a
@@ -179,7 +181,7 @@ Python tests of that version.
   `objective_batch` / `constraints_batch` (`docs/22` section 7.17).
 * **Seeing and steering a run** — `callback=` after every iteration with the
   trace row (return `True` to stop), `disp=True` streams the iteration table,
-  `method=` on the `fmincon` facade, `mincon.multistart` for several starts,
+  `method=` on `solve`, `mincon.multistart` for several starts,
   and `warm_start=res` resumes from a previous result's multipliers and
   quasi-Newton model (`res.hess_approx`): resumed at two thirds of its
   evaluations, a solve lands within 5 % of the uninterrupted count on four of
@@ -360,8 +362,9 @@ MATLAB is a registered trademark of The MathWorks, Inc., and `fmincon` is a
 function of MathWorks' Optimization Toolbox. mincon is an independent project:
 it is not affiliated with, sponsored by or endorsed by The MathWorks, Inc. The
 names `fmincon`, `MATLAB` and MATLAB's option names are used only to describe
-compatibility (a function with the same argument order, and option names
-accepted as aliases) and to identify the solver that the benchmarks compare
+compatibility (`solve` takes the same argument order and accepts the option
+names as aliases; `mincon.fmincon` remains for one release as a deprecated
+name of `solve`) and to identify the solver that the benchmarks compare
 against. mincon contains no MathWorks code; its algorithms come from the
 published literature cited in [`docs/09_RESOURCES.md`](docs/09_RESOURCES.md),
 and where MathWorks' public documentation is quoted it is attributed. MATLAB is

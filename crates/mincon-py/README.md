@@ -22,13 +22,13 @@ NumPy is installed automatically. On platforms without a matching wheel, pip
 builds from source and requires Rust 1.83 or newer and a C/C++ toolchain.
 What changed since 0.1.0 is in the repository's `CHANGELOG.md`.
 
-## Familiar fmincon inputs
+## Constraints as matrices, bounds and one callback: `solve`
 
 ```python
-from mincon import fmincon
+from mincon import solve
 
 # Closest point to (1, 1), subject to x[0] + x[1] <= 1.
-result = fmincon(
+result = solve(
     lambda x: ((x - 1)**2).sum(),
     [0., 0.],
     nonlcon=lambda x: ([x.sum() - 1], []),
@@ -39,6 +39,10 @@ print(result.success, result.message)
 ```
 
 No gradients, Hessians, algorithm selection or tolerance settings are required.
+`solve` takes its arguments in the order of MATLAB's `fmincon`
+(`fun, x0, A, b, Aeq, beq, lb, ub, nonlcon`), so code written for it ports by
+changing the name. Until 0.3.0 this function was called `mincon.fmincon`; that
+name still works in 0.3.0 with a `DeprecationWarning` and is removed in 0.4.0.
 Optional constraint arguments use MATLAB's conventions:
 
 | Argument | Meaning |
@@ -48,7 +52,7 @@ Optional constraint arguments use MATLAB's conventions:
 | `lb`, `ub` | Lower/upper bounds, scalars or vectors |
 | `nonlcon` | Returns `(c, ceq)` with `c <= 0`, `ceq == 0`; use `[]` for an absent component. May instead return `(c, ceq, Jc, Jceq)` with the Jacobians as `(rows, n)` arrays, or pass `nonlcon_jac` separately |
 
-For example, `fmincon(fun, x0, A=[[1, 1]], b=[1], lb=0)` uses only linear
+For example, `solve(fun, x0, A=[[1, 1]], b=[1], lb=0)` uses only linear
 constraints and bounds. The result is a Python object, not MATLAB's output
 tuple. `result.multipliers` groups multipliers with MATLAB's signs, readable
 as `result.multipliers["eqlin"]` or `result.multipliers.eqlin`. Options use
@@ -77,13 +81,13 @@ once (`-1`: one per core; `options={"UseParallel": True}` means the same):
 
 ```python
 import numpy as np
-from mincon import fmincon
+from mincon import solve
 
 def flux(x):                      # seconds per call: a PDE solve, a simulation
     ...
 
 if __name__ == "__main__":        # required on Windows and macOS
-    res = fmincon(flux, x0, A=A, b=b, lb=lb, ub=ub, workers=8)
+    res = solve(flux, x0, A=A, b=b, lb=lb, ub=ub, workers=8)
 ```
 
 The probes are the same points as in a serial solve, so the iterates and the
@@ -114,10 +118,10 @@ moves 1.16x):
 def fun(X):                       # X is (k, n); always 2-D, k = 1 for one point
     return ((X - 1.0) ** 2).sum(axis=1)
 
-res = fmincon(fun, x0, lb=0, vectorized=True)
+res = solve(fun, x0, lb=0, vectorized=True)
 ```
 
-`fmincon`'s `vectorized=True` covers `fun` and `nonlcon` (which then returns
+`solve`'s `vectorized=True` covers `fun` and `nonlcon` (which then returns
 `(C, Ceq)` with `k` rows each); `'fun'` or `'nonlcon'` vectorises one of
 them. With `minimize` it covers `fun`, and a constraint dict opts in with
 `"vectorized": True`. A vectorised function is always called with a
@@ -149,8 +153,9 @@ result = minimize(
 ```
 
 **Sign convention:** `minimize` inequalities mean `fun(x) >= 0`;
-`fmincon` nonlinear inequalities mean `c(x) <= 0`. Equalities are zero in both.
-Use `bounds=[(0, None), (0, None)]` with `minimize`; use `lb=0` with `fmincon`.
+`solve`'s nonlinear inequalities mean `c(x) <= 0`, as in MATLAB. Equalities
+are zero in both. Use `bounds=[(0, None), (0, None)]` with `minimize`; use
+`lb=0` with `solve`.
 
 Supply `jac=` if you have an analytical objective gradient and `hess=` (the
 Hessian of the Lagrangian) if you have that too; both algorithms use them in
@@ -158,7 +163,7 @@ place of their quasi-Newton models and converge in far fewer evaluations.
 Supplied derivatives are checked along one direction at `x0` with two extra
 evaluations: a gross disagreement raises with the offending component named,
 a mild one is noted in `res.notes`. `args=(...)` passes additional arguments
-to your objective and nonlinear constraints. Inspect `help(fmincon)` or
+to your objective and nonlinear constraints. Inspect `help(solve)` or
 `help(minimize)` for the full interface.
 
 ## Interpreting results
@@ -242,6 +247,7 @@ MATLAB installation or license is required.
 MATLAB is a registered trademark of The MathWorks, Inc., and `fmincon` is a
 function of MathWorks' Optimization Toolbox. mincon is an independent project,
 not affiliated with, sponsored by or endorsed by The MathWorks, Inc. The names
-are used only to describe compatibility: a function with `fmincon`'s argument
-order, and MATLAB option names accepted as aliases. mincon contains no
-MathWorks code.
+are used only to describe compatibility: `solve` takes `fmincon`'s argument
+order and accepts MATLAB option names as aliases, and `mincon.fmincon` remains
+for one release as a deprecated name of `solve`. mincon contains no MathWorks
+code.

@@ -32,6 +32,16 @@ the frozen 0.2.0 tree (wheel `d57902fa79492531`), installed as sealed.
   the benchmark machine's host and user names, are removed
   (`scripts/scrub_matlab_records.py`; CI checks the messages).
 
+### Deprecated
+
+* `mincon.fmincon` is renamed `mincon.solve`, with the same arguments,
+  defaults and result. `mincon.fmincon` remains in this release as a
+  deprecated alias that issues a `DeprecationWarning`, and it is removed in
+  0.4.0: replace `from mincon import fmincon` by `from mincon import solve`.
+  The friction audit and the parity and warm-start scripts call `solve` when
+  the installed package has it and `fmincon` otherwise, so they still run
+  against earlier wheels.
+
 ## 0.2.0 (September 18, 2026)
 
 Experimental. `success` still means a certified point and nothing else; an
