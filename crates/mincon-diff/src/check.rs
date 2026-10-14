@@ -1,8 +1,9 @@
 //! The derivative checker.
 //!
-//! `fmincon`'s `CheckGradients` compares user derivatives against finite
-//! differences and prints the worst discrepancy. It is the single most useful
-//! diagnostic in the toolbox, because a wrong analytic gradient is the most
+//! Comparing user derivatives against finite differences and naming the worst
+//! discrepancy (what MATLAB users know as `CheckGradients`, now the
+//! `checkGradients` function) is the single most useful diagnostic an
+//! optimizer can offer, because a wrong analytic gradient is the most
 //! common cause of "the solver doesn't work on my problem" and it is almost
 //! impossible to diagnose from convergence behaviour alone.
 //!

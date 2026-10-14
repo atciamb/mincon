@@ -46,9 +46,10 @@
 //!    constraints, `p, n >= 0`, `rho` driven by the multiplier norm.
 //!
 //! 3. **Globalization.** An `l1` merit function
-//!    `f(x) + nu * ||violation(x)||_1` with the Han–Powell penalty update
-//!    `nu_i = max(|lambda_i|, (nu_i + |lambda_i|)/2)`, a backtracking line
-//!    search, and a **second-order correction** to defeat the Maratos effect.
+//!    `f(x) + rho * ||violation(x)||_1` with a single penalty parameter `rho`
+//!    shared with the elastic QP (`docs/20` §5; the per-row Han–Powell update
+//!    this plan first proposed was not built), a backtracking line search,
+//!    and a **second-order correction** to defeat the Maratos effect.
 //!    A filter is the alternative; use the merit function here specifically so
 //!    the portfolio's two members fail differently.
 //!

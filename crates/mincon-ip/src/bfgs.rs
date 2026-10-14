@@ -7,18 +7,19 @@
 //! indefinite at the solution, so `s^T y` goes negative regularly and a plain
 //! BFGS update destroys the approximation.
 //!
-//! Powell's fix (1978) replaces `y` with a convex combination of `y` and `B s`
-//! chosen so that `s^T y_damped >= 0.2 * s^T B s`. It is what `fmincon`'s
-//! `sqp` and `active-set` algorithms use, and skipping it is one of the
-//! easiest ways to build a constrained quasi-Newton method that works on
+//! Powell's fix (1978; Nocedal & Wright, Procedure 18.2) replaces `y` with a
+//! convex combination of `y` and `B s` chosen so that
+//! `s^T y_damped >= 0.2 * s^T B s`. Some safeguard of this kind is in every
+//! practical SQP code (MathWorks documents a different, element-wise
+//! modification for `fmincon`'s `sqp`; `docs/20` §4), and skipping it is one of
+//! the easiest ways to build a constrained quasi-Newton method that works on
 //! textbook problems and falls apart on real ones.
 //!
 //! # Status
 //!
-//! Dense BFGS only, which is `O(n^2)` memory and `O(n^2)` per update — the same
-//! limit `fmincon`'s interior-point default has. Limited-memory BFGS is
-//! specified in `docs/02_SPEC_INTERIOR_POINT.md` and is required before any
-//! problem with `n > ~2000` is in scope. The compact representation
+//! Dense BFGS only, which is `O(n^2)` memory and `O(n^2)` per update.
+//! Limited-memory BFGS is specified in `docs/02_SPEC_INTERIOR_POINT.md` and is
+//! required before any problem with `n > ~2000` is in scope. The compact representation
 //! (Byrd–Nocedal–Schnabel) is the one to implement, because it slots into the
 //! KKT matrix as a low-rank update rather than forcing a matrix-free method.
 

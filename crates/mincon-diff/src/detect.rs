@@ -22,9 +22,10 @@
 //! [`DetectConfig::max_probe_variables`] so that a huge model does not spend
 //! its entire budget here.
 //!
-//! `fmincon` does not attempt this at all: `JacobPattern` must be supplied or
-//! the Jacobian is treated as dense. Detecting it is a real capability
-//! difference, provided we are honest about the failure mode.
+//! Solvers that exploit a pattern usually have to be given one (a
+//! `JacobPattern`-style option) and treat the Jacobian as dense otherwise.
+//! Detecting it is a real capability, provided we are honest about the
+//! failure mode.
 
 use mincon_core::{Nlp, Sparsity};
 

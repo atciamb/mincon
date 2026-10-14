@@ -3,15 +3,15 @@
 //! Three capabilities, in increasing order of how much they differentiate us
 //! from `fmincon`:
 //!
-//! * [`fd`] — bounds-aware finite differences. `fmincon` has this; most
-//!   open-source solvers do not, and it matters on models with a restricted
-//!   domain.
+//! * [`fd`] — bounds-aware finite differences. MathWorks documents this for
+//!   `fmincon`'s `sqp`; most open-source solvers do not, and it matters on
+//!   models with a restricted domain.
 //! * [`coloring`] — Curtis–Powell–Reid compression of the finite-difference
-//!   Jacobian. `fmincon` does not do this for nonlinear constraint Jacobians,
-//!   so a banded model costs it `n` evaluations per iteration where it should
-//!   cost three.
+//!   Jacobian, so a banded model costs three evaluations per iteration
+//!   instead of `n`.
 //! * [`detect`] — probing for sparsity when the user has not declared it.
-//!   `fmincon` requires `JacobPattern`.
+//!   Solvers that use a pattern usually have to be given one (MATLAB's
+//!   `fsolve` and `lsqnonlin`, for example, take a `JacobPattern` option).
 //!
 //! # What is deliberately missing: automatic differentiation
 //!

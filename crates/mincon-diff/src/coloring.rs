@@ -11,9 +11,8 @@
 //! handful.
 //!
 //! This is the difference between a large sparse model being tractable and
-//! being hopeless, and it is a capability `fmincon` does not offer for
-//! nonlinear constraint Jacobians: MATLAB will happily take `n` finite
-//! differences per iteration on a problem where three would do.
+//! being hopeless: without it a solver takes `n` finite differences per
+//! iteration on a problem where three would do.
 //!
 //! # Getting it wrong is silent
 //!

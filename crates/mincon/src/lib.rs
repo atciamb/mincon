@@ -116,7 +116,7 @@ fn minimize_unscaled<P: Nlp + Sync + ?Sized>(
     match opts.check_derivatives {
         DerivativeCheck::Off => {}
         DerivativeCheck::Full => {
-            // `fmincon`'s CheckGradients semantics: a failed check stops the solve. An
+            // A failed check stops the solve (as a failed `CheckGradients` did). An
             // inconclusive check (no analytic derivatives, or callbacks that failed) is
             // also a stop, because "could not verify" must never read as "verified".
             let report = check_derivatives(nlp, 1e-5, 3).map_err(SolveError::InitialPoint)?;

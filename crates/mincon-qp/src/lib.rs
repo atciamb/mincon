@@ -27,6 +27,11 @@
 //! `L^{-1} N = Q [R; 0]`, updated by Givens rotations; the only inversion is the
 //! Cholesky factor `L` of `H`, once.
 //!
+//! Provenance: written from Goldfarb and Idnani (1983) and Powell (1985) through
+//! the derivation in `docs/20`. It is not a translation of QuadProg++, R's
+//! `quadprog` or `eiquadprog`; two helper names are shared with QuadProg++
+//! because they name the same textbook operations.
+//!
 //! Multipliers are returned in mincon's convention: stationarity is
 //! `H x + g + A^T lambda - z_l + z_u = 0` with `lambda_i >= 0` when the upper
 //! side of row `i` is active, `lambda_i <= 0` when the lower side is active,
