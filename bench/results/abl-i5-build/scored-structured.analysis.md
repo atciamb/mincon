@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-i5-build\scored-structured.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-i5-build\scored-structured.jsonl
 
 172 problems, solvers: mincon@bfgs_rescale=0, mincon@quadratic_build=structured; duplicates overwritten: 0
 

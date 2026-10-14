@@ -129,6 +129,15 @@ jobs:
       - run: cargo doc --workspace --no-deps
       - run: cargo test --workspace --doc
 
+  records:
+    name: published records carry no MATLAB text
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # fmincon's exit messages, warnings and stack traces stay out of the
+      # committed records (docs/IP_AUDIT.md, F-05 and F-06).
+      - run: python3 scripts/scrub_matlab_records.py bench/results --check
+
   wheel:
     name: python wheel / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}

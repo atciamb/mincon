@@ -96,6 +96,17 @@ feature.
 generates its results in the same JSONL schema; commit the output and
 `profiles.py` will treat `fmincon` as one more solver.
 
+**Before committing any MATLAB output**, run
+`python scripts/scrub_matlab_records.py bench/results` on the machine that
+produced it. It replaces `fmincon`'s exit messages and warnings in the records
+with `null` / `[]`; removes MATLAB's warnings, their stack traces and each run's
+exit headline from console logs and from the friction summaries' message column;
+and replaces the host name and user directory with `<host>` and `<home>`. No
+number changes. The exit flag (`native_status`, `exitflag`) is what every table uses.
+CI fails if MATLAB text is committed (`docs/IP_AUDIT.md`, F-05 and F-06).
+Whether the MATLAB licence in use permits benchmarking `fmincon` against this
+project is a question for that licence's terms (F-01), not for this directory.
+
 The fairness rules are written at the top of that file and are worth repeating:
 **no gradients supplied to anyone**, default options otherwise, and the success
 criterion applied afterwards by the harness. The plug-and-play case is where

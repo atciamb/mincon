@@ -141,8 +141,10 @@ pub enum DerivativeCheck {
     /// the model supplies no derivatives.
     #[default]
     Directional,
-    /// `fmincon`'s `CheckGradients`: every entry at several points; a failed
-    /// or inconclusive check stops the solve.
+    /// Every entry at several points, like the check MATLAB users know from
+    /// `fmincon`'s former `CheckGradients` option (now the separate
+    /// `checkGradients` function); a failed or inconclusive check stops the
+    /// solve.
     Full,
 }
 
@@ -375,10 +377,11 @@ pub struct Options {
     pub algorithm: Algorithm,
     /// Termination tolerances.
     pub tol: Tolerances,
-    /// Iteration cap, or `None` for the default `400 + 10 n` (at most 10 000):
-    /// `fmincon` uses a flat 400, which is far too few for large problems and
-    /// generous for tiny ones. A cap the caller sets is a limit on the whole
-    /// solve and the portfolio shares it across its members, like
+    /// Iteration cap, or `None` for the default `400 + 10 n` (at most 10 000).
+    /// A flat cap (`fmincon` documents 400 for `sqp` and 1000 for
+    /// `interior-point`) is too few for large problems and generous for tiny
+    /// ones. A cap the caller sets is a limit on the whole solve and the
+    /// portfolio shares it across its members, like
     /// `max_evaluations` and `max_seconds`; the default applies to each member
     /// separately, as a safety net rather than a budget.
     pub max_iterations: Option<usize>,
@@ -479,11 +482,12 @@ pub struct Options {
     /// Finite-difference flavour.
     pub fd_type: FdType,
     /// Relative finite-difference step, or `None` to use `sqrt(eps)` forward /
-    /// `eps^(1/3)` central, matching `fmincon`.
+    /// `eps^(1/3)` central (Dennis & Schnabel 1983, §5.4; Nocedal & Wright,
+    /// §8.1), the values most solvers use.
     pub fd_step: Option<f64>,
     /// Keep every finite-difference probe inside the variable bounds by
-    /// flipping the step direction near a bound. `fmincon`'s `sqp` and
-    /// `interior-point` do this; it matters enormously for models that are
+    /// flipping the step direction near a bound. MathWorks documents this for
+    /// `fmincon`'s `sqp` algorithm; it matters enormously for models that are
     /// undefined outside their box, and it is off in most open-source solvers.
     pub fd_respect_bounds: bool,
     /// Use graph coloring to batch finite-difference columns when structure is
@@ -619,7 +623,8 @@ impl Options {
                 step: 1e-10,
                 ..Tolerances::default()
             },
-            max_iterations: Some(400),
+            // MathWorks documents 1000 for `interior-point` (400 for `sqp`).
+            max_iterations: Some(1000),
             scaling: ScalingMode::None,
             hessian: HessianMode::DenseBfgs,
             fd_type: FdType::Forward,

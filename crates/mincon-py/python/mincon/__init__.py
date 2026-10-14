@@ -35,13 +35,14 @@ from __future__ import annotations
 import os
 import pickle
 import time
+import warnings
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
 
 from . import _mincon
 
-__all__ = ["minimize", "fmincon", "multistart", "check_gradients", "OptimizeResult", "Multipliers",
+__all__ = ["minimize", "solve", "fmincon", "multistart", "check_gradients", "OptimizeResult", "Multipliers",
            "ExitFlag", "__version__"]
 
 __version__ = _mincon.__version__
@@ -103,7 +104,7 @@ class OptimizeResult(dict):
 
 
 class Multipliers(dict):
-    """The multiplier groups of :func:`fmincon`, readable as ``m['ineqlin']`` or ``m.ineqlin``."""
+    """The multiplier groups of :func:`solve`, readable as ``m['ineqlin']`` or ``m.ineqlin``."""
 
     def __getattr__(self, name: str) -> Any:
         try:
@@ -775,7 +776,7 @@ _MATLAB_DISPLAY = {"off": "none", "none": "none", "final": "final", "final-detai
 
 
 def _matlab_options(options, method, jac, nonlcon_jac):
-    """Accept MATLAB's option names on the ``fmincon`` facade, mapped onto the Python names
+    """Accept MATLAB's option names on :func:`solve`, mapped onto the Python names
     :func:`minimize` documents. A MATLAB option with no equivalent raises: silently ignoring
     ``TolX`` would be worse than refusing it. ``UseParallel=True`` becomes ``workers=-1``."""
     if not options:
@@ -946,10 +947,10 @@ class _FacadeHessian:
         return self.hess(x, groups, *self.args)
 
 
-def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
+def solve(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
             nonlcon=None, options=None, *, jac=None, nonlcon_jac=None, hess=None, args=(), tol=None,
             method=None, callback=None, warm_start=None, workers=None, vectorized=False):
-    """Minimize with MATLAB-style constraint inputs and automatic defaults.
+    """Minimize with constraints given as matrices, bounds and one callback.
 
     ``A @ x <= b``, ``Aeq @ x == beq``, ``lb <= x <= ub`` and
     ``nonlcon(x, *args) -> (c, ceq)`` with ``c <= 0`` and ``ceq == 0``.
@@ -996,7 +997,14 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     The raw ``con`` and ``lambda`` fields retain the conventions of minimize.
     This is a convenience interface, not MATLAB output-tuple compatibility.
 
-    Example: ``fmincon(lambda x: ((x-1)**2).sum(), [0., 0.],
+    The arguments come in the order of MATLAB's ``fmincon`` (``fun, x0, A,
+    b, Aeq, beq, lb, ub, nonlcon``), so code written for it ports by changing
+    the name. MATLAB is a registered trademark of The MathWorks, Inc.;
+    ``fmincon`` is a function of its Optimization Toolbox. mincon is
+    independent of, and not affiliated with or endorsed by, The MathWorks,
+    Inc.
+
+    Example: ``solve(lambda x: ((x-1)**2).sum(), [0., 0.],
     nonlcon=lambda x: ([x.sum()-1], []))`` returns approximately ``[.5, .5]``.
     """
     options, method, jac, nonlcon_jac = _matlab_options(options, method, jac, nonlcon_jac)
@@ -1093,6 +1101,18 @@ def fmincon(fun, x0, A=None, b=None, Aeq=None, beq=None, lb=None, ub=None,
     multipliers["upper"] = result.z_u
     result.multipliers = multipliers
     return result
+
+
+def fmincon(*args, **kwargs):
+    """Deprecated name of :func:`solve`, kept for one release and removed in 0.4.0.
+
+    It takes exactly the arguments of :func:`solve`, returns the same result and
+    issues a ``DeprecationWarning``. Replace ``from mincon import fmincon`` by
+    ``from mincon import solve`` and ``fmincon(`` by ``solve(``.
+    """
+    warnings.warn("mincon.fmincon is deprecated and will be removed in mincon 0.4.0; use mincon.solve, "
+                  "which takes the same arguments", DeprecationWarning, stacklevel=2)
+    return solve(*args, **kwargs)
 
 
 def check_gradients(
@@ -1217,16 +1237,16 @@ def multistart(
     while len(starts) < n_starts:
         starts.append(lo_s + rng.random(n) * (hi_s - lo_s))
 
-    def solve(start):
+    def from_start(start):
         return minimize(fun, start, args=args, method=method, jac=jac, bounds=bl,
                         constraints=constraints, tol=tol, options=options)
 
     if workers > 1:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            results = list(pool.map(solve, starts))
+            results = list(pool.map(from_start, starts))
     else:
-        results = [solve(s) for s in starts]
+        results = [from_start(s) for s in starts]
 
     ctol = float((options or {}).get("ctol", 1e-6))
 

@@ -30,6 +30,8 @@ sys.path.insert(0, HERE)
 import problems  # noqa: E402
 import mincon  # noqa: E402
 
+solve = getattr(mincon, "solve", None) or mincon.fmincon   # the facade's name before 0.3.0
+
 NAMES = ["chainrosen20", "box_lsq", "portfolio_risk", "pressure_vessel", "hs71", "odefit",
          "infeasible_start_far", "linear_only", "equality_circle", "with_args"]
 FRACTIONS = (0.15, 0.25, 0.33, 0.5, 0.66, 0.8)
@@ -59,7 +61,7 @@ def main(names):
         if getattr(p, "args", None):
             kw["args"] = p.args
         opts = {"quadratic_probe": False}
-        full = mincon.fmincon(p.fun, p.x0, options=dict(opts), **kw)
+        full = solve(p.fun, p.x0, options=dict(opts), **kw)
         tgt = p.target
 
         def attained(r):
@@ -67,7 +69,7 @@ def main(names):
 
         for frac in FRACTIONS:
             budget = max(5, int(full.nfev * frac))
-            cut = mincon.fmincon(p.fun, p.x0, options=dict(opts, maxfev=budget), **kw)
+            cut = solve(p.fun, p.x0, options=dict(opts, maxfev=budget), **kw)
             rec = dict(problem=name, frac=frac, full=int(full.nfev), full_att=bool(attained(full)),
                        cut_nfev=int(cut.nfev), cut_nit=int(cut.nit or 0),
                        have_H=cut.hess_approx is not None)
@@ -83,10 +85,10 @@ def main(names):
                            ("scale", s * np.eye(n))):
                 ws = dict(cut)
                 ws["hess_approx"] = M
-                r = mincon.fmincon(p.fun, cut.x, options=dict(opts), warm_start=ws, **kw)
+                r = solve(p.fun, cut.x, options=dict(opts), warm_start=ws, **kw)
                 rec[arm] = int(cut.nfev + r.nfev)
                 rec[arm + "_att"] = bool(attained(r))
-            cold = mincon.fmincon(p.fun, cut.x, options=dict(opts), **kw)
+            cold = solve(p.fun, cut.x, options=dict(opts), **kw)
             rec["cold"] = int(cut.nfev + cold.nfev)
             rec["cold_att"] = bool(attained(cold))
             rows.append(rec)

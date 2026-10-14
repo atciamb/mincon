@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-phased45b\scored-A.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-phased45b\scored-A.jsonl
 
 185 problems, solvers: mincon, mincon@saddle_step=linearized, mincon@zero_step=decrease; duplicates overwritten: 0
 

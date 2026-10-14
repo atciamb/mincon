@@ -1,6 +1,6 @@
 [package]
 name = "mincon"
-description = "A robust nonlinear constrained optimizer: a free, fast, pip-installable answer to MATLAB's fmincon"
+description = "A robust nonlinear constrained optimizer: interior-point and SQP methods with automatic finite differences"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -17,33 +17,12 @@ REDUNDANT_EQ           fmincon-sqp              ok     status=1 f_model=16 c_mod
 HS46                   fmincon-sqp              ok     status=1 f_model=207 c_model=207 wall=0.012s
 HS23                   fmincon-sqp              ok     status=1 f_model=21 c_model=21 wall=0.006s
 HS45                   fmincon-sqp              ok     status=1 f_model=54 c_model=0 wall=0.014s
-[Warning: Derivative finite-differencing step was artificially reduced to be within bound constraints. This may adversely affect convergence. Increasing distance between bound
-constraints, in dimension 2, to be at least 2e-08 may improve results.] 
-[> In fwdFinDiffInsideBnds
-In finitedifferences
-In computeFinDiffGradAndJac
-In sqpInterface
-In fmincon (line 671)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)] 
-[Warning: Derivative finite-differencing step was artificially reduced to be within bound constraints. This may adversely affect convergence. Increasing distance between bound
-constraints, in dimension 2, to be at least 1.4e-08 may improve results.] 
-[> In fwdFinDiffInsideBnds
-In finitedifferences
-In computeFinDiffGradAndJac
-In sqpInterface
-In fmincon (line 671)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)] 
-[Warning: Derivative finite-differencing step was artificially reduced to be within bound constraints. This may adversely affect convergence. Increasing distance between bound
-constraints, in dimension 2, to be at least 2e-08 may improve results.] 
-[> In fwdFinDiffInsideBnds
-In finitedifferences
-In computeFinDiffGradAndJac
-In sqpInterface
-In fmincon (line 671)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
 NARROWBOX              fmincon-sqp              ok     status=1 f_model=10 c_model=0 wall=0.023s
 HS49                   fmincon-sqp              ok     status=1 f_model=149 c_model=149 wall=0.011s
 HS53                   fmincon-sqp              ok     status=1 f_model=56 c_model=56 wall=0.006s

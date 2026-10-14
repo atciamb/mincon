@@ -8,17 +8,17 @@
 //! solver that steps outside the box to build a derivative gets `NaN` back,
 //! and the user experiences it as "the optimizer crashed on my problem".
 //!
-//! `fmincon`'s `sqp` and `interior-point` algorithms keep every finite
-//! difference inside the bounds, and it is one of the least-discussed reasons
-//! they feel robust on engineering models. Most open-source solvers do not. We
-//! do, by default ([`FdConfig::respect_bounds`]), flipping the step direction
+//! Keeping every finite difference inside the bounds (MathWorks documents it
+//! for `fmincon`'s `sqp` algorithm) is one of the least-discussed reasons a
+//! solver feels robust on engineering models. Most open-source solvers do not.
+//! We do, by default ([`FdConfig::respect_bounds`]), flipping the step direction
 //! near a bound and shrinking it only if both directions are blocked.
 //!
 //! # Step sizes
 //!
 //! The relative step is `sqrt(eps) ~ 1.5e-8` forward and `eps^(1/3) ~ 6.1e-6`
-//! central, matching `fmincon`, scaled by `max(|x_i|, typical_x_i)`. Two
-//! details that matter more than they look:
+//! central (Dennis & Schnabel 1983, §5.4; Nocedal & Wright, §8.1), scaled by
+//! `max(|x_i|, typical_x_i)`. Two details that matter more than they look:
 //!
 //! * The actual step is recomputed as `(x_i + h) - x_i` after rounding, so the
 //!   divisor is the perturbation that really happened. Skipping this loses

@@ -81,6 +81,9 @@ def UNITS():
 
 # 7. Bad start: Rosenbrock from (1e3, -1e3) inside a unit-disc constraint that is inactive... make it active:
 #    min rosenbrock s.t. x1^2 + x2^2 <= 1: known optimum x = (0.7864, 0.6177), f = 0.045674808 (classic).
+#    Origin: Rosenbrock's function (Rosenbrock, Comput. J. 3, 1960) restricted to the unit disc is the
+#    worked example of MathWorks' fmincon documentation ("Solve a Constrained Nonlinear Problem"); only
+#    the mathematical problem is used here, with a different start, and none of that page's text or code.
 @register
 def BADSTART_DISC():
     x = xs(2)

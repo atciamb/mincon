@@ -4,7 +4,8 @@ Five problems with closed-form solutions exercise each constraint kind:
 linear inequality (P1), nonlinear inequality (P2), nonlinear equality (P3),
 bounds (P4) and a ranged linear row split into two one-sided rows (P5).
 `parity_matlab.m` runs `fmincon` with `interior-point` and `sqp` at defaults
-(`Display='off'` only); `parity_mincon.py` runs `mincon.fmincon` (default
+(`Display='off'` only); `parity_mincon.py` runs `mincon.solve` (named
+`mincon.fmincon` before 0.3.0, which is what the run below used; default
 `auto` portfolio, `threads=1`) and `mincon.minimize(method='interior-point')`.
 `parity_compare.py` verifies every returned point against the closed-form
 solution and an independently coded feasibility function; it never uses a

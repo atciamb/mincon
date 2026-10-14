@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-phased123\scored-A.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-phased123\scored-A.jsonl
 
 185 problems, solvers: mincon, mincon@barrier_safeguard=0.1, mincon@barrier_safeguard=1, mincon@quadratic_bands=decaying; duplicates overwritten: 0
 

@@ -480,3 +480,30 @@ Limitations:
 - Wächter–Biegler section numbers in §3 were checked against the repository
   docs, not re-read from the paper.
 - The MATLAB licence terms were not available (F-01).
+
+---
+
+## Remediation status (October 14, 2026)
+
+What was changed in the repository after this audit. History was not
+rewritten: every item below changes the current tree only.
+
+| ID | Status | What changed |
+|---|---|---|
+| F-01 | open, for the owner and counsel | nothing in the tree can settle it; the published records no longer carry MathWorks' text (F-05, F-06) |
+| F-02 | open, for the owner | nothing in the tree can settle it |
+| F-03 | done | trademark and non-affiliation notice in `README.md` (§ Trademarks and independence), `crates/mincon-py/README.md`, the `fmincon` docstring and `NOTICE` |
+| F-04 | done | `crates/mincon/Cargo.toml` description reworded; PyPI summary without "MATLAB-style"; keyword `fmincon` dropped (both from the next release). The exported `fmincon` function and `Options::fmincon_compatible` keep their names, as interoperability use with the F-03 notice |
+| F-05 | done | the three logs' stack traces replaced by `[stack trace removed]` and their MATLAB warnings by `[MATLAB warning removed]`; `scripts/scrub_matlab_records.py` does this for any future log |
+| F-06 | done | `native_message` / `message` of the 3,614 `fmincon` records set to `null`, MATLAB warnings to `[]`, exit flags and every number unchanged (85 record files); the exit headlines in the friction audit's four `matlab_run.log` files and in the message column of its four `summary.md` files removed, and the two prose quotations of one headline paraphrased (`docs/16`, `s7-friction/README.md`); CI job `records` fails if such text is committed again. The sealed round-6 worker (`bench/harness/worker_matlab.m`) is unchanged so that its hash still matches `SEAL.md`; its output is scrubbed before it is committed |
+| F-07 | kept | attributed short quotations |
+| F-08 | done | `ExitFlag::StepTolerance` and `FunctionTolerance` messages reworded; `crates/mincon-core/src/error.rs` cites the MathWorks page it paraphrased |
+| F-09 | done | QDLDL copyright and Apache-2.0 notice in the `ldlt.rs` header, `NOTICE` and `THIRD_PARTY_LICENSES.txt`; full Apache-2.0 text in both `LICENSE-APACHE` files; the Rust standard library's notice in `THIRD_PARTY_LICENSES.txt` (`scripts/build_license_notice.py`) |
+| F-10 | done | `docs/09` licence rule covers GPL, the LGPL SuiteSparse codes (CSparse, LDL, CHOLMOD) and `eiquadprog`, and adds a MathWorks rule; `mincon-qp` states it was written from Goldfarb & Idnani (1983) and Powell (1985) |
+| F-11 | done | `docs/09` no longer sends readers to IPOPT's source; any EPL file consulted is to be recorded in the spec that uses it |
+| F-12 | done | `bench/corpus/adversarial.py` cites the origin of `BADSTART_DISC` (a comment only: the corpus manifest is unchanged) |
+| F-13 | no change | as recommended |
+| F-14 | done | `docs/09` §6, "Components with no single published source" |
+| F-15 | done | iteration defaults (`options.rs`, and `fmincon_compatible()` now uses 1000), `JacobPattern` (`mincon-diff`), BFGS damping (`bfgs.rs`), `CheckGradients` (`options.rs`, `check.rs`, `mincon/src/lib.rs`), the stale per-row penalty (`mincon-sqp/src/lib.rs`); also §2.1's two statements (`options.rs` bounds in finite differences, `docs/20` Armijo constant) |
+| F-16 | done | `README.md` says "permissive" |
+| privacy | done in the tree | host name and user directory replaced by `<host>` / `<home>` in 341 files under `bench/results`; earlier commits still contain them |

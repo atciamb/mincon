@@ -1,7 +1,9 @@
-"""Run the same five analytic problems through mincon.fmincon; write parity_mincon.json."""
+"""Run the same five analytic problems through mincon.solve; write parity_mincon.json."""
 import json, os, sys, time
 import numpy as np
 import mincon
+
+solve = getattr(mincon, "solve", None) or mincon.fmincon   # the facade's name before 0.3.0
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -23,7 +25,7 @@ def main():
         for method in ("auto", "interior-point"):
             kw = {k: p[k] for k in ("A", "b", "Aeq", "beq", "lb", "ub", "nonlcon") if k in p}
             t0 = time.perf_counter()
-            r = mincon.fmincon(p["fun"], p["x0"], options={"threads": 1} , **kw) if method == "auto" else \
+            r = solve(p["fun"], p["x0"], options={"threads": 1} , **kw) if method == "auto" else \
                 mincon.minimize(p["fun"], p["x0"], method=method, options={"threads": 1},
                                 bounds=list(zip(p.get("lb", [None]*2), p.get("ub", [None]*2))) if ("lb" in p or "ub" in p) else None,
                                 constraints=_scipy_cons(p))

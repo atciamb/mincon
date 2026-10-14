@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\s6v5-final5\scored-A.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\s6v5-final5\scored-A.jsonl
 
 13 problems, solvers: fmincon-interior-point, fmincon-sqp, mincon, mincon-ip, mincon-sqp, scipy-slsqp, scipy-trust-constr; duplicates overwritten: 0
 

@@ -23,41 +23,41 @@ Cell: Y attained (feasible to 1e-6, objective within 1e-4 relative of the refere
 
 | problem | attained | reported | exit | KKT | f_model | c_model | nit | wall s | message |
 |---|---|---|---|---|---:|---:|---:|---:|---|
-| chainrosen20 | Y gap 1.1e-06 | False | 0 | n | 3014 | 0 | 133 | 1.28 | Solver stopped prematurely. |
-| odefit | Y gap 1.4e-13 (param err 1.7e-07, ok) | True | 1 | n | 160 | 0 | 35 | 0.19 | Local minimum found that satisfies the constraints. |
-| portfolio_risk | Y gap 2.2e-06 | True | 1 | n | 250 | 250 | 26 | 0.17 | Local minimum found that satisfies the constraints. |
-| pressure_vessel | Y gap 1.2e-08 | True | 1 | n | 63 | 63 | 7 | 0.11 | Local minimum found that satisfies the constraints. |
-| nan_region | Y gap 2.0e-08 | True | 1 | Y | 32 | 32 | 9 | 0.16 | Local minimum found that satisfies the constraints. |
-| hs71 | Y gap 2.4e-07 | True | 1 | Y | 46 | 46 | 8 | 0.09 | Local minimum found that satisfies the constraints. |
-| linear_only | Y gap 1.2e-12 | True | 1 | n | 142 | 0 | 19 | 0.06 | Local minimum found that satisfies the constraints. |
-| with_args | Y gap 5.1e-14 (param err 1.9e-07, ok) | True | 1 | Y | 86 | 0 | 18 | 0.09 | Local minimum found that satisfies the constraints. |
-| wrong_gradient | n gap 1.0e+00 | True | 2 | n | 45 | 0 | 2 | 0.04 | Local minimum possible. Constraints satisfied. |
-| infeasible_start_far | Y gap 7.8e-07 | True | 1 | n | 199 | 0 | 17 | 0.05 | Local minimum found that satisfies the constraints. |
-| bad_scaling | n gap 1.6e+01 | True | 1 | Y | 20 | 20 | 5 | 0.04 | Local minimum found that satisfies the constraints. |
-| noisy_simulator | Y gap 3.2e-07 | True | 1 | n | 183 | 0 | 33 | 0.09 | Local minimum found that satisfies the constraints. |
-| box_lsq | n gap 1.3e-03 | False | 0 | n | 3009 | 0 | 58 | 0.10 | Solver stopped prematurely. |
-| equality_circle | Y gap -1.4e-07 | True | 1 | n | 44 | 44 | 10 | 0.08 | Local minimum found that satisfies the constraints. |
-| heatflux_design | Y gap 1.7e-07 | True | 1 | Y | 382 | 0 | 18 | 0.20 | Local minimum found that satisfies the constraints. |
+| chainrosen20 | Y gap 1.1e-06 | False | 0 | n | 3014 | 0 | 133 | 1.28 | [removed] |
+| odefit | Y gap 1.4e-13 (param err 1.7e-07, ok) | True | 1 | n | 160 | 0 | 35 | 0.19 | [removed] |
+| portfolio_risk | Y gap 2.2e-06 | True | 1 | n | 250 | 250 | 26 | 0.17 | [removed] |
+| pressure_vessel | Y gap 1.2e-08 | True | 1 | n | 63 | 63 | 7 | 0.11 | [removed] |
+| nan_region | Y gap 2.0e-08 | True | 1 | Y | 32 | 32 | 9 | 0.16 | [removed] |
+| hs71 | Y gap 2.4e-07 | True | 1 | Y | 46 | 46 | 8 | 0.09 | [removed] |
+| linear_only | Y gap 1.2e-12 | True | 1 | n | 142 | 0 | 19 | 0.06 | [removed] |
+| with_args | Y gap 5.1e-14 (param err 1.9e-07, ok) | True | 1 | Y | 86 | 0 | 18 | 0.09 | [removed] |
+| wrong_gradient | n gap 1.0e+00 | True | 2 | n | 45 | 0 | 2 | 0.04 | [removed] |
+| infeasible_start_far | Y gap 7.8e-07 | True | 1 | n | 199 | 0 | 17 | 0.05 | [removed] |
+| bad_scaling | n gap 1.6e+01 | True | 1 | Y | 20 | 20 | 5 | 0.04 | [removed] |
+| noisy_simulator | Y gap 3.2e-07 | True | 1 | n | 183 | 0 | 33 | 0.09 | [removed] |
+| box_lsq | n gap 1.3e-03 | False | 0 | n | 3009 | 0 | 58 | 0.10 | [removed] |
+| equality_circle | Y gap -1.4e-07 | True | 1 | n | 44 | 44 | 10 | 0.08 | [removed] |
+| heatflux_design | Y gap 1.7e-07 | True | 1 | Y | 382 | 0 | 18 | 0.20 | [removed] |
 
 ### fmincon-sqp
 
 | problem | attained | reported | exit | KKT | f_model | c_model | nit | wall s | message |
 |---|---|---|---|---|---:|---:|---:|---:|---|
-| chainrosen20 | n gap 4.5e+00 | False | 0 | n | 2014 | 0 | 86 | 0.09 | Solver stopped prematurely. |
-| odefit | Y gap 2.0e-13 (param err 2.9e-07, ok) | True | 2 | n | 135 | 0 | 28 | 0.03 | Local minimum possible. Constraints satisfied. |
-| portfolio_risk | Y gap -1.4e-17 | True | 1 | Y | 111 | 111 | 11 | 0.02 | Local minimum found that satisfies the constraints. |
-| pressure_vessel | Y gap 1.5e-16 | True | 1 | Y | 32 | 32 | 5 | 0.02 | Local minimum found that satisfies the constraints. |
-| nan_region | Y gap -6.1e-10 | True | 1 | Y | 18 | 18 | 4 | 0.01 | Local minimum found that satisfies the constraints. |
-| hs71 | Y gap -1.3e-12 | True | 1 | Y | 30 | 30 | 5 | 0.01 | Local minimum found that satisfies the constraints. |
-| linear_only | Y gap 4.5e-14 | True | 1 | Y | 92 | 0 | 11 | 0.01 | Local minimum found that satisfies the constraints. |
-| with_args | Y gap 8.7e-14 (param err 2.8e-07, ok) | True | 1 | Y | 77 | 0 | 14 | 0.01 | Local minimum found that satisfies the constraints. |
-| wrong_gradient | n gap 1.5e+00 | True | 2 | n | 49 | 0 | 2 | 0.01 | Local minimum possible. Constraints satisfied. |
-| infeasible_start_far | Y gap 0.0e+00 | True | 1 | Y | 33 | 0 | 2 | 0.01 | Local minimum found that satisfies the constraints. |
-| bad_scaling | n gap 2.8e-01 | False | -2 | n | 11 | 11 | 1 | 0.00 | Converged to an infeasible point. |
-| noisy_simulator | Y gap 4.2e-09 | True | 2 | n | 68 | 0 | 11 | 0.01 | Local minimum possible. Constraints satisfied. |
-| box_lsq | Y gap 2.5e-05 | False | 0 | n | 5049 | 0 | 98 | 0.11 | Solver stopped prematurely. |
-| equality_circle | Y gap -6.5e-14 | True | 1 | Y | 24 | 24 | 5 | 0.01 | Local minimum found that satisfies the constraints. |
-| heatflux_design | Y gap 0.0e+00 | True | 1 | Y | 120 | 0 | 5 | 0.04 | Local minimum found that satisfies the constraints. |
+| chainrosen20 | n gap 4.5e+00 | False | 0 | n | 2014 | 0 | 86 | 0.09 | [removed] |
+| odefit | Y gap 2.0e-13 (param err 2.9e-07, ok) | True | 2 | n | 135 | 0 | 28 | 0.03 | [removed] |
+| portfolio_risk | Y gap -1.4e-17 | True | 1 | Y | 111 | 111 | 11 | 0.02 | [removed] |
+| pressure_vessel | Y gap 1.5e-16 | True | 1 | Y | 32 | 32 | 5 | 0.02 | [removed] |
+| nan_region | Y gap -6.1e-10 | True | 1 | Y | 18 | 18 | 4 | 0.01 | [removed] |
+| hs71 | Y gap -1.3e-12 | True | 1 | Y | 30 | 30 | 5 | 0.01 | [removed] |
+| linear_only | Y gap 4.5e-14 | True | 1 | Y | 92 | 0 | 11 | 0.01 | [removed] |
+| with_args | Y gap 8.7e-14 (param err 2.8e-07, ok) | True | 1 | Y | 77 | 0 | 14 | 0.01 | [removed] |
+| wrong_gradient | n gap 1.5e+00 | True | 2 | n | 49 | 0 | 2 | 0.01 | [removed] |
+| infeasible_start_far | Y gap 0.0e+00 | True | 1 | Y | 33 | 0 | 2 | 0.01 | [removed] |
+| bad_scaling | n gap 2.8e-01 | False | -2 | n | 11 | 11 | 1 | 0.00 | [removed] |
+| noisy_simulator | Y gap 4.2e-09 | True | 2 | n | 68 | 0 | 11 | 0.01 | [removed] |
+| box_lsq | Y gap 2.5e-05 | False | 0 | n | 5049 | 0 | 98 | 0.11 | [removed] |
+| equality_circle | Y gap -6.5e-14 | True | 1 | Y | 24 | 24 | 5 | 0.01 | [removed] |
+| heatflux_design | Y gap 0.0e+00 | True | 1 | Y | 120 | 0 | 5 | 0.04 | [removed] |
 
 ### mincon-fmincon
 

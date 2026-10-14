@@ -459,7 +459,7 @@ Theorem 14.3.1 in *Practical Methods*). The quantity
 test:
 
 ```
-φ_ρ(x_k + α d) ≤ φ_ρ(x_k) − η α Δm,      η = 1e-4 (fmincon-like) … 0.1,          (5.2)
+φ_ρ(x_k + α d) ≤ φ_ρ(x_k) − η α Δm,      η = 1e-4 (textbook, N&W §3.1) … 0.1,    (5.2)
 ```
 
 with backtracking `α ← α/2` (or a safeguarded quadratic interpolation) from

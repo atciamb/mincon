@@ -68,10 +68,10 @@ impl ExitFlag {
                 "First-order optimality and constraint tolerances satisfied."
             }
             ExitFlag::StepTolerance => {
-                "Local minimum possible. Step size below tolerance; constraints satisfied."
+                "Step below the step tolerance with the constraints satisfied; probably, not certainly, a local minimum."
             }
             ExitFlag::FunctionTolerance => {
-                "Local minimum possible. Objective change below tolerance; constraints satisfied."
+                "Objective change below tolerance with the constraints satisfied; probably, not certainly, a local minimum."
             }
             ExitFlag::Acceptable => {
                 "Solved to acceptable tolerances, but not to the requested optimality tolerance."

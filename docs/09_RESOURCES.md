@@ -162,12 +162,12 @@ that success is decided by the harness.
 
 | Project | Licence | Read it for |
 |---|---|---|
-| [**IPOPT**](https://github.com/coin-or/Ipopt) | EPL-2.0 | The reference implementation of §1's first paper. `IpIpoptAlg.cpp`, `IpFilterLSAcceptor.cpp`, `IpRestoIpoptNLP.cpp`. **Do not copy code — EPL is not compatible with MIT/Apache.** Read for algorithm structure and option defaults only. |
+| [**IPOPT**](https://github.com/coin-or/Ipopt) | EPL-2.0 | The reference implementation of §1's first paper. **Work from the paper and the options page, not the source: EPL is not compatible with MIT/Apache.** If a source file is ever consulted, the spec that uses the idea records which file and why (rule below). The September 2026 audit found no IPOPT code or identifiers in `mincon-ip` (`docs/IP_AUDIT.md`, F-11). |
 | [**IPOPT options**](https://coin-or.github.io/Ipopt/OPTIONS.html) | docs | Every default in `docs/02` was cross-checked here. The single most useful page in the field. |
-| [**QDLDL**](https://github.com/osqp/qdldl) | Apache-2.0 | The up-looking `LDL^T` kernel, ~300 lines, extremely clear. `mincon-linalg` follows its structure. Licence-compatible. |
+| [**QDLDL**](https://github.com/osqp/qdldl) | Apache-2.0 | The up-looking `LDL^T` kernel, ~300 lines, extremely clear. `mincon-linalg/src/ldlt.rs` adapts its elimination tree and the structure of its numeric kernel; the file header and `NOTICE` carry QDLDL's copyright notice, as Apache-2.0 requires. |
 | [**Clarabel.rs**](https://github.com/oxfordcontrol/Clarabel.rs) | Apache-2.0 | A serious interior-point solver in idiomatic Rust. Read for dynamic regularization in practice, and for how to organize a Rust numerical crate. |
 | [**OSQP**](https://github.com/osqp/osqp) | Apache-2.0 | ADMM QP. The right fallback QP solver, and the paper is a model of clear exposition. |
-| [**CSparse**](https://github.com/DrTimothyAldenDavis/SuiteSparse) | LGPL / BSD by module | AMD is **BSD-3-Clause** and therefore usable. The `amd` Rust crate (v0.2.2) is a port of it. |
+| [**CSparse**](https://github.com/DrTimothyAldenDavis/SuiteSparse) | LGPL / BSD by module | AMD is **BSD-3-Clause** and therefore usable. The `amd` Rust crate (v0.2.2) is a port of it. CSparse, LDL and CHOLMOD are **LGPL**: read Davis's book, not their source (rule below). |
 | [**faer**](https://docs.rs/faer/latest/faer/sparse/linalg/cholesky/index.html) | MIT | Dense and sparse linear algebra, including sparse LDLT and intranodal Bunch–Kaufman. Evaluate its numerical contracts as an alternative backend. |
 | [**NLopt**](https://github.com/stevengj/nlopt) | LGPL/MIT | Breadth of algorithms; a good source of ideas, weaker on constrained methods. |
 | [**SciPy `_slsqp`**](https://github.com/scipy/scipy) | BSD-3 | Kraft's 1988 Fortran SLSQP. The thing to beat on small dense problems; currently ~5x cheaper than us in evaluations. |
@@ -176,10 +176,24 @@ that success is decided by the harness.
 
 ### A licence rule, stated once
 
-Everything shipped must be **MIT / Apache-2.0 / BSD**. IPOPT (EPL), MUMPS,
-HSL, NLopt's LGPL parts and CasADi (LGPL) may be **read and cited, never
-vendored**. If a design decision comes from reading EPL/LGPL code, describe it
-in prose in the spec and implement from the description.
+Everything shipped must be **MIT / Apache-2.0 / BSD**. Copyleft and
+proprietary-licensed code may be **read and cited, never vendored or
+translated**: GPL (R's `quadprog`), LGPL (`eiquadprog`, CSparse, LDL, CHOLMOD
+and the other LGPL SuiteSparse modules, NLopt's LGPL parts, CasADi), EPL
+(IPOPT), and MUMPS and HSL under their own terms. If a design decision comes
+from reading such code, record the file read in the spec that uses the idea,
+describe the idea in prose there, and implement from the description and the
+paper. Permissive code that is adapted (QDLDL, Apache-2.0) keeps its copyright
+notice in the file and in `NOTICE`.
+
+**MathWorks.** Only MathWorks' public documentation is read. No MathWorks
+code, P-code or toolbox file is opened, printed, stepped through in a debugger
+or copied, and nothing is reverse-engineered from `fmincon`'s behaviour beyond
+what its public interface returns. Documentation is quoted briefly, in
+quotation marks, with the page and the date read (`docs/20` §10). Benchmark
+records keep `fmincon`'s exit flag and numbers, not its messages or console
+text (`scripts/scrub_matlab_records.py`). Names (`fmincon`, option names, exit
+flag integers) are used only to describe compatibility.
 
 ---
 
@@ -213,10 +227,37 @@ in prose in the spec and implement from the description.
 | Filter methods | Fletcher & Leyffer, Math. Prog. 91, 2002 | `mincon_ip::filter` |
 | Maratos effect and second-order corrections | Maratos 1978; Fletcher 1987 §14.4 | why SOC is mandatory |
 | Watchdog technique | Chamberlain et al., Math. Prog. 16, 1982 | unimplemented; IPOPT §3.4 Case II |
-| Ruiz equilibration | Ruiz, RAL-TR-2001-034 | `ScalingMode::Equilibration` |
-| Elastic / always-feasible QP | Gould & Toint; `fmincon`'s `sqp` | `docs/03_SPEC_SQP.md` §2.1 |
+| Ruiz equilibration | Ruiz, RAL-TR-2001-034 | not implemented (`ScalingMode::Equilibration` was removed in Phase B) |
+| Elastic / always-feasible QP | Fletcher 1985 (Sℓ1QP); Gill, Murray & Saunders, SIAM Review 47, 2005 (SNOPT) | `mincon_sqp`; `docs/20` §3 |
 | Anti-cycling in active-set QP | Bland 1977; lexicographic rules | the QP solver |
 | Bound relaxation for `lb == ub` | IPOPT `bound_relax_factor` | why `TORTURE_PINNED` is solvable |
+
+### Components with no single published source
+
+Recorded after the September 2026 audit (`docs/IP_AUDIT.md` §3.2, F-14). Each
+is textbook practice with the citation below, or the project's own measured
+heuristic, marked *original*. None comes from MathWorks software.
+
+| Component | Source | Where it lands |
+|---|---|---|
+| Algorithm portfolio (racing configurations) | Rice, "The algorithm selection problem", Adv. Comput. 15, 1976; Gomes & Selman, Artif. Intell. 126, 2001 | `mincon::portfolio` |
+| Quadratic-program probe (third differences on random lines), structured band Hessian build, decaying bands, convex quadratic rows | *original*, on textbook finite differences (Nocedal & Wright §8.1; Boyd & Vandenberghe, *Convex Optimization*, §3.1) | `mincon::quadratic` |
+| Variable scaling by the start's magnitudes | Gill, Murray & Wright 1981 §7.5; Dennis & Schnabel, *Numerical Methods for Unconstrained Optimization and Nonlinear Equations*, 1983, §7.1 | `mincon::scaled` |
+| Finite-difference steps `sqrt(eps)` forward, `eps^(1/3)` central, scaled by `max(|x|, typical)` | Dennis & Schnabel 1983 §5.4; Nocedal & Wright §8.1 | `mincon_diff::fd` |
+| Bounds-respecting probes, retreat on non-finite values, unequal-step and one-sided stencils | Fornberg, Math. Comp. 51, 1988 (unequal steps); derivation in `docs/05` §2 | `mincon_diff::fd` |
+| Forward-to-central escalation; error-aware termination | *original* | `mincon_diff::fd`; `mincon_ip::solver` |
+| Black-box sparsity detection by probing | *original*; related work Griewank & Mitev, Math. Prog. 93, 2002 | `mincon_diff::detect` |
+| Derivative checks (component-wise, directional) | Nocedal & Wright §8.1 | `mincon_diff::check` |
+| Reverse Cuthill–McKee ordering | Cuthill & McKee, ACM 1969; George & Liu, *Computer Solution of Large Sparse Positive Definite Systems*, 1981 | `mincon_linalg::ordering` |
+| Exact-Hessian regularization along the constraint normals | Debreu, Econometrica 20, 1952; Nocedal & Wright §17.3 | `mincon_sqp` |
+| Initial penalty `max(1, ‖g0‖∞ / ‖J0‖∞)` | *original* (a scale-aware start for the ℓ1 penalty of Han 1977) | `mincon_sqp` |
+| Saddle probe and escape, zero-step re-test, degenerate-multiplier verdict, line-search failure cascade | Moré & Sorensen, Math. Prog. 16, 1979 (negative curvature); the rest *original* (`docs/20` §11, `docs/22` §7.18) | `mincon_sqp` |
+| Dense kernels: Gaussian elimination, Gram–Schmidt, cyclic Jacobi | Golub & Van Loan, *Matrix Computations* | `mincon_sqp` |
+| QP constraint selection by scaled violation; warm-start hint ordering | Goldfarb & Idnani 1983 (selection rule); hint ordering *original* | `mincon_qp` |
+| Multistart | Rinnooy Kan & Timmer, Math. Prog. 39, 1987 | `mincon.multistart` |
+| XorShift and LCG generators | Marsaglia, J. Stat. Softw. 8, 2003; Knuth, TAOCP vol. 2 | probes and tests |
+| KKT fixture checker `relative_stationarity` | Nocedal & Wright ch. 12 | `mincon_testset` |
+| Positive diagonal congruence retry, natural-order fallback, certificate guards (D9, D11), divergence and stall exits, adaptive-to-monotone barrier fallback, curvature-drift BFGS rebuild, torture problems | *original* (`docs/16`, `docs/21`, `docs/22`) | `mincon_ip`; `mincon_testset` |
 
 ---
 

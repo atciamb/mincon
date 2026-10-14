@@ -82,7 +82,7 @@ What the records say:
   other, invisible to any first-order tolerance), so it is the scaling pathology, not a false
   certificate. mincon reports success at f = 120.7, a point the oracle rejects, which is a
   false certificate; fmincon-sqp and SLSQP fail without claiming success (fmincon-sqp:
-  "Converged to an infeasible point" on a feasible problem).
+  exit flag -2, infeasible, on a feasible problem).
 * **mincon's `bad_scaling` exit is a false certificate**, the one defect in this audit that
   belongs to this project. Mechanism, from the trace and the solver notes: the interior-point
   member pushes the start away from the bound x1 >= 1e-9 by 1e-2 (the push floor is 1, so a

@@ -5,12 +5,14 @@
 //! the workspace must respond by shortening the step, never by aborting.
 //! [`SolveError`] is a genuine failure of the solver or of the problem setup.
 //!
-//! This mirrors the single most under-appreciated robustness feature of
-//! `fmincon`'s `sqp` algorithm: when the user function returns `Inf`, `NaN` or
-//! a complex value, it retries with a smaller step rather than giving up.
+//! Retreating from a point where the model is undefined is one of the most
+//! under-appreciated robustness features a practical solver can have (MathWorks
+//! documents it for `fmincon`'s `sqp` algorithm under "Robustness to
+//! Non-Double Results",
+//! <https://www.mathworks.com/help/optim/ug/constrained-nonlinear-optimization-algorithms.html>).
 //! Practical engineering models (implicit solves, log/sqrt of an intermediate,
-//! FEA that diverges) hit this constantly, and it is a large part of why
-//! `fmincon` feels more robust than solvers with better convergence theory.
+//! FEA that diverges) produce `NaN` or `Inf` constantly, and a solver that
+//! aborts on the first one feels fragile however good its convergence theory.
 
 use thiserror::Error;
 
