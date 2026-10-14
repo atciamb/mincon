@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-se\scored-free.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-se\scored-free.jsonl
 
 169 problems, solvers: mincon@bfgs_rescale=0, mincon@kkt_pivot_signs=free; duplicates overwritten: 0
 

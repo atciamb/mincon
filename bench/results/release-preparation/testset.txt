@@ -1,5 +1,5 @@
-   Compiling mincon-diff v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-diff)
-   Compiling mincon-ip v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-ip)
+   Compiling mincon-diff v0.1.0 (<home>\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-diff)
+   Compiling mincon-ip v0.1.0 (<home>\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-ip)
     Finished `release` profile [optimized] target(s) in 4.55s
      Running `target\release\examples\run_testset.exe`
 problem               n    m  iters f-evals        opt status             verdict outcome

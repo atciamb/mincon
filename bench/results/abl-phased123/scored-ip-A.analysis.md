@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-phased123\scored-ip-A.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-phased123\scored-ip-A.jsonl
 
 185 problems, solvers: mincon-ip, mincon-ip@barrier_safeguard=1; duplicates overwritten: 0
 

@@ -13,7 +13,10 @@ Pipeline (all paths relative to the repository root):
    — runs the workers (`worker_python.py`, `worker_matlab.m`) with hard
    per-problem limits; resumable; `--repeats k` for timing replicates;
    `mincon@key=value,...` for option ablations.
-5. `python bench/harness/score.py bench/results/NAME/*.A.jsonl -o bench/results/NAME/scored-A.jsonl`
+5. `python scripts/scrub_matlab_records.py bench/results/NAME` on the benchmark machine
+   — drops `fmincon`'s exit messages, warnings and stack traces and the host and user
+   names before anything is committed (`bench/README.md`); scoring does not read them.
+   Then `python bench/harness/score.py bench/results/NAME/*.A.jsonl -o bench/results/NAME/scored-A.jsonl`
    — attaches the independent oracle verdict (`oracle.py`) under the frozen
    target version.
 6. `python bench/harness/analyze.py bench/results/NAME/scored-A.jsonl --baseline fmincon-interior-point`

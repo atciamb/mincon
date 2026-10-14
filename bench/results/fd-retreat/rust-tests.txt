@@ -1,8 +1,8 @@
-   Compiling mincon-diff v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-diff)
-   Compiling mincon-ip v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-ip)
-   Compiling mincon-sqp v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-sqp)
-   Compiling mincon v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon)
-   Compiling mincon-py v0.1.0 (C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-py)
+   Compiling mincon-diff v0.1.0 (<home>\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-diff)
+   Compiling mincon-ip v0.1.0 (<home>\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-ip)
+   Compiling mincon-sqp v0.1.0 (<home>\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-sqp)
+   Compiling mincon v0.1.0 (<home>\OneDrive\Desktop\python_fmincon\mincon\crates\mincon)
+   Compiling mincon-py v0.1.0 (<home>\OneDrive\Desktop\python_fmincon\mincon\crates\mincon-py)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 5.15s
      Running unittests src\lib.rs (target\debug\deps\mincon-bcfde5c168242d37.exe)
 

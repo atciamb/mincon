@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-se\scored-ip-free.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-se\scored-ip-free.jsonl
 
 169 problems, solvers: mincon-ip@bfgs_rescale=0, mincon-ip@kkt_pivot_signs=free; duplicates overwritten: 0
 

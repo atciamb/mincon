@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-i5\scored-probe.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-i5\scored-probe.jsonl
 
 172 problems, solvers: mincon@bfgs_rescale=0, mincon@quadratic_probe=true; duplicates overwritten: 0
 

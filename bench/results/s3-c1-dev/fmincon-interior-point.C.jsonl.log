@@ -49,51 +49,16 @@ HS113                  fmincon-interior-point   ok     status=1 f_model=18 c_mod
 HS16                   fmincon-interior-point   ok     status=1 f_model=31 c_model=31 wall=0.131s
 HS6                    fmincon-interior-point   ok     status=1 f_model=16 c_model=16 wall=0.070s
 HS95                   fmincon-interior-point   ok     status=1 f_model=14 c_model=14 wall=0.057s
-[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  3.211878e-17.] 
-[> In backsolveSys
-In solveKKTsystem
-In computeTrialStep
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)
-] 
-[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  7.214592e-17.] 
-[> In backsolveSys
-In solveKKTsystem
-In computeTrialStep
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)
-] 
-[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  1.402669e-17.] 
-[> In backsolveSys
-In solveKKTsystem
-In computeTrialStep
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)
-] 
-[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  1.435310e-16.] 
-[> In backsolveSys
-In solveKKTsystem
-In computeTrialStep
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)
-] 
-[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  1.178421e-16.] 
-[> In backsolveSys
-In solveKKTsystem
-In computeTrialStep
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)
-] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
 HS55                   fmincon-interior-point   ok     status=1 f_model=13 c_model=13 wall=0.230s
 HS11                   fmincon-interior-point   ok     status=1 f_model=10 c_model=10 wall=0.025s
 HS19                   fmincon-interior-point   ok     status=1 f_model=19 c_model=19 wall=0.066s

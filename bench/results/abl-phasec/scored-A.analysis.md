@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-phasec\scored-A.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-phasec\scored-A.jsonl
 
 185 problems, solvers: mincon, mincon@quadratic_rows=values; duplicates overwritten: 0
 

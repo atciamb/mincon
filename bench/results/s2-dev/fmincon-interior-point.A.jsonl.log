@@ -19,36 +19,12 @@ EXPFIT_CLEAN_CON       fmincon-interior-point   ok     status=1 f_model=101 c_mo
 HS30                   fmincon-interior-point   ok     status=1 f_model=28 c_model=28 wall=0.065s
 FIXEDVARS              fmincon-interior-point   ok     status=1 f_model=40 c_model=40 wall=0.199s
 HS13                   fmincon-interior-point   ok     status=2 f_model=375 c_model=375 wall=0.402s
-[Warning: Derivative finite-differencing step was artificially reduced to be within bound constraints. This may adversely affect convergence. Increasing distance between bound
-constraints, in dimension 2, to be at least 1.1e-08 may improve results.] 
-[> In fwdFinDiffInsideBnds
-In finitedifferences
-In computeFinDiffGradAndJac
-In OptimFunctions/computeGradAndJac (line 606)
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)] 
-[Warning: Derivative finite-differencing step was artificially reduced to be within bound constraints. This may adversely affect convergence. Increasing distance between bound
-constraints, in dimension 2, to be at least 1.9945e-08 may improve results.] 
-[> In fwdFinDiffInsideBnds
-In finitedifferences
-In computeFinDiffGradAndJac
-In OptimFunctions/computeGradAndJac (line 606)
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)] 
-[Warning: Derivative finite-differencing step was artificially reduced to be within bound constraints. This may adversely affect convergence. Increasing distance between bound
-constraints, in dimension 2, to be at least 1.9846e-08 may improve results.] 
-[> In fwdFinDiffInsideBnds
-In finitedifferences
-In computeFinDiffGradAndJac
-In OptimFunctions/computeGradAndJac (line 606)
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
 NARROWBOX              fmincon-interior-point   ok     status=1 f_model=9 c_model=0 wall=0.203s
 HS1                    fmincon-interior-point   ok     status=1 f_model=121 c_model=0 wall=0.319s
 HS106                  fmincon-interior-point   ok     status=1 f_model=493 c_model=493 wall=0.294s
@@ -79,42 +55,14 @@ HS113                  fmincon-interior-point   ok     status=1 f_model=178 c_mo
 HS16                   fmincon-interior-point   ok     status=1 f_model=83 c_model=83 wall=0.100s
 HS6                    fmincon-interior-point   ok     status=1 f_model=34 c_model=34 wall=0.082s
 HS95                   fmincon-interior-point   ok     status=1 f_model=92 c_model=92 wall=0.092s
-[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  8.832666e-17.] 
-[> In backsolveSys
-In solveKKTsystem
-In computeTrialStep
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)
-] 
-[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  1.442918e-17.] 
-[> In backsolveSys
-In solveKKTsystem
-In computeTrialStep
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)
-] 
-[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  1.147135e-16.] 
-[> In backsolveSys
-In solveKKTsystem
-In computeTrialStep
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)
-] 
-[Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND =  1.224703e-16.] 
-[> In backsolveSys
-In solveKKTsystem
-In computeTrialStep
-In barrier
-In fmincon (line 657)
-In worker_matlab>run_one (line 120)
-In worker_matlab (line 33)
-] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
+[MATLAB warning removed] 
+[stack trace removed] 
 HS55                   fmincon-interior-point   ok     status=1 f_model=98 c_model=98 wall=0.359s
 HS11                   fmincon-interior-point   ok     status=1 f_model=30 c_model=30 wall=0.043s
 HS19                   fmincon-interior-point   ok     status=1 f_model=55 c_model=55 wall=0.054s

@@ -5,6 +5,7 @@
 __pycache__/
 *.pyc
 *.pyd
+*.so
 *.whl
 .pytest_cache/
 

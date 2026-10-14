@@ -1,4 +1,4 @@
-# Analysis of C:\Users\andyc\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-se\scored-auto.jsonl
+# Analysis of <home>\OneDrive\Desktop\python_fmincon\mincon-research\bench\results\abl-se\scored-auto.jsonl
 
 169 problems, solvers: mincon@bfgs_rescale=0, mincon@kkt_pivot_signs=auto; duplicates overwritten: 0
 

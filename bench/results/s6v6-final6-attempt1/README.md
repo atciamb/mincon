@@ -96,3 +96,8 @@ it. No budget exit and no `Acceptable` exit claimed success.
 
 Nothing else may be read from these records: not attainment, not evaluation
 counts, not wall time.
+
+**October 14, 2026.** The three record files and the screen were passed through
+`scripts/scrub_matlab_records.py` (the host name became `<host>`; no number
+changed) and `SHA256SUMS` was regenerated for the scrubbed files. The hashes of
+the files exactly as the run wrote them are the ones in commit `7968242`.
